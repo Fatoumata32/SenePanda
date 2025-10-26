@@ -1,0 +1,620 @@
+import { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  Image} from 'react-native';
+import { useRouter } from 'expo-router';
+import { supabase } from '@/lib/supabase';
+import * as ImagePicker from 'expo-image-picker';
+import { Camera, Image as ImageIcon, ArrowRight, Store, Check } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+type WizardStep = 1 | 2 | 3 | 4;
+
+export default function ShopWizardScreen() {
+  const router = useRouter();
+  const [currentStep, setCurrentStep] = useState<WizardStep>(1);
+  const [loading, setLoading] = useState(false);
+
+  // Form data
+  const [shopName, setShopName] = useState('');
+  const [shopDescription, setShopDescription] = useState('');
+  const [phone, setPhone] = useState('');
+  const [country, setCountry] = useState('Sénégal');
+  const [logoUri, setLogoUri] = useState<string | null>(null);
+  const [bannerUri, setBannerUri] = useState<string | null>(null);
+
+  const pickImage = async (type: 'logo' | 'banner') => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (status !== 'granted') {
+      Alert.alert('Permission requise', 'Nous avons besoin de votre permission pour accéder à vos photos');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: type === 'logo' ? [1, 1] : [16, 9],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      if (type === 'logo') {
+        setLogoUri(result.assets[0].uri);
+      } else {
+        setBannerUri(result.assets[0].uri);
+      }
+    }
+  };
+
+  const takePhoto = async (type: 'logo' | 'banner') => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (status !== 'granted') {
+      Alert.alert('Permission requise', 'Nous avons besoin de votre permission pour utiliser la caméra');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: type === 'logo' ? [1, 1] : [16, 9],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      if (type === 'logo') {
+        setLogoUri(result.assets[0].uri);
+      } else {
+        setBannerUri(result.assets[0].uri);
+      }
+    }
+  };
+
+  const showImageOptions = (type: 'logo' | 'banner') => {
+    Alert.alert(
+      type === 'logo' ? 'Logo de la boutique' : 'Bannière de la boutique',
+      'Choisissez une option',
+      [
+        { text: 'Galerie', onPress: () => pickImage(type) },
+        { text: 'Prendre une photo', onPress: () => takePhoto(type) },
+        { text: 'Annuler', style: 'cancel' },
+      ]
+    );
+  };
+
+  const uploadImage = async (uri: string, path: string) => {
+    try {
+      const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `${path}-${Date.now()}.${fileExt}`;
+      const filePath = `shops/${fileName}`;
+
+      // Utiliser XMLHttpRequest pour lire le fichier en ArrayBuffer
+      const fileData = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.onload = function() {
+          resolve(xhr.response);
+        };
+        xhr.onerror = function() {
+          reject(new Error('Erreur de lecture du fichier'));
+        };
+        xhr.responseType = 'arraybuffer';
+        xhr.open('GET', uri, true);
+        xhr.send();
+      });
+
+      const { data, error } = await supabase.storage
+        .from('images')
+        .upload(filePath, fileData, {
+          contentType: `image/${fileExt}`,
+          upsert: false,
+        });
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('images')
+        .getPublicUrl(filePath);
+
+      return publicUrl;
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      throw new Error('Erreur lors de l\'upload de l\'image');
+    }
+  };
+
+  const handleNext = () => {
+    if (currentStep === 1 && !shopName.trim()) {
+      Alert.alert('Erreur', 'Le nom de la boutique est requis');
+      return;
+    }
+    if (currentStep < 4) {
+      setCurrentStep((currentStep + 1) as WizardStep);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentStep > 1) {
+      setCurrentStep((currentStep - 1) as WizardStep);
+    }
+  };
+
+  const handleFinish = async () => {
+    if (!shopName.trim()) {
+      Alert.alert('Erreur', 'Le nom de la boutique est requis');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Non authentifié');
+
+      // Upload images if present
+      let logoUrl = null;
+      let bannerUrl = null;
+
+      if (logoUri) {
+        logoUrl = await uploadImage(logoUri, 'logo');
+      }
+
+      if (bannerUri) {
+        bannerUrl = await uploadImage(bannerUri, 'banner');
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          is_seller: true,
+          shop_name: shopName.trim(),
+          shop_description: shopDescription.trim() || null,
+          shop_logo_url: logoUrl,
+          shop_banner_url: bannerUrl,
+          phone: phone || null,
+          country: country || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      Alert.alert(
+        'Félicitations! 🎉',
+        'Votre boutique a été créée avec succès!',
+        [
+          {
+            text: 'Ajouter des produits',
+            onPress: () => router.replace('/seller/add-product'),
+          },
+          {
+            text: 'Plus tard',
+            onPress: () => router.replace('/(tabs)'),
+          },
+        ]
+      );
+    } catch (error: any) {
+      Alert.alert('Erreur', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderStepIndicator = () => (
+    <View style={styles.stepIndicator}>
+      {[1, 2, 3, 4].map((step) => (
+        <View key={step} style={styles.stepItem}>
+          <View
+            style={[
+              styles.stepCircle,
+              currentStep >= step && styles.stepCircleActive,
+              currentStep > step && styles.stepCircleCompleted,
+            ]}>
+            {currentStep > step ? (
+              <Check size={16} color="#FFFFFF" />
+            ) : (
+              <Text
+                style={[
+                  styles.stepNumber,
+                  currentStep >= step && styles.stepNumberActive,
+                ]}>
+                {step}
+              </Text>
+            )}
+          </View>
+          {step < 4 && (
+            <View
+              style={[
+                styles.stepLine,
+                currentStep > step && styles.stepLineActive,
+              ]}
+            />
+          )}
+        </View>
+      ))}
+    </View>
+  );
+
+  const renderStep1 = () => (
+    <View style={styles.stepContent}>
+      <Store size={64} color="#D97706" />
+      <Text style={styles.stepTitle}>Créez votre boutique</Text>
+      <Text style={styles.stepDescription}>
+        Commençons par les informations de base de votre boutique
+      </Text>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Nom de la boutique *</Text>
+        <TextInput
+          style={styles.input}
+          value={shopName}
+          onChangeText={setShopName}
+          placeholder="Ex: Boutique Artisanat Dakar"
+          placeholderTextColor="#9CA3AF"
+        />
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Description</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={shopDescription}
+          onChangeText={setShopDescription}
+          placeholder="Décrivez votre boutique et ce que vous vendez..."
+          placeholderTextColor="#9CA3AF"
+          multiline
+          numberOfLines={4}
+          textAlignVertical="top"
+        />
+      </View>
+    </View>
+  );
+
+  const renderStep2 = () => (
+    <View style={styles.stepContent}>
+      <ImageIcon size={64} color="#D97706" />
+      <Text style={styles.stepTitle}>Logo de votre boutique</Text>
+      <Text style={styles.stepDescription}>
+        Ajoutez un logo pour rendre votre boutique reconnaissable
+      </Text>
+
+      <View style={styles.imageUploadSection}>
+        {logoUri ? (
+          <View style={styles.imagePreviewContainer}>
+            <Image source={{ uri: logoUri }} style={styles.logoPreview} />
+            <TouchableOpacity
+              style={styles.changeImageButton}
+              onPress={() => showImageOptions('logo')}>
+              <Text style={styles.changeImageText}>Changer le logo</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.uploadButton}
+            onPress={() => showImageOptions('logo')}>
+            <Camera size={32} color="#D97706" />
+            <Text style={styles.uploadButtonText}>Ajouter un logo</Text>
+            <Text style={styles.uploadButtonSubtext}>Format carré recommandé</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <TouchableOpacity
+        style={styles.skipButton}
+        onPress={handleNext}>
+        <Text style={styles.skipButtonText}>Passer cette étape</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderStep3 = () => (
+    <View style={styles.stepContent}>
+      <ImageIcon size={64} color="#D97706" />
+      <Text style={styles.stepTitle}>Bannière de la boutique</Text>
+      <Text style={styles.stepDescription}>
+        Une belle bannière pour attirer l'attention sur votre boutique
+      </Text>
+
+      <View style={styles.imageUploadSection}>
+        {bannerUri ? (
+          <View style={styles.imagePreviewContainer}>
+            <Image source={{ uri: bannerUri }} style={styles.bannerPreview} />
+            <TouchableOpacity
+              style={styles.changeImageButton}
+              onPress={() => showImageOptions('banner')}>
+              <Text style={styles.changeImageText}>Changer la bannière</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.uploadButton}
+            onPress={() => showImageOptions('banner')}>
+            <Camera size={32} color="#D97706" />
+            <Text style={styles.uploadButtonText}>Ajouter une bannière</Text>
+            <Text style={styles.uploadButtonSubtext}>Format 16:9 recommandé</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <TouchableOpacity
+        style={styles.skipButton}
+        onPress={handleNext}>
+        <Text style={styles.skipButtonText}>Passer cette étape</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderStep4 = () => (
+    <View style={styles.stepContent}>
+      <Check size={64} color="#10B981" />
+      <Text style={styles.stepTitle}>Informations de contact</Text>
+      <Text style={styles.stepDescription}>
+        Dernière étape! Ajoutez vos informations de contact
+      </Text>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Téléphone</Text>
+        <TextInput
+          style={styles.input}
+          value={phone}
+          onChangeText={setPhone}
+          placeholder="+221 XX XXX XX XX"
+          keyboardType="phone-pad"
+          placeholderTextColor="#9CA3AF"
+        />
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Pays</Text>
+        <TextInput
+          style={styles.input}
+          value={country}
+          onChangeText={setCountry}
+          placeholder="Sénégal"
+          placeholderTextColor="#9CA3AF"
+        />
+      </View>
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {renderStepIndicator()}
+
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {currentStep === 1 && renderStep1()}
+        {currentStep === 2 && renderStep2()}
+        {currentStep === 3 && renderStep3()}
+        {currentStep === 4 && renderStep4()}
+      </ScrollView>
+
+      <View style={styles.footer}>
+        {currentStep > 1 && (
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={handlePrevious}>
+            <Text style={styles.secondaryButtonText}>Retour</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={[styles.primaryButton, { flex: currentStep === 1 ? 1 : 0.48 }]}
+          onPress={currentStep === 4 ? handleFinish : handleNext}
+          disabled={loading}>
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <Text style={styles.primaryButtonText}>
+                {currentStep === 4 ? 'Créer ma boutique' : 'Suivant'}
+              </Text>
+              {currentStep < 4 && <ArrowRight size={20} color="#FFFFFF" />}
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  stepIndicator: {
+    flexDirection: 'row',
+    paddingHorizontal: 32,
+    paddingVertical: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stepCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepCircleActive: {
+    backgroundColor: '#D97706',
+  },
+  stepCircleCompleted: {
+    backgroundColor: '#10B981',
+  },
+  stepNumber: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  stepNumberActive: {
+    color: '#FFFFFF',
+  },
+  stepLine: {
+    width: 32,
+    height: 2,
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 4,
+  },
+  stepLineActive: {
+    backgroundColor: '#10B981',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+  },
+  stepContent: {
+    alignItems: 'center',
+    paddingTop: 24,
+  },
+  stepTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  stepDescription: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 24,
+  },
+  inputGroup: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#111827',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  textArea: {
+    minHeight: 100,
+    paddingTop: 14,
+  },
+  imageUploadSection: {
+    width: '100%',
+    marginBottom: 24,
+  },
+  uploadButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#D97706',
+    borderStyle: 'dashed',
+  },
+  uploadButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#D97706',
+    marginTop: 12,
+  },
+  uploadButtonSubtext: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  imagePreviewContainer: {
+    alignItems: 'center',
+  },
+  logoPreview: {
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: '#F3F4F6',
+    marginBottom: 16,
+  },
+  bannerPreview: {
+    width: '100%',
+    height: 180,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    marginBottom: 16,
+  },
+  changeImageButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D97706',
+  },
+  changeImageText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#D97706',
+  },
+  skipButton: {
+    paddingVertical: 12,
+  },
+  skipButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  footer: {
+    flexDirection: 'row',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    gap: 12,
+  },
+  primaryButton: {
+    backgroundColor: '#D97706',
+    borderRadius: 12,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  primaryButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  secondaryButton: {
+    flex: 0.48,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+  },
+  secondaryButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#374151',
+  },
+});

@@ -1,0 +1,462 @@
+import { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  TextInput,
+  ScrollView,
+  Image,
+  Dimensions,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '@/lib/supabase';
+import { Category, Product } from '@/types/database';
+import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import ProductCard from '@/components/ProductCard';
+import CategoryGrid from '@/components/CategoryGrid';
+import SearchLogo from '@/components/SearchLogo';
+import WaveDivider from '@/components/WaveDivider';
+import { Colors, Shadows, Typography, Spacing, BorderRadius } from '@/constants/Colors';
+
+const { width } = Dimensions.get('window');
+
+export default function ExploreScreen() {
+  const router = useRouter();
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    filterProducts();
+  }, [searchQuery, selectedCategory, products]);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+
+      // Fetch categories
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from('categories')
+        .select('*')
+        .order('name');
+
+      if (categoriesError) throw categoriesError;
+      setCategories(categoriesData || []);
+
+      // Fetch products with seller info
+      const { data: productsData, error: productsError} = await supabase
+        .from('products')
+        .select(`
+          *,
+          seller:profiles!seller_id(
+            id,
+            shop_name,
+            shop_logo_url
+          )
+        `)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (productsError) throw productsError;
+      setProducts(productsData || []);
+      setFilteredProducts(productsData || []);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterProducts = useCallback(() => {
+    let filtered = [...products];
+
+    if (selectedCategory) {
+      filtered = filtered.filter(p => p.category_id === selectedCategory);
+    }
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(p =>
+        p.title.toLowerCase().includes(query) ||
+        p.description?.toLowerCase().includes(query)
+      );
+    }
+
+    setFilteredProducts(filtered);
+  }, [products, selectedCategory, searchQuery]);
+
+  const selectCategory = useCallback((categoryId: string | null) => {
+    setSelectedCategory(categoryId);
+  }, []);
+
+  // Calculate product counts per category
+  const productCounts = useMemo(() => {
+    const counts: { [key: string]: number } = {};
+    products.forEach(product => {
+      if (product.category_id) {
+        counts[product.category_id] = (counts[product.category_id] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [products]);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#F59E0B" />
+        <Text style={styles.loadingText}>Chargement...</Text>
+      </View>
+    );
+  }
+
+  const ListHeader = () => (
+    <View>
+      {/* Hero Banner - Harmonisé avec Home */}
+      <View style={styles.heroWrapper}>
+        <LinearGradient
+          colors={['#f9eddd', '#FFFACD']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroBanner}>
+          <View style={styles.bannerContent}>
+            <Text style={styles.bannerTitle}>Découvrez l'Unique</Text>
+            <Text style={styles.bannerSubtitle}>
+              Des milliers de produits créés avec passion
+            </Text>
+          </View>
+          <View style={styles.bannerDecor}>
+            <Text style={styles.bannerIcon}>✦</Text>
+          </View>
+        </LinearGradient>
+
+        {/* Wave Divider pour continuité avec Home */}
+        <WaveDivider
+          backgroundColor="#FFFACD"
+          waveColor="#FFFFFF"
+          height={50}
+        />
+      </View>
+
+      {/* Search Bar - Harmonisé avec Home */}
+      <View style={styles.searchSection}>
+        <View style={styles.searchWrapper}>
+          <View style={styles.searchIconCircle}>
+            <SearchLogo size={18} color={Colors.white} />
+          </View>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher des produits..."
+            placeholderTextColor={Colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+              <Text style={styles.clearText}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Shop by Category - Grid Style like Etsy */}
+      <CategoryGrid
+        categories={categories}
+        selectedCategory={selectedCategory}
+        onSelectCategory={selectCategory}
+        productCounts={productCounts}
+        totalProducts={products.length}
+      />
+
+      {/* Results Count */}
+      <View style={styles.resultsHeader}>
+        <Text style={styles.resultsCount}>
+          {filteredProducts.length} {filteredProducts.length > 1 ? 'produits' : 'produit'}
+        </Text>
+        {selectedCategory && (
+          <TouchableOpacity
+            onPress={() => selectCategory(null)}
+            style={styles.clearFilterButton}>
+            <Text style={styles.clearFilterText}>Effacer les filtres</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+
+  const renderProduct = ({ item }: { item: Product }) => (
+    <View style={styles.productWrapper}>
+      <ProductCard
+        product={item}
+        onPress={() => router.push(`/product/${item.id}`)}
+      />
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <FlatList
+        ListHeaderComponent={<ListHeader />}
+        data={filteredProducts}
+        renderItem={renderProduct}
+        keyExtractor={(item) => item.id}
+        numColumns={2}
+        contentContainerStyle={styles.productsGrid}
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        initialNumToRender={6}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>◯</Text>
+            <Text style={styles.emptyText}>
+              {searchQuery || selectedCategory
+                ? 'Aucun produit trouvé'
+                : 'Aucun produit disponible'}
+            </Text>
+            {(searchQuery || selectedCategory) && (
+              <TouchableOpacity
+                style={styles.resetButton}
+                onPress={() => {
+                  setSearchQuery('');
+                  setSelectedCategory(null);
+                }}>
+                <Text style={styles.resetButtonText}>Réinitialiser</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        }
+      />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.white,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+  },
+  loadingText: {
+    marginTop: Spacing.md,
+    fontSize: Typography.fontSize.base,
+    color: Colors.textSecondary,
+    fontWeight: Typography.fontWeight.medium,
+  },
+
+  // Hero Banner - Harmonisé avec Home
+  heroWrapper: {
+    backgroundColor: '#FFFACD',
+    overflow: 'hidden',
+  },
+  heroBanner: {
+    height: 120,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    ...Shadows.medium,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+  },
+  bannerContent: {
+    flex: 1,
+  },
+  bannerTitle: {
+    fontSize: Typography.fontSize['3xl'],
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.dark,
+    marginBottom: Spacing.xs,
+  },
+  bannerSubtitle: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.dark,
+    opacity: 0.8,
+    fontWeight: Typography.fontWeight.medium,
+  },
+  bannerDecor: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bannerIcon: {
+    fontSize: 32,
+    color: Colors.white,
+  },
+
+  // Search - Harmonisé avec Home
+  searchSection: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  searchWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    gap: Spacing.sm,
+    ...Shadows.small,
+  },
+  searchIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F59E0B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    height: 36,
+    fontSize: Typography.fontSize.sm,
+    color: Colors.dark,
+  },
+  clearButton: {
+    padding: Spacing.xs,
+  },
+  clearText: {
+    fontSize: 18,
+    color: Colors.textMuted,
+  },
+
+  // Shop by Category
+  categorySection: {
+    marginBottom: Spacing.xl,
+  },
+  sectionTitle: {
+    fontSize: Typography.fontSize.xl,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.dark,
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  categoryScroll: {
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.md,
+  },
+  categoryCard: {
+    width: 100,
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    ...Shadows.small,
+  },
+  categoryCardActive: {
+    borderColor: '#F59E0B',
+    ...Shadows.medium,
+  },
+  categoryIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  categoryEmoji: {
+    fontSize: 28,
+  },
+  categoryName: {
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.dark,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  categoryNameActive: {
+    color: '#F59E0B',
+  },
+  categoryCount: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.textMuted,
+  },
+
+  // Results
+  resultsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  resultsCount: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.dark,
+  },
+  clearFilterButton: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+  },
+  clearFilterText: {
+    fontSize: Typography.fontSize.sm,
+    color: '#F59E0B',
+    fontWeight: Typography.fontWeight.semibold,
+  },
+
+  // Products Grid
+  productsGrid: {
+    paddingHorizontal: Spacing.sm,
+    paddingBottom: Spacing.xl,
+  },
+  productWrapper: {
+    flex: 1,
+    maxWidth: '50%',
+  },
+
+  // Empty State
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: Spacing['4xl'],
+    paddingHorizontal: Spacing.xl,
+  },
+  emptyIcon: {
+    fontSize: 64,
+    color: Colors.textMuted,
+    marginBottom: Spacing.md,
+  },
+  emptyText: {
+    fontSize: Typography.fontSize.base,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+  },
+  resetButton: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    backgroundColor: '#F59E0B',
+    borderRadius: BorderRadius.full,
+    ...Shadows.medium,
+  },
+  resetButtonText: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.white,
+  },
+});

@@ -1,0 +1,801 @@
+import { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  ActivityIndicator,
+  ScrollView,
+  Alert} from 'react-native';
+import { useRouter } from 'expo-router';
+import { supabase } from '@/lib/supabase';
+import { signInWithUsernameOrEmail, isUsernameAvailable } from '@/lib/auth-helpers';
+import { Profile } from '@/types/database';
+import { User, LogIn, LogOut, Save, Store, Package, ShoppingBag, Settings } from 'lucide-react-native';
+import PandaLogo from '@/components/PandaLogo';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+export default function ProfileScreen() {
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [usernameOrEmail, setUsernameOrEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [country, setCountry] = useState('');
+  const [isLogin, setIsLogin] = useState(true);
+  const [userType, setUserType] = useState<'buyer' | 'seller'>('buyer');
+  const [shopName, setShopName] = useState('');
+  const [shopDescription, setShopDescription] = useState('');
+
+  useEffect(() => {
+    checkUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          fetchProfile(session.user.id);
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const checkUser = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      if (user) {
+        await fetchProfile(user.id);
+      }
+    } catch (error) {
+      console.error('Error checking user:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      setProfile(data);
+      if (data) {
+        setUsername(data.username || '');
+        setFullName(data.full_name || '');
+        setPhone(data.phone || '');
+        setCountry(data.country || '');
+
+        // Redirect new sellers to shop wizard
+        if (data.is_seller && !data.shop_name) {
+          router.replace('/seller/shop-wizard');
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    }
+  };
+
+  const handleAuth = async () => {
+    try {
+      setSaving(true);
+      if (isLogin) {
+        // Use username or email to sign in
+        const { data, error } = await signInWithUsernameOrEmail(
+          usernameOrEmail,
+          password
+        );
+        if (error) {
+          // Check if the error is related to email confirmation
+          if (error.message?.includes('Email not confirmed') ||
+              error.message?.includes('email_not_confirmed')) {
+            throw new Error('Votre email n\'a pas encore été confirmé. Veuillez vérifier votre boîte de réception et cliquer sur le lien de confirmation.');
+          }
+          throw error;
+        }
+
+        // Check if user is logged in successfully
+        if (!data?.session) {
+          throw new Error('Échec de la connexion. Veuillez réessayer.');
+        }
+      } else {
+        // Check if username is available
+        const available = await isUsernameAvailable(username);
+        if (!available) {
+          Alert.alert('Erreur', 'Ce nom d\'utilisateur est déjà pris');
+          return;
+        }
+
+        // Validate seller fields
+        if (userType === 'seller' && !shopName.trim()) {
+          Alert.alert('Erreur', 'Le nom de la boutique est requis pour les vendeurs');
+          return;
+        }
+
+        // Sign up with email
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: undefined,
+          }
+        });
+
+        if (error) throw error;
+
+        if (data.user) {
+          // Create profile
+          const { error: profileError } = await supabase.from('profiles').insert({
+            id: data.user.id,
+            username: username,
+            full_name: fullName,
+            is_seller: userType === 'seller',
+            shop_name: userType === 'seller' ? shopName : null,
+            shop_description: userType === 'seller' ? shopDescription : null,
+          });
+
+          if (profileError) throw profileError;
+
+          // Check if email confirmation is required
+          if (data.session) {
+            // User is automatically logged in (no email confirmation required)
+            Alert.alert('Succès', userType === 'seller'
+              ? 'Votre compte vendeur a été créé avec succès!'
+              : 'Votre compte a été créé avec succès!');
+          } else {
+            // Email confirmation is required
+            Alert.alert(
+              'Vérifiez votre email',
+              'Un email de confirmation a été envoyé à votre adresse. Veuillez vérifier votre email et cliquer sur le lien de confirmation, puis vous connecter.',
+              [{ text: 'OK', onPress: () => setIsLogin(true) }]
+            );
+          }
+        }
+      }
+
+      // Clear form fields
+      setUsernameOrEmail('');
+      setEmail('');
+      setUsername('');
+      setPassword('');
+      setShopName('');
+      setShopDescription('');
+      setFullName('');
+    } catch (error: any) {
+      Alert.alert('Erreur', error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      setProfile(null);
+    } catch (error: any) {
+      Alert.alert('Erreur', error.message);
+    }
+  };
+
+  const updateProfile = async () => {
+    if (!user) return;
+
+    try {
+      setSaving(true);
+
+      // Check if username changed and is available
+      if (username !== profile?.username) {
+        const available = await isUsernameAvailable(username);
+        if (!available) {
+          Alert.alert('Erreur', 'Ce nom d\'utilisateur est déjà pris');
+          return;
+        }
+      }
+
+      const updates = {
+        id: user.id,
+        username,
+        full_name: fullName,
+        phone,
+        country,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('profiles')
+        .upsert(updates);
+
+      if (error) throw error;
+      Alert.alert('Succès', 'Profil mis à jour avec succès');
+      fetchProfile(user.id);
+    } catch (error: any) {
+      Alert.alert('Erreur', error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#D97706" />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.authHeader}>
+          <PandaLogo size="medium" showText={true} />
+          <Text style={styles.authTitle}>
+            {isLogin ? 'Connexion' : 'Inscription'}
+          </Text>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.authForm}>
+          {!isLogin && (
+            <>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Type de compte</Text>
+                <View style={styles.userTypeContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.userTypeButton,
+                      userType === 'buyer' && styles.userTypeButtonSelected,
+                    ]}
+                    onPress={() => setUserType('buyer')}>
+                    <ShoppingBag
+                      size={24}
+                      color={userType === 'buyer' ? '#D97706' : '#6B7280'}
+                    />
+                    <Text
+                      style={[
+                        styles.userTypeText,
+                        userType === 'buyer' && styles.userTypeTextSelected,
+                      ]}>
+                      Acheteur
+                    </Text>
+                    <Text style={styles.userTypeSubtext}>
+                      Pour acheter des produits
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.userTypeButton,
+                      userType === 'seller' && styles.userTypeButtonSelected,
+                    ]}
+                    onPress={() => setUserType('seller')}>
+                    <Store
+                      size={24}
+                      color={userType === 'seller' ? '#D97706' : '#6B7280'}
+                    />
+                    <Text
+                      style={[
+                        styles.userTypeText,
+                        userType === 'seller' && styles.userTypeTextSelected,
+                      ]}>
+                      Vendeur
+                    </Text>
+                    <Text style={styles.userTypeSubtext}>
+                      Pour vendre des produits
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Nom complet</Text>
+                <TextInput
+                  style={styles.input}
+                  value={fullName}
+                  onChangeText={setFullName}
+                  placeholder="Entrez votre nom"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Email</Text>
+                <TextInput
+                  style={styles.input}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="exemple@email.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Nom d'utilisateur</Text>
+                <TextInput
+                  style={styles.input}
+                  value={username}
+                  onChangeText={setUsername}
+                  placeholder="votre_username"
+                  autoCapitalize="none"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              {userType === 'seller' && (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Nom de la boutique *</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={shopName}
+                      onChangeText={setShopName}
+                      placeholder="Ex: Boutique Artisanat Africain"
+                      placeholderTextColor="#9CA3AF"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Description de la boutique</Text>
+                    <TextInput
+                      style={[styles.input, styles.textArea]}
+                      value={shopDescription}
+                      onChangeText={setShopDescription}
+                      placeholder="Décrivez votre boutique..."
+                      placeholderTextColor="#9CA3AF"
+                      multiline
+                      numberOfLines={3}
+                      textAlignVertical="top"
+                    />
+                  </View>
+                </>
+              )}
+            </>
+          )}
+
+          {isLogin && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Nom d'utilisateur ou Email</Text>
+              <TextInput
+                style={styles.input}
+                value={usernameOrEmail}
+                onChangeText={setUsernameOrEmail}
+                placeholder="username ou email@exemple.com"
+                autoCapitalize="none"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+          )}
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Mot de passe</Text>
+            <TextInput
+              style={styles.input}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="••••••••"
+              secureTextEntry
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
+
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={handleAuth}
+            disabled={saving}>
+            {saving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <LogIn size={20} color="#FFFFFF" />
+                <Text style={styles.primaryButtonText}>
+                  {isLogin ? 'Se connecter' : "S'inscrire"}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.linkButton}
+            onPress={() => setIsLogin(!isLogin)}>
+            <Text style={styles.linkText}>
+              {isLogin
+                ? "Pas de compte ? S'inscrire"
+                : 'Déjà un compte ? Se connecter'}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Mon Profil</Text>
+        <TouchableOpacity onPress={handleSignOut} style={styles.logoutButton}>
+          <LogOut size={20} color="#EF4444" />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.profileForm}>
+        <View style={styles.avatarContainer}>
+          <View style={styles.avatar}>
+            <User size={48} color="#D97706" />
+          </View>
+          <Text style={styles.email}>{user.email}</Text>
+          {profile?.username && (
+            <Text style={styles.username}>@{profile.username}</Text>
+          )}
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Nom d'utilisateur</Text>
+          <TextInput
+            style={styles.input}
+            value={username}
+            onChangeText={setUsername}
+            placeholder="votre_username"
+            autoCapitalize="none"
+            placeholderTextColor="#9CA3AF"
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Nom complet</Text>
+          <TextInput
+            style={styles.input}
+            value={fullName}
+            onChangeText={setFullName}
+            placeholder="Entrez votre nom"
+            placeholderTextColor="#9CA3AF"
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Téléphone</Text>
+          <TextInput
+            style={styles.input}
+            value={phone}
+            onChangeText={setPhone}
+            placeholder="+225 XX XX XX XX XX"
+            keyboardType="phone-pad"
+            placeholderTextColor="#9CA3AF"
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Pays</Text>
+          <TextInput
+            style={styles.input}
+            value={country}
+            onChangeText={setCountry}
+            placeholder="Côte d'Ivoire"
+            placeholderTextColor="#9CA3AF"
+          />
+        </View>
+
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={updateProfile}
+          disabled={saving}>
+          {saving ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <Save size={20} color="#FFFFFF" />
+              <Text style={styles.primaryButtonText}>
+                Enregistrer
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* Mes commandes - Pour tous les utilisateurs */}
+        <View style={styles.ordersSection}>
+          <Text style={styles.sectionTitle}>Mes achats</Text>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.push('/orders')}>
+            <ShoppingBag size={20} color="#D97706" />
+            <Text style={styles.secondaryButtonText}>Voir mes commandes</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Section Vendeur */}
+        <View style={styles.sellerSection}>
+          {profile?.is_seller ? (
+            <>
+              <View style={styles.sellerBadge}>
+                <Store size={20} color="#D97706" />
+                <Text style={styles.sellerBadgeText}>Vendeur vérifié</Text>
+              </View>
+              {profile.shop_name && (
+                <Text style={styles.shopName}>{profile.shop_name}</Text>
+              )}
+
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => router.push('/seller/shop-settings')}>
+                <Settings size={20} color="#D97706" />
+                <Text style={styles.secondaryButtonText}>Paramètres boutique</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.secondaryButton, { marginTop: 12 }]}
+                onPress={() => router.push('/seller/products')}>
+                <Package size={20} color="#D97706" />
+                <Text style={styles.secondaryButtonText}>Gérer mes produits</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.secondaryButton, { marginTop: 12 }]}
+                onPress={() => router.push('/seller/orders')}>
+                <ShoppingBag size={20} color="#D97706" />
+                <Text style={styles.secondaryButtonText}>Commandes reçues</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <View style={styles.becomeSellerCard}>
+                <Store size={48} color="#D97706" />
+                <Text style={styles.becomeSellerTitle}>Devenez vendeur</Text>
+                <Text style={styles.becomeSellerText}>
+                  Créez votre boutique et vendez vos produits à des milliers de clients
+                </Text>
+                <TouchableOpacity
+                  style={styles.primaryButton}
+                  onPress={() => router.push('/seller/setup')}>
+                  <Store size={20} color="#FFFFFF" />
+                  <Text style={styles.primaryButtonText}>Créer ma boutique</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  authHeader: {
+    alignItems: 'center',
+    paddingTop: 32,
+    paddingBottom: 16,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  authTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+    marginTop: 16,
+  },
+  logoutButton: {
+    padding: 8,
+  },
+  authForm: {
+    paddingHorizontal: 16,
+    paddingTop: 32,
+  },
+  profileForm: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  avatarContainer: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  avatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#FEF3C7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  email: {
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  username: {
+    fontSize: 14,
+    color: '#D97706',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#111827',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  primaryButton: {
+    backgroundColor: '#D97706',
+    borderRadius: 12,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  primaryButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  linkButton: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  linkText: {
+    fontSize: 14,
+    color: '#D97706',
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+  },
+  ordersSection: {
+    marginTop: 24,
+    paddingTop: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  sellerSection: {
+    marginTop: 24,
+    paddingTop: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  sellerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 12,
+    alignSelf: 'center',
+  },
+  sellerBadgeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#D97706',
+  },
+  shopName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  secondaryButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 2,
+    borderColor: '#D97706',
+  },
+  secondaryButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#D97706',
+  },
+  becomeSellerCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  becomeSellerTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  becomeSellerText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  userTypeContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  userTypeButton: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+  },
+  userTypeButtonSelected: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#D97706',
+  },
+  userTypeText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#6B7280',
+    marginTop: 8,
+  },
+  userTypeTextSelected: {
+    color: '#D97706',
+  },
+  userTypeSubtext: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  textArea: {
+    minHeight: 80,
+    paddingTop: 14,
+  },
+});
