@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import PandaLogo from '@/components/PandaLogo';
 import { AuthProvider } from '@/providers/AuthProvider';
+import { NavigationProvider } from '@/contexts/NavigationContext';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Colors } from '@/constants/Colors';
 
@@ -90,10 +91,12 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <AuthGuard>
-        <Stack screenOptions={{ headerShown: false }} />
-        <StatusBar style="auto" />
-      </AuthGuard>
+      <NavigationProvider>
+        <AuthGuard>
+          <Stack screenOptions={{ headerShown: false }} />
+          <StatusBar style="auto" />
+        </AuthGuard>
+      </NavigationProvider>
     </AuthProvider>
   );
 }

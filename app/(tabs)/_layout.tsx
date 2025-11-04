@@ -1,37 +1,31 @@
-import { useEffect, useState } from 'react';
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { Colors } from '@/constants/Colors';
-import { supabase } from '@/lib/supabase';
+import { useNavigation } from '@/contexts/NavigationContext';
+import NavigationService from '@/lib/navigation';
 import HomeIcon from '@/components/icons/HomeIcon';
 import ShopIcon from '@/components/icons/ShopIcon';
 import HeartIcon from '@/components/icons/HeartIcon';
 import MessageIcon from '@/components/icons/MessageIcon';
 import UserIcon from '@/components/icons/UserIcon';
+import Badge from '@/components/Badge';
+import { View } from 'react-native';
 
 export default function TabLayout() {
-  const router = useRouter();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  useEffect(() => {
-    checkAuth();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setIsAuthenticated(!!session?.user);
-      }
-    );
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const checkAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    setIsAuthenticated(!!user);
-  };
+  const { isAuthenticated, hasRoleSelected } = useNavigation();
 
   const handleTabPress = (e: any, routeName: string) => {
-    // Bloquer l'accès si non connecté et ce n'est pas la page profile
-    if (!isAuthenticated && routeName !== 'profile') {
+    // Bloquer l'accès si non connecté et ce n'est pas la page profile ou index
+    if (!isAuthenticated && routeName !== 'profile' && routeName !== 'index') {
       e.preventDefault();
-      router.push('/(tabs)/profile');
+      NavigationService.goToLogin(`/(tabs)/${routeName}` as any);
+      return;
+    }
+
+    // Bloquer l'accès si le rôle n'est pas sélectionné
+    if (isAuthenticated && !hasRoleSelected && routeName !== 'profile') {
+      e.preventDefault();
+      NavigationService.goToRoleSelection();
+      return;
     }
   };
 
@@ -41,7 +35,7 @@ export default function TabLayout() {
         headerShown: false,
         tabBarActiveTintColor: Colors.primaryGold,
         tabBarInactiveTintColor: Colors.textMuted,
-        tabBarStyle: isAuthenticated ? {
+        tabBarStyle: {
           backgroundColor: Colors.white,
           borderTopWidth: 0,
           paddingBottom: 8,
@@ -52,8 +46,6 @@ export default function TabLayout() {
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: 0.1,
           shadowRadius: 12,
-        } : {
-          display: 'none',
         },
         tabBarLabelStyle: {
           fontSize: 11,
