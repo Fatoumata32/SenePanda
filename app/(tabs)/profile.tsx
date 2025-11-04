@@ -27,22 +27,18 @@ import {
   Crown,
   MessageCircle,
   Users,
-  Globe,
-  Star,
-  TrendingUp,
-  Award,
-  Heart,
+  Phone,
+  MapPin,
+  Mail,
+  Copy,
+  ChevronRight,
 } from 'lucide-react-native';
 import PandaLogo from '@/components/PandaLogo';
-import ProfileHeader3D from '@/components/ProfileHeader3D';
-import GlassmorphicCard from '@/components/GlassmorphicCard';
-import StatsCard from '@/components/StatsCard';
-import QuickActions from '@/components/QuickActions';
-import AnimatedCounter from '@/components/AnimatedCounter';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Speech from 'expo-speech';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ClipboardLib from 'expo-clipboard';
 import { Colors, Gradients } from '@/constants/Colors';
 
 export default function ProfileScreen() {
@@ -111,7 +107,6 @@ export default function ProfileScreen() {
         setIsPremium(data.is_premium || false);
       }
 
-      // Charger le nombre de messages non lus
       await fetchUnreadMessages(userId);
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -272,6 +267,14 @@ export default function ProfileScreen() {
     }
   };
 
+  const copyReferralCode = async () => {
+    if (profile?.referral_code) {
+      await ClipboardLib.setStringAsync(profile.referral_code);
+      Speech.speak('Code copié', { language: 'fr-FR' });
+      Alert.alert('✓ Copié!', 'Code de parrainage copié');
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -351,169 +354,161 @@ export default function ProfileScreen() {
     );
   }
 
-  // PROFILE SCREEN (Logged in) - MODERN VERSION
-  const quickActions = [
-    {
-      icon: MessageCircle,
-      label: 'Messages',
-      gradient: ['#3B82F6', '#2563EB', '#1D4ED8'] as const,
-      badge: unreadMessages,
-      onPress: () => router.push('/(tabs)/messages'),
-    },
-    {
-      icon: ShoppingBag,
-      label: 'Vendre',
-      gradient: Gradients.goldOrange.colors,
-      onPress: () => {
-        if (profile?.is_seller) {
-          router.push('/seller/products');
-        } else {
-          router.push('/seller/setup');
-        }
-      },
-    },
-    {
-      icon: Settings,
-      label: 'Paramètres',
-      gradient: ['#6B7280', '#4B5563', '#374151'] as const,
-      onPress: () => router.push('/help-support'),
-    },
-    {
-      icon: Edit3,
-      label: 'Modifier',
-      gradient: ['#10B981', '#059669', '#047857'] as const,
-      onPress: openEditModal,
-    },
-  ];
-
+  // PROFILE SCREEN (Logged in) - SIMPLE & BEAUTIFUL VERSION
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.profileContainer}
         showsVerticalScrollIndicator={false}>
 
-        {/* Header 3D avec effet impressionnant */}
-        <ProfileHeader3D
-          fullName={profile?.full_name || 'Utilisateur'}
-          username={profile?.username || 'utilisateur'}
-          avatarUri={avatarUri}
-          isPremium={isPremium}
-          onAvatarPress={handlePickImage}
-        />
-
-        {/* Quick Actions avec animations */}
-        <View style={styles.quickActionsContainer}>
-          <QuickActions actions={quickActions} />
-        </View>
-
-        {/* Statistics Cards */}
-        <View style={styles.statsGrid}>
-          <TouchableOpacity
-            style={{ flex: 1 }}
-            onPress={() => Alert.alert('Parrainage', `Vous avez ${profile?.total_referrals || 0} parrainages`)}>
-            <StatsCard
-              icon={Users}
-              label="Parrainages"
-              value={profile?.total_referrals || 0}
-              color="#3B82F6"
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={{ flex: 1 }}
-            onPress={() => router.push('/my-benefits')}>
-            <StatsCard
-              icon={Gift}
-              label="Panda Coins"
-              value={profile?.panda_coins || 0}
-              color="#EF4444"
-            />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.statsGrid}>
-          <StatsCard
-            icon={TrendingUp}
-            label="Points Référence"
-            value={profile?.referral_points || 0}
-            color="#10B981"
-          />
-          <TouchableOpacity
-            style={{ flex: 1 }}
-            onPress={() => router.push('/seller/subscription-plans')}>
-            <StatsCard
-              icon={Award}
-              label="Niveau"
-              value={isPremium ? 100 : 50}
-              color="#9333EA"
-            />
-          </TouchableOpacity>
-        </View>
-
-        {/* Informations personnelles avec glassmorphism */}
-        <GlassmorphicCard style={styles.infoCard}>
-          <View style={styles.cardHeader}>
-            <Globe size={20} color={Colors.primaryOrange} />
-            <Text style={styles.cardTitle}>Informations personnelles</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Téléphone</Text>
-            <Text style={styles.infoValue}>{profile?.phone || 'Non renseigné'}</Text>
-          </View>
-          <View style={styles.infoDivider} />
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Pays</Text>
-            <Text style={styles.infoValue}>{profile?.country || 'Non renseigné'}</Text>
-          </View>
-          <View style={styles.infoDivider} />
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Ville</Text>
-            <Text style={styles.infoValue}>{profile?.city || 'Non renseigné'}</Text>
-          </View>
-        </GlassmorphicCard>
-
-        {/* Code de parrainage avec effet glassmorphique */}
-        {profile?.referral_code && (
-          <GlassmorphicCard style={styles.referralCard}>
-            <View style={styles.cardHeader}>
-              <Gift size={20} color={Colors.primaryOrange} />
-              <Text style={styles.cardTitle}>Mon code de parrainage</Text>
+        {/* Simple Header with Avatar */}
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <View style={styles.headerInfo}>
+              <Text style={styles.headerName}>{profile?.full_name || 'Utilisateur'}</Text>
+              <Text style={styles.headerUsername}>@{profile?.username || 'username'}</Text>
             </View>
-            <View style={styles.referralCodeContainer}>
-              <Text style={styles.referralCode}>{profile.referral_code}</Text>
-              <TouchableOpacity
-                style={styles.copyButton}
-                onPress={async () => {
-                  await require('expo-clipboard').setStringAsync(profile.referral_code);
-                  Speech.speak('Code copié', { language: 'fr-FR' });
-                  Alert.alert('✓ Copié!', 'Code de parrainage copié');
-                }}>
-                <Text style={styles.copyButtonText}>Copier</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.referralDescription}>
-              Partagez ce code avec vos amis et gagnez 50 Panda Coins par inscription !
-            </Text>
-          </GlassmorphicCard>
-        )}
+            <TouchableOpacity onPress={handleSignOut} style={styles.logoutButton}>
+              <LogOut size={20} color={Colors.primaryOrange} />
+            </TouchableOpacity>
+          </View>
 
-        {/* Premium Banner si pas premium */}
-        {!isPremium && (
-          <TouchableOpacity
-            style={styles.premiumBanner}
-            onPress={() => router.push('/seller/subscription-plans')}>
-            <LinearGradient
-              colors={['#9333EA', '#7C3AED', '#6D28D9']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.premiumBannerGradient}>
-              <Crown size={32} color={Colors.white} />
-              <View style={styles.premiumBannerContent}>
-                <Text style={styles.premiumBannerTitle}>Passez à Premium</Text>
-                <Text style={styles.premiumBannerText}>
-                  Débloquez toutes les fonctionnalités exclusives
+          {/* Avatar */}
+          <TouchableOpacity onPress={handlePickImage} style={styles.avatarContainer}>
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarText}>
+                  {(profile?.full_name || profile?.username || '?')[0]?.toUpperCase()}
                 </Text>
               </View>
-              <Text style={styles.premiumBannerArrow}>→</Text>
+            )}
+            {isPremium && (
+              <View style={styles.premiumBadge}>
+                <Crown size={14} color={Colors.primaryGold} fill={Colors.primaryGold} />
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Quick Stats */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statBox}>
+            <Gift size={24} color={Colors.primaryOrange} />
+            <Text style={styles.statValue}>{profile?.panda_coins || 0}</Text>
+            <Text style={styles.statLabel}>Panda Coins</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Users size={24} color="#3B82F6" />
+            <Text style={styles.statValue}>{profile?.total_referrals || 0}</Text>
+            <Text style={styles.statLabel}>Parrainages</Text>
+          </View>
+        </View>
+
+        {/* Quick Actions */}
+        <View style={styles.actionsContainer}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push('/(tabs)/messages')}>
+            <MessageCircle size={20} color={Colors.textSecondary} />
+            <Text style={styles.actionText}>Messages</Text>
+            {unreadMessages > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unreadMessages}</Text>
+              </View>
+            )}
+            <ChevronRight size={18} color={Colors.textMuted} style={{ marginLeft: 'auto' }} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => {
+              if (profile?.is_seller) {
+                router.push('/seller/products');
+              } else {
+                router.push('/seller/setup');
+              }
+            }}>
+            <ShoppingBag size={20} color={Colors.textSecondary} />
+            <Text style={styles.actionText}>Vendre</Text>
+            <ChevronRight size={18} color={Colors.textMuted} style={{ marginLeft: 'auto' }} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push('/help-support')}>
+            <Settings size={20} color={Colors.textSecondary} />
+            <Text style={styles.actionText}>Paramètres</Text>
+            <ChevronRight size={18} color={Colors.textMuted} style={{ marginLeft: 'auto' }} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={openEditModal}>
+            <Edit3 size={20} color={Colors.textSecondary} />
+            <Text style={styles.actionText}>Modifier le profil</Text>
+            <ChevronRight size={18} color={Colors.textMuted} style={{ marginLeft: 'auto' }} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Personal Info */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Informations</Text>
+          <View style={styles.infoContainer}>
+            <View style={styles.infoRow}>
+              <Phone size={18} color={Colors.textMuted} />
+              <Text style={styles.infoText}>{profile?.phone || 'Non renseigné'}</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <MapPin size={18} color={Colors.textMuted} />
+              <Text style={styles.infoText}>
+                {profile?.city || profile?.country || 'Non renseigné'}
+              </Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Mail size={18} color={Colors.textMuted} />
+              <Text style={styles.infoText}>{user?.email || 'Non renseigné'}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Referral Code */}
+        {profile?.referral_code && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Code de parrainage</Text>
+            <TouchableOpacity
+              style={styles.referralContainer}
+              onPress={copyReferralCode}>
+              <Text style={styles.referralCode}>{profile.referral_code}</Text>
+              <View style={styles.copyButton}>
+                <Copy size={18} color={Colors.primaryOrange} />
+              </View>
+            </TouchableOpacity>
+            <Text style={styles.referralHint}>
+              Partagez ce code et gagnez 50 Panda Coins par inscription
+            </Text>
+          </View>
+        )}
+
+        {/* Premium Upgrade */}
+        {!isPremium && (
+          <TouchableOpacity
+            style={styles.premiumCard}
+            onPress={() => router.push('/seller/subscription-plans')}>
+            <LinearGradient
+              colors={['#9333EA', '#7C3AED']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.premiumGradient}>
+              <Crown size={28} color={Colors.white} />
+              <View style={styles.premiumContent}>
+                <Text style={styles.premiumTitle}>Passez à Premium</Text>
+                <Text style={styles.premiumText}>
+                  Débloquez toutes les fonctionnalités
+                </Text>
+              </View>
+              <ChevronRight size={24} color={Colors.white} />
             </LinearGradient>
           </TouchableOpacity>
         )}
@@ -521,7 +516,7 @@ export default function ProfileScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Edit Modal - Simplifié */}
+      {/* Edit Modal */}
       <Modal
         visible={editModalVisible}
         transparent
@@ -683,7 +678,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 16,
     color: Colors.textPrimary,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: Colors.borderLight,
   },
   primaryButton: {
@@ -722,129 +717,260 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Profile Screen
+  // Profile Screen - SIMPLE VERSION
   profileContainer: {
     paddingBottom: 32,
   },
-  quickActionsContainer: {
+  header: {
+    backgroundColor: Colors.white,
     paddingHorizontal: 20,
-    marginTop: -30,
-    marginBottom: 24,
+    paddingTop: 20,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  statsGrid: {
+  headerTop: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    marginBottom: 16,
-    gap: 16,
-  },
-  infoCard: {
-    marginHorizontal: 20,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 20,
   },
-  cardHeader: {
+  headerInfo: {
+    flex: 1,
+  },
+  headerName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  headerUsername: {
+    fontSize: 14,
+    color: Colors.textMuted,
+  },
+  logoutButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.backgroundLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarContainer: {
+    alignSelf: 'center',
+    position: 'relative',
+  },
+  avatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 3,
+    borderColor: Colors.primaryGold,
+  },
+  avatarPlaceholder: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: Colors.backgroundLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.primaryGold,
+  },
+  avatarText: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: Colors.primaryOrange,
+  },
+  premiumBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.white,
+  },
+
+  // Stats
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginTop: 20,
+    gap: 16,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  statValue: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginTop: 8,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 4,
+  },
+
+  // Actions
+  actionsContainer: {
+    backgroundColor: Colors.white,
+    marginHorizontal: 20,
+    marginTop: 20,
+    borderRadius: 16,
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 16,
     gap: 12,
-    marginBottom: 16,
   },
-  cardTitle: {
+  actionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: Colors.textPrimary,
+  },
+  badge: {
+    backgroundColor: '#EF4444',
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.white,
+  },
+
+  // Section
+  section: {
+    marginHorizontal: 20,
+    marginTop: 20,
+  },
+  sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: Colors.textPrimary,
+    marginBottom: 12,
+  },
+  infoContainer: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 16,
+    gap: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   infoRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4,
+    gap: 12,
   },
-  infoLabel: {
-    fontSize: 14,
-    fontWeight: '500',
+  infoText: {
+    fontSize: 15,
     color: Colors.textSecondary,
   },
-  infoValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  infoDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    marginVertical: 12,
-  },
-  referralCard: {
-    marginHorizontal: 20,
-    marginBottom: 20,
-  },
-  referralCodeContainer: {
+
+  // Referral
+  referralContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   referralCode: {
     fontSize: 24,
-    fontWeight: '800',
-    color: '#10B981',
+    fontWeight: '700',
+    color: Colors.primaryOrange,
     letterSpacing: 3,
   },
   copyButton: {
-    backgroundColor: '#10B981',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.backgroundLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  copyButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.white,
-  },
-  referralDescription: {
+  referralHint: {
     fontSize: 13,
-    color: Colors.textSecondary,
-    lineHeight: 20,
+    color: Colors.textMuted,
+    marginTop: 8,
     textAlign: 'center',
   },
-  premiumBanner: {
+
+  // Premium Card
+  premiumCard: {
     marginHorizontal: 20,
-    borderRadius: 20,
+    marginTop: 20,
+    borderRadius: 16,
     overflow: 'hidden',
     shadowColor: '#9333EA',
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 5,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  premiumBannerGradient: {
+  premiumGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 24,
+    padding: 20,
     gap: 16,
   },
-  premiumBannerContent: {
+  premiumContent: {
     flex: 1,
   },
-  premiumBannerTitle: {
+  premiumTitle: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '700',
     color: Colors.white,
     marginBottom: 4,
   },
-  premiumBannerText: {
+  premiumText: {
     fontSize: 13,
     color: 'rgba(255, 255, 255, 0.9)',
   },
-  premiumBannerArrow: {
-    fontSize: 24,
-    color: Colors.white,
-    fontWeight: '700',
-  },
 
-  // Edit Modal
+  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
