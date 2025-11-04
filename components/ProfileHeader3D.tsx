@@ -27,7 +27,7 @@ export default function ProfileHeader3D({
   const glowAnim = useRef(new Animated.Value(0)).current;
   const [particles] = useState(() =>
     Array.from({ length: 15 }, () => ({
-      x: useRef(new Animated.Value(Math.random() * width)).current,
+      x: Math.random() * width, // Position fixe, pas animée
       y: useRef(new Animated.Value(Math.random() * 300)).current,
       opacity: useRef(new Animated.Value(Math.random())).current,
     }))
@@ -140,7 +140,7 @@ export default function ProfileHeader3D({
             style={[
               styles.particle,
               {
-                left: particle.x,
+                left: particle.x, // Position fixe (non animée)
                 transform: [{ translateY: particle.y }],
                 opacity: particle.opacity,
               },
