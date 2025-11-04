@@ -29,7 +29,7 @@ import WaveDivider from '@/components/WaveDivider';
 import SearchLogo from '@/components/SearchLogo';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Colors, Shadows, Typography, Spacing, BorderRadius } from '@/constants/Colors';
+import { Colors, Gradients, Shadows, Typography, Spacing, BorderRadius } from '@/constants/Colors';
 
 const { width } = Dimensions.get('window');
 
@@ -187,9 +187,9 @@ export default function HomeScreen() {
       {/* Hero Section - Stable sans parallaxe */}
       <View style={styles.heroWrapper}>
         <LinearGradient
-          colors={['#f9eddd', '#FFFACD']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
+          colors={Gradients.hero.colors}
+          start={Gradients.hero.start}
+          end={Gradients.hero.end}
           style={styles.heroSection}>
 
           <View style={styles.heroContent}>
@@ -222,11 +222,13 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={styles.ctaHalf}
                 onPress={handleSellPress}
-                activeOpacity={0.9}>
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel="Commencer à vendre">
                 <LinearGradient
-                  colors={['#FFD700', '#FFA500', '#FF8C00']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
+                  colors={Gradients.goldOrange.colors}
+                  start={Gradients.goldOrange.start}
+                  end={Gradients.goldOrange.end}
                   style={styles.ctaHalfButton}>
                   <View style={styles.ctaButtonContent}>
                     <Store size={18} color={Colors.white} strokeWidth={2} />
@@ -238,10 +240,12 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={styles.ctaHalf}
                 onPress={handleBuyPress}
-                activeOpacity={0.8}>
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Explorer les produits">
                 <View style={styles.ctaHalfOutline}>
                   <View style={styles.ctaButtonContent}>
-                    <ShoppingBag size={18} color="#FF8C00" strokeWidth={2} />
+                    <ShoppingBag size={18} color={Colors.primaryOrange} strokeWidth={2} />
                     <Text style={styles.ctaHalfTextOutline}>Acheter</Text>
                   </View>
                 </View>
@@ -253,9 +257,11 @@ export default function HomeScreen() {
 
         {/* Wave Divider - Intégré dans le wrapper pour continuité parfaite */}
         <WaveDivider
-          backgroundColor="#FFFACD"
-          waveColor="#FFFFFF"
+          backgroundColor={Colors.backgroundLemon}
+          waveColor={Colors.white}
           height={60}
+          variant="smooth"
+          animated={true}
         />
       </View>
 
@@ -302,10 +308,13 @@ export default function HomeScreen() {
             style={[styles.voiceButton, isListening && styles.voiceButtonActive]}
             onPress={handleVoiceSearch}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Recherche vocale"
+            accessibilityState={{ selected: isListening }}
           >
             <Mic
               size={24}
-              color={isListening ? "#EF4444" : "#F97316"}
+              color={isListening ? "#EF4444" : Colors.primaryOrange}
               fill={isListening ? "#EF4444" : "transparent"}
             />
           </TouchableOpacity>
