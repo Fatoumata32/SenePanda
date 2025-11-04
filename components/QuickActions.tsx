@@ -63,6 +63,9 @@ function ActionButton({
     }).start();
   };
 
+  // Gradient par défaut si non fourni
+  const safeGradient = gradient && gradient.length >= 2 ? gradient : ['#FFD700', '#FFA500', '#FF8C00'] as const;
+
   return (
     <Animated.View
       style={[
@@ -79,7 +82,7 @@ function ActionButton({
         accessibilityRole="button"
         accessibilityLabel={label}>
         <LinearGradient
-          colors={gradient}
+          colors={safeGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.actionGradient}>

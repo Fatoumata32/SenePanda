@@ -187,7 +187,7 @@ export default function ProfileHeader3D({
                     colors={['#E5E7EB', '#D1D5DB']}
                     style={styles.avatarPlaceholder}>
                     <Text style={styles.avatarInitial}>
-                      {(fullName || username || '?')[0].toUpperCase()}
+                      {((fullName || username || '?') + '')[0]?.toUpperCase() || '?'}
                     </Text>
                   </LinearGradient>
                 )}
