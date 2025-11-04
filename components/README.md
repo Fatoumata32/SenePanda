@@ -1,6 +1,211 @@
-# Composants Utiles SenePanda
+# Composants Utiles SenePanda 🎨
 
 Cette documentation présente les composants utilitaires ajoutés au projet pour améliorer l'expérience utilisateur et la cohérence du design.
+
+## 🆕 Nouveaux Composants Profil
+
+### 📊 AnimatedCounter
+Compteur animé avec transitions fluides pour afficher des statistiques.
+
+```tsx
+import AnimatedCounter from '@/components/AnimatedCounter';
+
+<AnimatedCounter
+  end={1250}
+  start={0}
+  duration={1500}
+  suffix=" FCFA"
+  prefix="+"
+  decimals={2}
+/>
+```
+
+**Props:**
+- `end: number` - Valeur finale
+- `start?: number` - Valeur de départ (défaut: 0)
+- `duration?: number` - Durée de l'animation en ms (défaut: 1500)
+- `suffix?: string` - Suffixe (ex: " FCFA", " pts")
+- `prefix?: string` - Préfixe (ex: "+", "$")
+- `decimals?: number` - Nombre de décimales (défaut: 0)
+
+---
+
+### 🔮 GlassmorphicCard
+Carte avec effet glassmorphism moderne et élégant.
+
+```tsx
+import GlassmorphicCard from '@/components/GlassmorphicCard';
+
+<GlassmorphicCard
+  intensity={40}
+  tint="light"
+  bordered={true}>
+  <Text>Contenu avec effet verre</Text>
+</GlassmorphicCard>
+```
+
+**Props:**
+- `children: ReactNode` - Contenu de la carte
+- `intensity?: number` - Intensité du blur (défaut: 40)
+- `tint?: 'light' | 'dark' | 'default'` - Teinte du blur
+- `bordered?: boolean` - Bordure glassmorphique (défaut: true)
+
+---
+
+### 🏆 AchievementBadge
+Badge d'achievement animé avec progression.
+
+```tsx
+import AchievementBadge from '@/components/AchievementBadge';
+import { Trophy } from 'lucide-react-native';
+
+<AchievementBadge
+  icon={Trophy}
+  title="Premier achat"
+  description="Effectuez votre premier achat"
+  unlocked={true}
+  progress={75}
+  color={Colors.primaryGold}
+  delay={200}
+/>
+```
+
+**Props:**
+- `icon: React.ComponentType` - Icône Lucide
+- `title: string` - Titre de l'achievement
+- `description: string` - Description
+- `unlocked: boolean` - Achievement débloqué
+- `progress?: number` - Progression 0-100 (si non débloqué)
+- `color?: string` - Couleur du badge
+- `delay?: number` - Délai d'animation en ms
+
+---
+
+### 📈 StatsCard
+Carte de statistiques avec animations et icône.
+
+```tsx
+import StatsCard from '@/components/StatsCard';
+import { ShoppingBag } from 'lucide-react-native';
+
+<StatsCard
+  icon={ShoppingBag}
+  value={1250}
+  label="Achats"
+  suffix=" produits"
+  gradient={['#FF6B35', '#FF8E53']}
+  delay={0}
+/>
+```
+
+**Props:**
+- `icon: React.ComponentType` - Icône Lucide
+- `value: number` - Valeur à afficher
+- `label: string` - Label de la statistique
+- `suffix?: string` - Suffixe
+- `prefix?: string` - Préfixe
+- `color?: string` - Couleur principale
+- `delay?: number` - Délai d'animation en ms
+- `gradient?: readonly [string, string, ...string[]]` - Gradient personnalisé
+
+---
+
+### 🔥 StreakIndicator
+Indicateur de série (streak) avec animations flamme.
+
+```tsx
+import StreakIndicator from '@/components/StreakIndicator';
+
+<StreakIndicator
+  currentStreak={7}
+  bestStreak={15}
+/>
+```
+
+**Props:**
+- `currentStreak: number` - Série actuelle en jours
+- `bestStreak: number` - Meilleure série
+
+**Features:**
+- Animation flamme pulsante
+- Affichage du record personnel
+- Emojis décoratifs animés
+
+---
+
+### 👤 ProfileHeader3D
+Header de profil avec effets 3D, particules et glassmorphism.
+
+```tsx
+import ProfileHeader3D from '@/components/ProfileHeader3D';
+
+<ProfileHeader3D
+  avatarUri="https://..."
+  username="john_doe"
+  fullName="John Doe"
+  isPremium={true}
+  onAvatarPress={() => handleAvatarChange()}
+/>
+```
+
+**Props:**
+- `avatarUri?: string | null` - URL de l'avatar
+- `username: string` - Nom d'utilisateur
+- `fullName: string` - Nom complet
+- `isPremium?: boolean` - Utilisateur premium
+- `onAvatarPress?: () => void` - Callback changement avatar
+
+**Features:**
+- Animation float 3D de l'avatar
+- Particules animées ✨
+- Effet glow pour premium
+- Badge premium avec Crown icon
+- Bouton caméra pour changer l'avatar
+- Cercles décoratifs animés
+
+---
+
+### ⚡ QuickActions
+Grille d'actions rapides avec animations.
+
+```tsx
+import QuickActions from '@/components/QuickActions';
+import { ShoppingBag, MessageCircle, Heart, Settings } from 'lucide-react-native';
+
+<QuickActions
+  actions={[
+    {
+      icon: ShoppingBag,
+      label: 'Achats',
+      onPress: () => router.push('/orders'),
+      gradient: ['#FFD700', '#FF8C00'] as const,
+      badge: 3,
+    },
+    {
+      icon: MessageCircle,
+      label: 'Messages',
+      onPress: () => router.push('/messages'),
+      gradient: ['#3B82F6', '#1D4ED8'] as const,
+      badge: 5,
+    },
+    // ...
+  ]}
+/>
+```
+
+**Props:**
+- `actions: QuickActionButton[]` - Liste d'actions
+
+**QuickActionButton:**
+- `icon: React.ComponentType` - Icône Lucide
+- `label: string` - Label de l'action
+- `onPress: () => void` - Callback
+- `gradient: readonly [string, string, ...string[]]` - Gradient
+- `badge?: number` - Nombre de notifications
+
+---
+
+## 📊 Composants Utilitaires
 
 ## 📊 Badge
 
