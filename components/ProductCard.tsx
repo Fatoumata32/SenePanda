@@ -8,6 +8,7 @@ import { ProductImage } from './ProductImage';
 import { useFavorite } from '@/hooks/useFavorites';
 import * as Speech from 'expo-speech';
 import { Volume2, Heart } from 'lucide-react-native';
+import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/Colors';
 
 type ProductCardProps = {
   product: Product & {
@@ -108,7 +109,9 @@ export default function ProductCard({ product, onPress }: ProductCardProps) {
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        activeOpacity={0.9}>
+        activeOpacity={0.9}
+        accessibilityRole="button"
+        accessibilityLabel={`Produit ${product.title}`}>
         <View style={styles.imageContainer}>
         <ProductImage
           imageUrl={product.image_url}
@@ -118,10 +121,12 @@ export default function ProductCard({ product, onPress }: ProductCardProps) {
         {/* Favorite Button */}
         <TouchableOpacity
           style={styles.favoriteButton}
-          onPress={handleToggleFavorite}>
+          onPress={handleToggleFavorite}
+          accessibilityRole="button"
+          accessibilityLabel={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}>
           <Heart
             size={24}
-            color={isFavorite ? '#EF4444' : '#9CA3AF'}
+            color={isFavorite ? '#EF4444' : Colors.textMuted}
             fill={isFavorite ? '#EF4444' : 'transparent'}
             strokeWidth={2}
           />
@@ -139,8 +144,10 @@ export default function ProductCard({ product, onPress }: ProductCardProps) {
             style={styles.speakerButton}
             onPress={speakPrice}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Écouter le prix"
           >
-            <Volume2 size={18} color="#F97316" />
+            <Volume2 size={18} color={Colors.primaryOrange} />
           </TouchableOpacity>
         </View>
 
@@ -153,7 +160,11 @@ export default function ProductCard({ product, onPress }: ProductCardProps) {
 
         {/* Shop info */}
         {product.seller && (
-          <TouchableOpacity style={styles.shopBadge} onPress={handleShopPress}>
+          <TouchableOpacity
+            style={styles.shopBadge}
+            onPress={handleShopPress}
+            accessibilityRole="button"
+            accessibilityLabel={`Boutique ${product.seller.shop_name}`}>
             {isLogoUrl ? (
               <Image
                 source={{ uri: product.seller.shop_logo_url }}
@@ -185,15 +196,11 @@ export default function ProductCard({ product, onPress }: ProductCardProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    margin: 6,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    margin: Spacing.sm - 2,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    ...Shadows.small,
   },
   imageContainer: {
     position: 'relative',
@@ -201,75 +208,67 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: 180,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: Colors.backgroundLight,
   },
   favoriteButton: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: Spacing.md,
+    right: Spacing.md,
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: BorderRadius.xl,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    ...Shadows.medium,
   },
   content: {
-    padding: 10,
+    padding: Spacing.sm + 2,
   },
   title: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1C1C1C',
-    marginBottom: 4,
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
     lineHeight: 20,
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: Spacing.sm - 2,
   },
   price: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FF8C00',
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.primaryOrange,
   },
   speakerButton: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: BorderRadius.xl,
     backgroundColor: '#FFF7ED',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    ...Shadows.small,
   },
   ratingContainer: {
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   shopBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#F9FAFB',
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    borderRadius: 6,
-    marginBottom: 6,
+    gap: Spacing.xs,
+    backgroundColor: Colors.backgroundLight,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm - 2,
+    borderRadius: BorderRadius.sm + 2,
+    marginBottom: Spacing.sm - 2,
   },
   shopLogo: {
     width: 16,
     height: 16,
-    borderRadius: 8,
+    borderRadius: BorderRadius.md,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -279,17 +278,17 @@ const styles = StyleSheet.create({
   shopName: {
     flex: 1,
     fontSize: 11,
-    fontWeight: '500',
-    color: '#666666',
+    fontWeight: Typography.fontWeight.medium,
+    color: Colors.textSecondary,
   },
   stock: {
     fontSize: 11,
-    color: '#FF8C00',
-    fontWeight: '600',
+    color: Colors.primaryOrange,
+    fontWeight: Typography.fontWeight.semibold,
   },
   outOfStock: {
     fontSize: 11,
     color: '#EF4444',
-    fontWeight: '600',
+    fontWeight: Typography.fontWeight.semibold,
   },
 });

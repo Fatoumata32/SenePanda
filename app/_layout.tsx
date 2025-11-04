@@ -6,6 +6,7 @@ import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import PandaLogo from '@/components/PandaLogo';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { AuthGuard } from '@/components/AuthGuard';
+import { Colors } from '@/constants/Colors';
 
 export default function RootLayout() {
   useFrameworkReady();
@@ -90,11 +91,7 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <AuthGuard>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="role-selection" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="+not-found" />
-        </Stack>
+        <Stack screenOptions={{ headerShown: false }} />
         <StatusBar style="auto" />
       </AuthGuard>
     </AuthProvider>
@@ -104,7 +101,7 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   splashContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.white,
     justifyContent: 'center',
     alignItems: 'center',
   },

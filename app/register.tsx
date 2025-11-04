@@ -17,12 +17,7 @@ import * as Speech from 'expo-speech';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  User,
-  Store,
-  Mail,
-  Lock,
   Phone,
-  MapPin,
   Globe,
   Facebook,
   Instagram,
@@ -30,20 +25,15 @@ import {
   Check,
   ArrowRight,
   ArrowLeft,
-  Volume2,
-  ShoppingBag,
-  UserCircle2,
 } from 'lucide-react-native';
 import PandaLogo from '@/components/PandaLogo';
-
-type UserRole = 'buyer' | 'seller';
+import { Colors, Gradients, Typography, Spacing, BorderRadius, Shadows } from '@/constants/Colors';
 
 export default function RegisterScreen() {
   const router = useRouter();
 
-  // Étape actuelle (1-3) - On commence à 1 (pas de choix de rôle ici)
+  // Étape actuelle (1-2)
   const [currentStep, setCurrentStep] = useState(1);
-  const [userRole, setUserRole] = useState<UserRole>('buyer'); // Rôle par défaut, sera modifié dans role-selection
   const [loading, setLoading] = useState(false);
 
   // Données du formulaire
@@ -57,10 +47,7 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Données boutique (si vendeur)
-  const [shopName, setShopName] = useState('');
-  const [shopDescription, setShopDescription] = useState('');
-  const [shopCategory, setShopCategory] = useState('');
+  // Réseaux sociaux (optionnel)
   const [facebookUrl, setFacebookUrl] = useState('');
   const [instagramUrl, setInstagramUrl] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
@@ -74,8 +61,8 @@ export default function RegisterScreen() {
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Animer la barre de progression
-    const progress = userRole === 'seller' ? currentStep / 4 : currentStep / 3;
+    // Animer la barre de progression (2 étapes)
+    const progress = currentStep / 2;
     Animated.spring(progressAnim, {
       toValue: progress,
       useNativeDriver: false,
@@ -184,27 +171,36 @@ export default function RegisterScreen() {
 
       if (profileError) throw profileError;
 
-      // 3. Gérer le code de parrainage
-      if (referralCode && referralCode.length === 8) {
-        const { data: referrerData } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('referral_code', referralCode)
-          .single();
+      // 3. Gérer le code de parrainage avec la fonction RPC
+      let welcomePoints = 0;
+      if (referralCode && referralCode.trim().length === 8) {
+        const { data: referralResult, error: referralError } = await supabase.rpc(
+          'register_referral',
+          {
+            p_referred_user_id: authData.user.id,
+            p_referral_code: referralCode.trim().toUpperCase(),
+          }
+        );
 
-        if (referrerData) {
-          await supabase.from('referrals').insert({
-            referrer_id: referrerData.id,
-            referred_id: authData.user.id,
-          });
+        if (referralError) {
+          console.error('Erreur parrainage:', referralError);
+        } else if (referralResult?.success) {
+          welcomePoints = referralResult.welcome_points || 50;
         }
       }
 
       // Attendre un peu que la session soit bien établie
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      Speech.speak('Inscription réussie! Bienvenue sur SenePanda!', {
+      // Message de bienvenue avec points
+      const welcomeMessage = welcomePoints > 0
+        ? `Inscription réussie! Vous avez reçu ${welcomePoints} Panda Coins de bienvenue!`
+        : 'Inscription réussie! Bienvenue sur SenePanda!';
+
+      Alert.alert('Succès', welcomeMessage);
+      Speech.speak(welcomeMessage, {
         language: 'fr-FR',
+        rate: 0.9,
       });
 
       // Rediriger vers la sélection de rôle
@@ -231,9 +227,9 @@ export default function RegisterScreen() {
             ]}>
             {i <= currentStep && (
               <LinearGradient
-                colors={['#FFD700', '#FFA500', '#FF8C00']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
+                colors={Gradients.goldOrange.colors}
+                start={Gradients.goldOrange.start}
+                end={Gradients.goldOrange.end}
                 style={StyleSheet.absoluteFill}
               />
             )}
@@ -258,59 +254,6 @@ export default function RegisterScreen() {
   };
 
   const renderStep1 = () => (
-    <Animated.View style={[styles.stepContent, { transform: [{ translateX: slideAnim }] }]}>
-      <Text style={styles.stepTitle}>Choisissez votre type de compte</Text>
-      <Text style={styles.stepSubtitle}>
-        Vous pourrez toujours changer plus tard
-      </Text>
-
-      <TouchableOpacity
-        style={[
-          styles.roleCard,
-          userRole === 'buyer' && styles.roleCardSelected,
-        ]}
-        onPress={() => setUserRole('buyer')}>
-        <View style={[styles.roleIcon, { backgroundColor: '#DBEAFE' }]}>
-          <ShoppingBag size={32} color="#3B82F6" />
-        </View>
-        <View style={styles.roleContent}>
-          <Text style={styles.roleTitle}>Acheteur</Text>
-          <Text style={styles.roleDescription}>
-            Découvrez et achetez des produits locaux
-          </Text>
-        </View>
-        {userRole === 'buyer' && (
-          <View style={styles.roleCheck}>
-            <Check size={20} color="#10B981" />
-          </View>
-        )}
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[
-          styles.roleCard,
-          userRole === 'seller' && styles.roleCardSelected,
-        ]}
-        onPress={() => setUserRole('seller')}>
-        <View style={[styles.roleIcon, { backgroundColor: '#FEE2E2' }]}>
-          <Store size={32} color="#EF4444" />
-        </View>
-        <View style={styles.roleContent}>
-          <Text style={styles.roleTitle}>Vendeur</Text>
-          <Text style={styles.roleDescription}>
-            Créez votre boutique et vendez vos produits
-          </Text>
-        </View>
-        {userRole === 'seller' && (
-          <View style={styles.roleCheck}>
-            <Check size={20} color="#10B981" />
-          </View>
-        )}
-      </TouchableOpacity>
-    </Animated.View>
-  );
-
-  const renderStep2 = () => (
     <Animated.View style={[styles.stepContent, { transform: [{ translateX: slideAnim }] }]}>
       <Text style={styles.stepTitle}>Vos informations</Text>
       <Text style={styles.stepSubtitle}>
@@ -428,7 +371,7 @@ export default function RegisterScreen() {
     </Animated.View>
   );
 
-  const renderStep3 = () => {
+  const renderStep2 = () => {
     // Étape 2 : Code de parrainage et réseaux sociaux (optionnels)
     return (
       <Animated.View style={[styles.stepContent, { transform: [{ translateX: slideAnim }] }]}>
@@ -532,110 +475,12 @@ export default function RegisterScreen() {
     );
   };
 
-  const renderStep4 = () => (
-    <Animated.View style={[styles.stepContent, { transform: [{ translateX: slideAnim }] }]}>
-      <Text style={styles.stepTitle}>Réseaux sociaux</Text>
-      <Text style={styles.stepSubtitle}>
-        Optionnel - Boostez votre visibilité
-      </Text>
-
-      <View style={styles.inputGroup}>
-        <View style={styles.labelRow}>
-          <Facebook size={16} color="#1877F2" />
-          <Text style={styles.label}>Facebook</Text>
-        </View>
-        <TextInput
-          style={styles.input}
-          value={facebookUrl}
-          onChangeText={setFacebookUrl}
-          placeholder="https://facebook.com/votre-page"
-          autoCapitalize="none"
-          placeholderTextColor="#9CA3AF"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <View style={styles.labelRow}>
-          <Instagram size={16} color="#E4405F" />
-          <Text style={styles.label}>Instagram</Text>
-        </View>
-        <TextInput
-          style={styles.input}
-          value={instagramUrl}
-          onChangeText={setInstagramUrl}
-          placeholder="https://instagram.com/votre-profil"
-          autoCapitalize="none"
-          placeholderTextColor="#9CA3AF"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <View style={styles.labelRow}>
-          <Phone size={16} color="#25D366" />
-          <Text style={styles.label}>WhatsApp</Text>
-        </View>
-        <TextInput
-          style={styles.input}
-          value={whatsappNumber}
-          onChangeText={setWhatsappNumber}
-          placeholder="+221 77 123 45 67"
-          keyboardType="phone-pad"
-          placeholderTextColor="#9CA3AF"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <View style={styles.labelRow}>
-          <Globe size={16} color="#6B7280" />
-          <Text style={styles.label}>Site Web</Text>
-        </View>
-        <TextInput
-          style={styles.input}
-          value={websiteUrl}
-          onChangeText={setWebsiteUrl}
-          placeholder="https://votre-site.com"
-          autoCapitalize="none"
-          placeholderTextColor="#9CA3AF"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <View style={styles.labelRow}>
-          <Gift size={18} color="#10B981" />
-          <Text style={styles.label}>Code de parrainage (optionnel)</Text>
-        </View>
-        <View style={styles.referralInputContainer}>
-          <TextInput
-            style={styles.referralInput}
-            value={referralCode}
-            onChangeText={(text) => setReferralCode(text.toUpperCase())}
-            placeholder="ABC12345"
-            autoCapitalize="characters"
-            maxLength={8}
-            placeholderTextColor="#9CA3AF"
-          />
-          {referralCode.length === 8 && (
-            <View style={styles.checkMark}>
-              <Check size={18} color="#10B981" />
-            </View>
-          )}
-        </View>
-        <View style={styles.bonusCard}>
-          <Gift size={16} color="#10B981" />
-          <Text style={styles.bonusText}>
-            Bonus: Recevez 50 Panda Coins de bienvenue!
-          </Text>
-        </View>
-      </View>
-    </Animated.View>
-  );
-
   const renderCurrentStep = () => {
     switch (currentStep) {
       case 1:
-        return renderStep2(); // Informations personnelles
+        return renderStep1(); // Informations personnelles
       case 2:
-        return renderStep3(); // Parrainage et réseaux sociaux
+        return renderStep2(); // Parrainage et réseaux sociaux
       default:
         return null;
     }
@@ -672,9 +517,9 @@ export default function RegisterScreen() {
               },
             ]}>
             <LinearGradient
-              colors={['#FFD700', '#FFA500', '#FF8C00']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+              colors={Gradients.goldOrange.colors}
+              start={Gradients.goldOrange.start}
+              end={Gradients.goldOrange.end}
               style={{ flex: 1 }}
             />
           </Animated.View>
@@ -699,21 +544,24 @@ export default function RegisterScreen() {
         <TouchableOpacity
           style={[styles.nextButton, loading && styles.nextButtonDisabled]}
           onPress={nextStep}
-          disabled={loading}>
+          disabled={loading}
+          accessibilityRole="button"
+          accessibilityLabel={currentStep === maxStep ? 'Créer mon compte' : 'Continuer'}
+          accessibilityState={{ disabled: loading }}>
           <LinearGradient
-            colors={['#FFD700', '#FFA500', '#FF8C00']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+            colors={Gradients.goldOrange.colors}
+            start={Gradients.goldOrange.start}
+            end={Gradients.goldOrange.end}
             style={StyleSheet.absoluteFill}
           />
           {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={Colors.white} />
           ) : (
             <>
               <Text style={styles.nextButtonText}>
                 {currentStep === maxStep ? 'Créer mon compte' : 'Continuer'}
               </Text>
-              <ArrowRight size={20} color="#FFFFFF" />
+              <ArrowRight size={20} color={Colors.white} />
             </>
           )}
         </TouchableOpacity>
@@ -739,57 +587,53 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+    backgroundColor: Colors.white,
+    ...Shadows.small,
   },
   backButton: {
     width: 40,
     height: 40,
-    borderRadius: 12,
-    backgroundColor: '#F9FAFB',
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.backgroundLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   skipText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.textMuted,
   },
   progressContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 12,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xl,
+    paddingBottom: Spacing.md,
   },
   progressBar: {
     height: 6,
     backgroundColor: '#E5E7EB',
-    borderRadius: 3,
+    borderRadius: BorderRadius.sm,
     overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   progressFill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: BorderRadius.sm,
     overflow: 'hidden',
   },
   progressText: {
-    fontSize: 12,
-    color: '#6B7280',
+    fontSize: Typography.fontSize.xs,
+    color: Colors.textMuted,
     textAlign: 'center',
-    fontWeight: '500',
+    fontWeight: Typography.fontWeight.medium,
   },
   stepIndicator: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
   },
   stepDot: {
     flexDirection: 'row',
@@ -798,7 +642,7 @@ const styles = StyleSheet.create({
   stepCircle: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: BorderRadius.xl,
     backgroundColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
@@ -807,112 +651,64 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   stepNumber: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.textMuted,
   },
   stepNumberActive: {
-    color: '#FFFFFF',
+    color: Colors.white,
   },
   stepLine: {
     width: 40,
     height: 2,
     backgroundColor: '#E5E7EB',
-    marginHorizontal: 4,
+    marginHorizontal: Spacing.xs,
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
+    padding: Spacing.xl,
+    paddingBottom: Spacing['3xl'],
   },
   stepContent: {
     width: '100%',
   },
   stepTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
+    fontSize: Typography.fontSize['2xl'],
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
   },
   stepSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 24,
-  },
-  roleCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  roleCardSelected: {
-    borderColor: '#10B981',
-    backgroundColor: '#F0FDF4',
-  },
-  roleIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  roleContent: {
-    flex: 1,
-  },
-  roleTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  roleDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  roleCheck: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#D1FAE5',
-    alignItems: 'center',
-    justifyContent: 'center',
+    fontSize: Typography.fontSize.sm,
+    color: Colors.textMuted,
+    marginBottom: Spacing['2xl'],
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
   },
   inputRow: {
     flexDirection: 'row',
     marginBottom: 0,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold,
     color: '#374151',
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
   input: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: '#D1D5DB',
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 15,
-    color: '#111827',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.sm + 2,
+    fontSize: Typography.fontSize.base,
+    color: Colors.textPrimary,
   },
   textArea: {
     height: 100,
@@ -922,75 +718,71 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   referralInput: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.white,
     borderWidth: 2,
     borderColor: '#D1D5DB',
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.sm + 2,
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.textPrimary,
     letterSpacing: 2,
     textAlign: 'center',
   },
   checkMark: {
     position: 'absolute',
-    right: 14,
-    top: 14,
+    right: Spacing.sm + 2,
+    top: Spacing.sm + 2,
   },
   bonusCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: Spacing.sm,
     backgroundColor: '#D1FAE5',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 8,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.sm,
   },
   bonusText: {
     flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: Typography.fontSize.sm - 1,
+    fontWeight: Typography.fontWeight.semibold,
     color: '#10B981',
   },
   footer: {
-    padding: 20,
-    backgroundColor: '#FFFFFF',
+    padding: Spacing.xl,
+    backgroundColor: Colors.white,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
   },
   nextButton: {
-    borderRadius: 12,
-    paddingVertical: 16,
+    borderRadius: BorderRadius.lg,
+    paddingVertical: Spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    shadowColor: '#FF8C42',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 4,
-    marginBottom: 12,
+    gap: Spacing.sm,
+    ...Shadows.orange,
+    marginBottom: Spacing.md,
     overflow: 'hidden',
   },
   nextButtonDisabled: {
     opacity: 0.6,
   },
   nextButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.white,
   },
   loginLink: {
     alignItems: 'center',
   },
   loginLinkText: {
-    fontSize: 14,
-    color: '#6B7280',
+    fontSize: Typography.fontSize.sm,
+    color: Colors.textMuted,
   },
   loginLinkBold: {
-    fontWeight: '700',
-    color: '#FF8C42',
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.primaryOrange,
   },
 });

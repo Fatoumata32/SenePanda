@@ -48,22 +48,22 @@ export const Colors = {
 
 export const Gradients = {
   goldOrange: {
-    colors: ['#FFD700', '#FF8C00'],
+    colors: ['#FFD700', '#FFA500', '#FF8C00'] as const,
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   },
   green: {
-    colors: ['#32CD32', '#228B22'],
+    colors: ['#32CD32', '#228B22'] as const,
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   },
   hero: {
-    colors: ['#f9eddd', '#FFFACD', '#FFFFFF'],
+    colors: ['#f9eddd', '#FFFACD', '#FFFFFF'] as const,
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   },
   subscription: {
-    colors: ['#f9eddd', '#FFFACD', '#f9eddd'],
+    colors: ['#f9eddd', '#FFFACD', '#f9eddd'] as const,
     start: { x: 0, y: 0 },
     end: { x: 1, y: 1 },
   },
