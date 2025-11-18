@@ -1,0 +1,30 @@
+-- ================================================
+-- AJOUT DE LA COLONNE seller_id À LA TABLE products
+-- ================================================
+-- Cette migration s'assure que la colonne seller_id existe dans la table products
+-- C'est une colonne essentielle pour le système de marketplace
+
+DO $$
+BEGIN
+  -- Vérifier et ajouter la colonne seller_id si elle n'existe pas
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'products' AND column_name = 'seller_id'
+  ) THEN
+    ALTER TABLE products
+    ADD COLUMN seller_id UUID REFERENCES profiles(id) ON DELETE CASCADE;
+
+    -- Mettre à jour les produits existants (si nécessaire)
+    -- Attention: Cette ligne nécessite qu'il existe au moins un profil de vendeur
+    -- Si vous avez des produits sans vendeur, vous devrez les assigner manuellement
+    RAISE NOTICE 'Colonne seller_id ajoutée à la table products';
+  ELSE
+    RAISE NOTICE 'La colonne seller_id existe déjà dans la table products';
+  END IF;
+END $$;
+
+-- Créer un index sur seller_id pour améliorer les performances
+CREATE INDEX IF NOT EXISTS idx_products_seller_id ON products(seller_id);
+
+-- Ajouter un commentaire pour documenter la colonne
+COMMENT ON COLUMN products.seller_id IS 'Référence au vendeur (profile) qui a créé ce produit';
