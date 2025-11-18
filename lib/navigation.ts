@@ -5,23 +5,30 @@
 
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '@/lib/supabase';
 
 // Types de routes
 export type PublicRoute =
   | '/(tabs)/profile'
-  | '/(tabs)/index'
-  | '/register'
-  | '/role-selection';
+  | '/(tabs)/home'
+  | '/simple-auth'
+  | '/role-selection'
+  | '/onboarding'
+  | '/search'
+  | '/notifications';
 
 export type ProtectedRoute =
   | '/(tabs)/explore'
   | '/(tabs)/favorites'
   | '/(tabs)/messages'
+  | '/(tabs)/cart'
   | '/orders'
   | '/checkout'
   | '/seller/setup'
   | '/seller/products'
-  | '/seller/orders';
+  | '/seller/orders'
+  | '/wallet'
+  | '/settings';
 
 export type Route = PublicRoute | ProtectedRoute;
 
@@ -30,19 +37,25 @@ const PROTECTED_ROUTES: ProtectedRoute[] = [
   '/(tabs)/explore',
   '/(tabs)/favorites',
   '/(tabs)/messages',
+  '/(tabs)/cart',
   '/orders',
   '/checkout',
   '/seller/setup',
   '/seller/products',
   '/seller/orders',
+  '/wallet',
+  '/settings',
 ];
 
 // Routes accessibles sans authentification
 const PUBLIC_ROUTES: PublicRoute[] = [
   '/(tabs)/profile',
-  '/(tabs)/index',
-  '/register',
+  '/(tabs)/home',
+  '/simple-auth',
   '/role-selection',
+  '/onboarding',
+  '/search',
+  '/notifications',
 ];
 
 // Routes qui nécessitent la sélection du rôle
@@ -50,9 +63,12 @@ const ROLE_REQUIRED_ROUTES: string[] = [
   '/(tabs)/explore',
   '/(tabs)/favorites',
   '/(tabs)/messages',
+  '/(tabs)/cart',
   '/seller/setup',
   '/seller/products',
   '/seller/orders',
+  '/wallet',
+  '/settings',
 ];
 
 export class NavigationService {
@@ -77,6 +93,24 @@ export class NavigationService {
    */
   static requiresRoleSelection(path: string): boolean {
     return ROLE_REQUIRED_ROUTES.some(route => path.includes(route));
+  }
+
+  /**
+   * Vérifie si un vendeur a déjà créé sa boutique
+   */
+  static async hasShop(userId: string): Promise<boolean> {
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('shop_name')
+        .eq('id', userId)
+        .maybeSingle();
+
+      return !!data?.shop_name;
+    } catch (error) {
+      console.error('Error checking shop:', error);
+      return false;
+    }
   }
 
   /**
@@ -116,7 +150,7 @@ export class NavigationService {
    * Navigue vers l'accueil
    */
   static goToHome() {
-    router.replace('/(tabs)/index' as any);
+    router.replace('/(tabs)/home');
   }
 
   /**

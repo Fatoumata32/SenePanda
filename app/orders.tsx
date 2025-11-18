@@ -296,7 +296,7 @@ export default function CustomerOrdersScreen() {
             end={{ x: 1, y: 1 }}
             style={styles.shopButton}>
             <TouchableOpacity
-              onPress={() => router.push('/(tabs)')}>
+              onPress={() => router.push('/(tabs)/home')}>
               <Text style={styles.shopButtonText}>Découvrir les produits</Text>
             </TouchableOpacity>
           </LinearGradient>

@@ -348,10 +348,10 @@ export default function MyBenefitsScreen() {
   const handleActionPress = (action: string) => {
     switch (action) {
       case 'shop':
-        router.push('/(tabs)');
+        router.push('/(tabs)/home');
         break;
       case 'reviews':
-        router.push('/(tabs)');
+        router.push('/(tabs)/home');
         break;
       case 'referral':
         router.push('/referral');

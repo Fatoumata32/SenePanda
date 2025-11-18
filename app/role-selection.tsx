@@ -45,11 +45,11 @@ export default function RoleSelectionScreen() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         // Pas de session, rediriger vers l'inscription
-        router.replace('/register');
+        router.replace('/simple-auth');
       }
     } catch (error) {
       console.error('Error checking session:', error);
-      router.replace('/register');
+      router.replace('/simple-auth');
     }
   };
 
@@ -94,22 +94,22 @@ export default function RoleSelectionScreen() {
 
       // Si c'est un vendeur, vérifier s'il a déjà une boutique
       if (selectedRole === 'seller') {
-        const { data: shop } = await supabase
-          .from('shops')
-          .select('id')
-          .eq('seller_id', user.id)
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('shop_name, is_seller')
+          .eq('id', user.id)
           .maybeSingle();
 
-        if (!shop) {
+        if (!profile?.shop_name) {
           // Pas de boutique → rediriger vers la création
           router.replace('/seller/shop-wizard');
         } else {
-          // Boutique existe déjà → aller à l'app
-          router.replace('/(tabs)');
+          // Boutique existe déjà → aller à la page d'accueil
+          router.replace('/(tabs)/home');
         }
       } else {
-        // Acheteur → aller directement à l'app
-        router.replace('/(tabs)');
+        // Acheteur → aller directement à la page d'accueil
+        router.replace('/(tabs)/home');
       }
     } catch (error: any) {
       console.error('Error saving role:', error);
@@ -119,7 +119,7 @@ export default function RoleSelectionScreen() {
         [
           {
             text: 'Se reconnecter',
-            onPress: () => router.replace('/register'),
+            onPress: () => router.replace('/simple-auth'),
           },
           {
             text: 'Réessayer',
