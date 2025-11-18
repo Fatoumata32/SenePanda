@@ -1,7 +1,7 @@
 -- ============================================
 -- TOUTES LES MIGRATIONS COMBINÉES
 -- Date: 2025-11-18
--- Total: 53 migrations
+-- Total: 52 migrations (create_complete_bonus_system.sql exclu - corrompu)
 -- ============================================
 --
 -- Ce fichier contient TOUTES les migrations dans le bon ordre.
@@ -16,6 +16,7 @@
 -- - Certaines migrations peuvent échouer si déjà appliquées (normal)
 -- - Regardez les messages "already exists" comme des confirmations
 -- - À la fin, vous devriez voir un résumé avec le nombre de tables
+-- - Le fichier create_complete_bonus_system.sql est exclu (corrompu)
 --
 -- ============================================
 
@@ -2014,11 +2015,6 @@ FROM pg_proc
 WHERE proname = 'redeem_reward'
 LIMIT 1;
 
--- ============================================
--- MIGRATION: create_complete_bonus_system.sql
--- ============================================
-
-ou
 -- ============================================
 -- MIGRATION: create_chat_system.sql
 -- ============================================
@@ -6353,9 +6349,10 @@ COMMENT ON FUNCTION create_order_from_cart IS 'Créer une commande à partir du 
 
 DO $$
 BEGIN
-  RAISE NOTICE '🎉 TOUTES LES MIGRATIONS ONT ÉTÉ EXÉCUTÉES !';
+  RAISE NOTICE '🎉 TOUTES LES 52 MIGRATIONS ONT ÉTÉ EXÉCUTÉES !';
+  RAISE NOTICE 'Note: create_complete_bonus_system.sql a été exclu (fichier corrompu)';
   RAISE NOTICE 'Vérifiez les logs ci-dessus pour les erreurs éventuelles';
-  RAISE NOTICE 'Les messages "already exists" sont normaux et indiquent que la table/fonction existe déjà';
+  RAISE NOTICE 'Les messages "already exists" sont normaux';
 END $$;
 
 -- Afficher un résumé final
