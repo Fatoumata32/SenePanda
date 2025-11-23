@@ -255,6 +255,19 @@ export default function SettingsScreen() {
       ],
     },
     {
+      title: 'Gestion du compte',
+      items: [
+        {
+          id: 'delete_account',
+          label: 'Supprimer mon compte',
+          icon: User,
+          type: 'navigation',
+          route: '/settings/delete-account',
+          iconColor: '#EF4444',
+        },
+      ],
+    },
+    {
       title: 'Assistance',
       items: [
         {
