@@ -7,9 +7,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   Dimensions,
-  Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -22,6 +22,7 @@ interface PrivacyPolicyModalProps {
 }
 
 export default function PrivacyPolicyModal({ onAccept }: PrivacyPolicyModalProps) {
+  const router = useRouter();
   const [visible, setVisible] = useState(false);
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
 
@@ -59,8 +60,9 @@ export default function PrivacyPolicyModal({ onAccept }: PrivacyPolicyModalProps
     }
   };
 
-  const openLink = (url: string) => {
-    Linking.openURL(url);
+  const openTerms = () => {
+    setVisible(false);
+    router.push('/settings/terms');
   };
 
   return (
@@ -181,7 +183,7 @@ export default function PrivacyPolicyModal({ onAccept }: PrivacyPolicyModalProps
             <Text style={styles.sectionTitle}>12. Conditions d'Utilisation</Text>
             <Text style={styles.paragraph}>
               En utilisant SenePanda, vous acceptez également nos{' '}
-              <Text style={styles.link} onPress={() => openLink('https://senepanda.com/terms')}>
+              <Text style={styles.link} onPress={openTerms}>
                 Conditions Générales d'Utilisation
               </Text>
               .

@@ -269,8 +269,8 @@ export default function SettingsScreen() {
           id: 'terms',
           label: 'Conditions d\'utilisation',
           icon: FileText,
-          type: 'action',
-          action: () => openURL('https://senepanda.app/terms'),
+          type: 'navigation',
+          route: '/settings/terms',
           iconColor: '#EF4444',
         },
         {
