@@ -13,22 +13,23 @@ import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Package, MapPin, Calendar, Clock } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '@/contexts/ThemeContext';
 
 type OrderItem = {
   id: string;
   quantity: number;
-  unit_price: number;
+  unit_price: number | null;
+  price: number | null;
   product: {
     title: string;
     image_url: string | null;
-  };
+  } | null;
 };
 
 type Order = {
   id: string;
   created_at: string;
   total_amount: number;
-  currency: string;
   status: string;
   shipping_address: string;
   order_items: OrderItem[];
@@ -36,9 +37,20 @@ type Order = {
 
 export default function CustomerOrdersScreen() {
   const router = useRouter();
+  const { isDark } = useTheme();
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+
+  // Theme colors
+  const themeColors = {
+    background: isDark ? '#111827' : '#F9FAFB',
+    card: isDark ? '#1F2937' : '#FFFFFF',
+    text: isDark ? '#F9FAFB' : '#111827',
+    textSecondary: isDark ? '#D1D5DB' : '#6B7280',
+    textMuted: isDark ? '#9CA3AF' : '#9CA3AF',
+    border: isDark ? '#374151' : '#E5E7EB',
+  };
 
   useEffect(() => {
     loadOrders();
@@ -52,24 +64,49 @@ export default function CustomerOrdersScreen() {
         return;
       }
 
-      const { data, error } = await supabase
+      // D'abord récupérer les commandes
+      const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select(`
-          *,
-          order_items(
-            *,
-            product:products(
-              title,
-              image_url
-            )
-          )
-        `)
+        .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setOrders(data || []);
+      if (ordersError) throw ordersError;
+
+      if (!ordersData || ordersData.length === 0) {
+        setOrders([]);
+        return;
+      }
+
+      // Ensuite récupérer les order_items pour chaque commande
+      const orderIds = ordersData.map(o => o.id);
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('order_items')
+        .select(`
+          *,
+          product:products(
+            title,
+            image_url
+          )
+        `)
+        .in('order_id', orderIds);
+
+      if (itemsError) {
+        console.warn('Error loading order items:', itemsError);
+        // Continuer sans les items si erreur
+        setOrders(ordersData.map(order => ({ ...order, order_items: [] })));
+        return;
+      }
+
+      // Combiner les données
+      const ordersWithItems = ordersData.map(order => ({
+        ...order,
+        order_items: (itemsData || []).filter(item => item.order_id === order.id)
+      }));
+
+      setOrders(ordersWithItems);
     } catch (error: any) {
+      console.error('Error loading orders:', error);
       Alert.alert('Erreur', error.message);
     } finally {
       setLoading(false);
@@ -129,13 +166,13 @@ export default function CustomerOrdersScreen() {
 
   const renderOrder = ({ item }: { item: Order }) => {
     return (
-      <View style={styles.orderCard}>
+      <View style={[styles.orderCard, { backgroundColor: themeColors.card }]}>
         <View style={styles.orderHeader}>
           <View style={styles.orderHeaderLeft}>
-            <Text style={styles.orderId}>Commande #{item.id.substring(0, 8)}</Text>
+            <Text style={[styles.orderId, { color: themeColors.text }]}>Commande #{item.id.substring(0, 8)}</Text>
             <View style={styles.dateRow}>
-              <Calendar size={14} color="#6B7280" />
-              <Text style={styles.orderDate}>
+              <Calendar size={14} color={themeColors.textSecondary} />
+              <Text style={[styles.orderDate, { color: themeColors.textSecondary }]}>
                 {new Date(item.created_at).toLocaleDateString('fr-FR', {
                   day: 'numeric',
                   month: 'long',
@@ -164,31 +201,31 @@ export default function CustomerOrdersScreen() {
 
         <View style={styles.addressSection}>
           <View style={styles.addressRow}>
-            <MapPin size={14} color="#6B7280" />
-            <Text style={styles.addressText}>{item.shipping_address}</Text>
+            <MapPin size={14} color={themeColors.textSecondary} />
+            <Text style={[styles.addressText, { color: themeColors.textSecondary }]}>{item.shipping_address}</Text>
           </View>
         </View>
 
-        <View style={styles.itemsSection}>
-          <Text style={styles.itemsTitle}>
+        <View style={[styles.itemsSection, { borderTopColor: themeColors.border, borderBottomColor: themeColors.border }]}>
+          <Text style={[styles.itemsTitle, { color: themeColors.text }]}>
             {item.order_items.length} article{item.order_items.length > 1 ? 's' : ''}
           </Text>
           {item.order_items.map((orderItem) => (
             <View key={orderItem.id} style={styles.orderItem}>
-              <Package size={16} color="#6B7280" />
-              <Text style={styles.itemName} numberOfLines={1}>
+              <Package size={16} color={themeColors.textSecondary} />
+              <Text style={[styles.itemName, { color: themeColors.text }]} numberOfLines={1}>
                 {orderItem.product?.title || 'Produit'}
               </Text>
-              <Text style={styles.itemQuantity}>x{orderItem.quantity}</Text>
-              <Text style={styles.itemPrice}>
-                {(orderItem.unit_price * orderItem.quantity).toLocaleString()} FCFA
+              <Text style={[styles.itemQuantity, { color: themeColors.textSecondary }]}>x{orderItem.quantity}</Text>
+              <Text style={[styles.itemPrice, { color: themeColors.text }]}>
+                {(((orderItem.unit_price || orderItem.price || 0) * orderItem.quantity)).toLocaleString()} FCFA
               </Text>
             </View>
           ))}
         </View>
 
         <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total</Text>
+          <Text style={[styles.totalLabel, { color: themeColors.textSecondary }]}>Total</Text>
           <Text style={styles.totalAmount}>
             {item.total_amount.toLocaleString()} FCFA
           </Text>
@@ -235,19 +272,19 @@ export default function CustomerOrdersScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: themeColors.background }]}>
         <ActivityIndicator size="large" color="#D97706" />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]}>
+      <View style={[styles.header, { borderBottomColor: themeColors.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ArrowLeft size={24} color="#111827" />
+          <ArrowLeft size={24} color={themeColors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>Mes Commandes</Text>
+        <Text style={[styles.title, { color: themeColors.text }]}>Mes Commandes</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -283,9 +320,9 @@ export default function CustomerOrdersScreen() {
 
       {filteredOrders.length === 0 ? (
         <View style={styles.emptyState}>
-          <Package size={64} color="#D1D5DB" />
-          <Text style={styles.emptyTitle}>Aucune commande</Text>
-          <Text style={styles.emptyText}>
+          <Package size={64} color={themeColors.textMuted} />
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Aucune commande</Text>
+          <Text style={[styles.emptyText, { color: themeColors.textSecondary }]}>
             {selectedStatus === 'all'
               ? "Vous n'avez pas encore passé de commandes"
               : `Aucune commande ${getStatusLabel(selectedStatus).toLowerCase()}`}
@@ -343,14 +380,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   filterScroll: {
-    maxHeight: 60,
+    minHeight: 56,
+    maxHeight: 56,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
   filterContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   filterChip: {
     paddingHorizontal: 16,
@@ -359,6 +399,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    flexShrink: 0,
+    minHeight: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   filterChipSelected: {
     backgroundColor: '#FEF3C7',

@@ -27,7 +27,6 @@ type Order = {
   id: string;
   created_at: string;
   total_amount: number;
-  currency: string;
   status: string;
   shipping_address: string;
   user_id: string;
@@ -70,7 +69,6 @@ export default function SellerOrdersScreen() {
             id,
             created_at,
             total_amount,
-            currency,
             status,
             shipping_address,
             user_id
@@ -433,14 +431,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   filterScroll: {
-    maxHeight: 60,
+    minHeight: 56,
+    maxHeight: 56,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
   filterContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   filterChip: {
     paddingHorizontal: 16,
@@ -452,6 +453,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexShrink: 0,
+    minHeight: 36,
+    justifyContent: 'center',
   },
   filterChipSelected: {
     backgroundColor: '#FEF3C7',

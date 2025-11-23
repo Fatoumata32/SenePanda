@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "db:migrations": "node scripts/show-migration-sql.js",
     "db:create-users": "node scripts/create-sample-users.js",
-    "db:link-profiles": "node scripts/link-profiles-to-users.js"
+    "db:link-profiles": "node scripts/link-profiles-to-users.js",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -18,7 +20,7 @@
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/native": "^7.0.14",
-    "@supabase/supabase-js": "^2.58.0",
+    "@supabase/supabase-js": "^2.83.0",
     "dotenv": "^17.2.3",
     "expo": "^54.0.20",
     "expo-av": "^16.0.7",
@@ -33,6 +35,7 @@
     "expo-linking": "~8.0.8",
     "expo-router": "^6.0.13",
     "expo-speech": "^14.0.7",
+    "expo-speech-recognition": "^3.0.0",
     "expo-splash-screen": "~31.0.10",
     "expo-status-bar": "~3.0.8",
     "expo-symbols": "~1.0.7",

@@ -16,11 +16,24 @@ import { supabase } from '@/lib/supabase';
 import { Category, Product } from '@/types/database';
 import { Search, Mic, Star } from 'lucide-react-native';
 import { getCategoryIcon } from '@/constants/CategoryIcons';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
 export default function ExploreScreen() {
   const router = useRouter();
+  const { isDark } = useTheme();
+
+  // Theme colors
+  const themeColors = {
+    background: isDark ? '#111827' : '#F9FAFB',
+    card: isDark ? '#1F2937' : '#FFFFFF',
+    text: isDark ? '#F9FAFB' : '#111827',
+    textSecondary: isDark ? '#D1D5DB' : '#6B7280',
+    textMuted: isDark ? '#9CA3AF' : '#9CA3AF',
+    border: isDark ? '#374151' : '#E5E7EB',
+    iconBg: isDark ? '#374151' : '#F3F4F6',
+  };
   const [categories, setCategories] = useState<Category[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
@@ -104,28 +117,28 @@ export default function ExploreScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Barre de recherche */}
         <View style={styles.searchContainer}>
-          <View style={styles.searchBar}>
-            <Search size={20} color="#9CA3AF" />
+          <View style={[styles.searchBar, { backgroundColor: themeColors.card }]}>
+            <Search size={20} color={themeColors.textMuted} />
             <TextInput
-              style={styles.searchInput}
+              style={[styles.searchInput, { color: themeColors.text }]}
               placeholder="Rechercher des produits..."
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={themeColors.textMuted}
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
             <TouchableOpacity>
-              <Mic size={22} color="#6B7280" />
+              <Mic size={22} color={themeColors.textSecondary} />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Filtres par catégorie */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Catégories</Text>
+          <Text style={[styles.sectionTitle, { color: themeColors.text }]}>Catégories</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -152,13 +165,13 @@ export default function ExploreScreen() {
                 </LinearGradient>
               ) : (
                 <View style={styles.categoryGradient}>
-                  <View style={[styles.iconCircle, { backgroundColor: '#F3F4F6' }]}>
+                  <View style={[styles.iconCircle, { backgroundColor: themeColors.iconBg }]}>
                     {(() => {
                       const TousIcon = getCategoryIcon('Tous');
-                      return <TousIcon size={18} color="#6B7280" strokeWidth={2.5} />;
+                      return <TousIcon size={18} color={themeColors.textSecondary} strokeWidth={2.5} />;
                     })()}
                   </View>
-                  <Text style={styles.categoryName}>
+                  <Text style={[styles.categoryName, { color: themeColors.text }]}>
                     Tout
                   </Text>
                 </View>
@@ -188,10 +201,10 @@ export default function ExploreScreen() {
                     </LinearGradient>
                   ) : (
                     <View style={styles.categoryGradient}>
-                      <View style={[styles.iconCircle, { backgroundColor: '#F3F4F6' }]}>
-                        <CategoryIcon size={18} color="#6B7280" strokeWidth={2.5} />
+                      <View style={[styles.iconCircle, { backgroundColor: themeColors.iconBg }]}>
+                        <CategoryIcon size={18} color={themeColors.textSecondary} strokeWidth={2.5} />
                       </View>
-                      <Text style={styles.categoryName}>
+                      <Text style={[styles.categoryName, { color: themeColors.text }]}>
                         {category.name}
                       </Text>
                     </View>
@@ -220,8 +233,8 @@ export default function ExploreScreen() {
                   <Text style={styles.filterTextActive}>Plus récents</Text>
                 </LinearGradient>
               ) : (
-                <View style={styles.filterInactive}>
-                  <Text style={styles.filterText}>Plus récents</Text>
+                <View style={[styles.filterInactive, { backgroundColor: themeColors.card }]}>
+                  <Text style={[styles.filterText, { color: themeColors.textSecondary }]}>Plus récents</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -238,8 +251,8 @@ export default function ExploreScreen() {
                   <Text style={styles.filterTextActive}>Populaires</Text>
                 </LinearGradient>
               ) : (
-                <View style={styles.filterInactive}>
-                  <Text style={styles.filterText}>Populaires</Text>
+                <View style={[styles.filterInactive, { backgroundColor: themeColors.card }]}>
+                  <Text style={[styles.filterText, { color: themeColors.textSecondary }]}>Populaires</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -256,14 +269,14 @@ export default function ExploreScreen() {
                   <Text style={styles.filterTextActive}>Prix croissant</Text>
                 </LinearGradient>
               ) : (
-                <View style={styles.filterInactive}>
-                  <Text style={styles.filterText}>Prix croissant</Text>
+                <View style={[styles.filterInactive, { backgroundColor: themeColors.card }]}>
+                  <Text style={[styles.filterText, { color: themeColors.textSecondary }]}>Prix croissant</Text>
                 </View>
               )}
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.filterChip}
+              style={[styles.filterChip, { borderColor: themeColors.border }]}
               onPress={() => setSortBy('price-high')}>
               {sortBy === 'price-high' ? (
                 <LinearGradient
@@ -274,8 +287,8 @@ export default function ExploreScreen() {
                   <Text style={styles.filterTextActive}>Prix décroissant</Text>
                 </LinearGradient>
               ) : (
-                <View style={styles.filterInactive}>
-                  <Text style={styles.filterText}>Prix décroissant</Text>
+                <View style={[styles.filterInactive, { backgroundColor: themeColors.card }]}>
+                  <Text style={[styles.filterText, { color: themeColors.textSecondary }]}>Prix décroissant</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -284,7 +297,7 @@ export default function ExploreScreen() {
 
         {/* Produits filtrés */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
+          <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
             Produits ({filteredProducts.length})
           </Text>
 
@@ -293,14 +306,14 @@ export default function ExploreScreen() {
               {filteredProducts.map((product) => (
                 <TouchableOpacity
                   key={product.id}
-                  style={styles.productCard}
+                  style={[styles.productCard, { backgroundColor: themeColors.card }]}
                   onPress={() => router.push(`/product/${product.id}`)}>
                   <Image
                     source={{ uri: product.image_url || 'https://via.placeholder.com/150' }}
                     style={styles.productImage}
                   />
                   <View style={styles.productInfo}>
-                    <Text style={styles.productTitle} numberOfLines={2}>
+                    <Text style={[styles.productTitle, { color: themeColors.text }]} numberOfLines={2}>
                       {product.title}
                     </Text>
                     <Text style={styles.productPrice}>
@@ -309,7 +322,7 @@ export default function ExploreScreen() {
                     {product.average_rating > 0 && (
                       <View style={styles.ratingContainer}>
                         <Star size={14} color="#FFA500" fill="#FFA500" />
-                        <Text style={styles.ratingText}>{product.average_rating.toFixed(1)}</Text>
+                        <Text style={[styles.ratingText, { color: themeColors.textSecondary }]}>{product.average_rating.toFixed(1)}</Text>
                       </View>
                     )}
                   </View>
@@ -318,7 +331,7 @@ export default function ExploreScreen() {
             </View>
           ) : (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Aucun produit trouvé</Text>
+              <Text style={[styles.emptyText, { color: themeColors.textMuted }]}>Aucun produit trouvé</Text>
             </View>
           )}
         </View>

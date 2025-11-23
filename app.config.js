@@ -11,13 +11,22 @@ module.exports = {
     userInterfaceStyle: "automatic",
     newArchEnabled: false,
     ios: {
-      supportsTablet: true
+      supportsTablet: true,
+      bundleIdentifier: "com.senepanda.app",
+      infoPlist: {
+        NSSpeechRecognitionUsageDescription: "Cette application utilise la reconnaissance vocale pour rechercher des produits.",
+        NSMicrophoneUsageDescription: "Cette application utilise le microphone pour la recherche vocale."
+      }
     },
     android: {
+      package: "com.senepanda.app",
       adaptiveIcon: {
-        foregroundImage: "./assets/images/adaptive-icon.png",
+        foregroundImage: "./assets/images/icon.png",
         backgroundColor: "#ffffff"
-      }
+      },
+      permissions: [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     web: {
       bundler: "metro",

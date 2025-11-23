@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,49 +9,117 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { Store, ArrowRight, ArrowLeft } from 'lucide-react-native';
+import {
+  Store,
+  ArrowRight,
+  ArrowLeft,
+  Phone,
+  MapPin,
+  FileText,
+  User,
+  Globe,
+  Mail,
+  Clock,
+  Star,
+  ShoppingBag,
+  Check
+} from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SHOP_LOGOS, SHOP_BANNERS, ShopLogo, ShopBanner, getBannerStyle } from '@/lib/shop-designs';
-
-type WizardStep = 1 | 2 | 3;
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function ShopWizardScreen() {
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState<WizardStep>(1);
   const [loading, setLoading] = useState(false);
+  const [checkingShop, setCheckingShop] = useState(true);
 
   // Form data
   const [shopName, setShopName] = useState('');
   const [shopDescription, setShopDescription] = useState('');
   const [phone, setPhone] = useState('');
   const [country, setCountry] = useState('Sénégal');
-  const [selectedLogo, setSelectedLogo] = useState<ShopLogo>(SHOP_LOGOS[0]);
-  const [selectedBanner, setSelectedBanner] = useState<ShopBanner>(SHOP_BANNERS[0]);
-  const [customLogoUrl, setCustomLogoUrl] = useState<string | null>(null);
-  const [customBannerUrl, setCustomBannerUrl] = useState<string | null>(null);
+  const [city, setCity] = useState('');
+  const [email, setEmail] = useState('');
+  const [openingHours, setOpeningHours] = useState('');
 
-  const handleNext = () => {
-    if (currentStep === 1 && !shopName.trim()) {
+  // Vérifier si le vendeur a déjà une boutique
+  useEffect(() => {
+    checkExistingShop();
+  }, []);
+
+  const checkExistingShop = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.replace('/(tabs)/profile');
+        return;
+      }
+
+      // Vérifier si une boutique existe
+      const { data: shop } = await supabase
+        .from('shops')
+        .select('id, name')
+        .eq('seller_id', user.id)
+        .maybeSingle();
+
+      if (shop) {
+        Alert.alert(
+          'Boutique existante',
+          `Vous avez déjà une boutique "${shop.name}". Vous allez être redirigé vers l'ajout de produit.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/seller/add-product' as any),
+            },
+          ]
+        );
+        return;
+      }
+
+      // Vérifier aussi dans le profil
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('shop_name, email')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (profile?.shop_name) {
+        Alert.alert(
+          'Boutique existante',
+          `Vous avez déjà une boutique "${profile.shop_name}". Vous allez être redirigé vers l'ajout de produit.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/seller/add-product' as any),
+            },
+          ]
+        );
+        return;
+      }
+
+      // Pré-remplir l'email si disponible
+      if (profile?.email) {
+        setEmail(profile.email);
+      }
+    } catch (error) {
+      console.error('Error checking existing shop:', error);
+    } finally {
+      setCheckingShop(false);
+    }
+  };
+
+  const handleCreateShop = async () => {
+    if (!shopName.trim()) {
       Alert.alert('Erreur', 'Le nom de la boutique est requis');
       return;
     }
-    if (currentStep < 3) {
-      setCurrentStep((currentStep + 1) as WizardStep);
-    }
-  };
 
-  const handlePrevious = () => {
-    if (currentStep > 1) {
-      setCurrentStep((currentStep - 1) as WizardStep);
-    }
-  };
-
-  const handleFinish = async () => {
-    if (!shopName.trim()) {
-      Alert.alert('Erreur', 'Le nom de la boutique est requis');
+    if (!phone.trim()) {
+      Alert.alert('Erreur', 'Le numéro de téléphone est requis');
       return;
     }
 
@@ -61,23 +129,23 @@ export default function ShopWizardScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Non authentifié');
 
+      // Mettre à jour le profil
       const { error } = await supabase
         .from('profiles')
         .update({
           is_seller: true,
           shop_name: shopName.trim(),
           shop_description: shopDescription.trim() || null,
-          shop_logo_url: customLogoUrl || selectedLogo.id, // URL personnalisée ou ID
-          shop_banner_url: customBannerUrl || selectedBanner.id, // URL personnalisée ou ID
-          phone: phone || null,
-          country: country || null,
+          phone: phone.trim(),
+          country: country.trim() || 'Sénégal',
+          city: city.trim() || null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
 
       if (error) throw error;
 
-      // Rediriger vers l'écran de succès avec les options de navigation
+      // Rediriger vers l'écran de succès
       router.replace(`/seller/shop-success?shopId=${user.id}`);
     } catch (error: any) {
       Alert.alert('Erreur', error.message);
@@ -86,323 +154,318 @@ export default function ShopWizardScreen() {
     }
   };
 
-  // Live Preview Component
-  const renderPreview = () => {
-    const bannerStyle = getBannerStyle(selectedBanner);
+  // Composant Aperçu en temps réel
+  const LivePreview = () => (
+    <View style={styles.previewContainer}>
+      <View style={styles.previewHeader}>
+        <Store size={20} color="#F59E0B" />
+        <Text style={styles.previewTitle}>Aperçu en temps réel</Text>
+      </View>
 
-    return (
-      <View style={styles.previewContainer}>
-        <View style={styles.previewHeader}>
-          <Store size={20} color="#F59E0B" />
-          <Text style={styles.previewTitle}>Aperçu en temps réel</Text>
-        </View>
+      <View style={styles.previewCard}>
+        {/* Banner Gradient */}
+        <LinearGradient
+          colors={['#F59E0B', '#D97706']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.previewBanner}
+        >
+          <View style={styles.bannerPattern}>
+            <Store size={40} color="rgba(255,255,255,0.2)" />
+          </View>
+        </LinearGradient>
 
-        <View style={styles.previewCard}>
-          {/* Banner */}
-          {customBannerUrl ? (
-            <Image
-              source={{ uri: customBannerUrl }}
-              style={styles.previewBannerContainer}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={[styles.previewBannerContainer, { backgroundColor: bannerStyle.background }]}>
-              <Text style={styles.previewBannerText}>Bannière</Text>
+        {/* Shop Logo */}
+        <View style={styles.previewLogoWrapper}>
+          <LinearGradient
+            colors={['#10B981', '#059669']}
+            style={styles.previewLogo}
+          >
+            <Text style={styles.previewLogoText}>
+              {shopName ? shopName.charAt(0).toUpperCase() : 'B'}
+            </Text>
+          </LinearGradient>
+          {shopName && (
+            <View style={styles.verifiedBadge}>
+              <Check size={10} color="#FFF" />
             </View>
           )}
+        </View>
 
-          {/* Logo */}
-          <View style={styles.previewLogoContainer}>
-            {customLogoUrl ? (
-              <Image
-                source={{ uri: customLogoUrl }}
-                style={[styles.previewLogo, { backgroundColor: '#FFFFFF' }]}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[styles.previewLogo, { backgroundColor: selectedLogo.bgColor }]}>
-                <Text style={styles.previewLogoIcon}>{selectedLogo.icon}</Text>
-              </View>
-            )}
-          </View>
+        {/* Shop Info */}
+        <View style={styles.previewInfo}>
+          <Text style={styles.previewShopName}>
+            {shopName.trim() || 'Nom de votre boutique'}
+          </Text>
 
-          {/* Shop Info */}
-          <View style={styles.previewInfo}>
-            <Text style={styles.previewShopName}>
-              {shopName.trim() || 'Nom de la boutique'}
-            </Text>
+          {shopDescription ? (
             <Text style={styles.previewDescription} numberOfLines={3}>
-              {shopDescription.trim() || 'Description de votre boutique...'}
+              {shopDescription}
             </Text>
+          ) : (
+            <Text style={styles.previewDescriptionPlaceholder}>
+              Description de votre boutique...
+            </Text>
+          )}
 
-            {(phone || country) && (
-              <View style={styles.previewContact}>
-                {phone && (
-                  <Text style={styles.previewContactText}>📞 {phone}</Text>
-                )}
-                {country && (
-                  <Text style={styles.previewContactText}>🌍 {country}</Text>
-                )}
+          {/* Stats Row */}
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Star size={14} color="#F59E0B" fill="#F59E0B" />
+              <Text style={styles.statText}>Nouveau</Text>
+            </View>
+            <View style={styles.statItem}>
+              <ShoppingBag size={14} color="#6B7280" />
+              <Text style={styles.statText}>0 produits</Text>
+            </View>
+          </View>
+
+          {/* Contact Info */}
+          <View style={styles.previewContactSection}>
+            {phone && (
+              <View style={styles.previewContactItem}>
+                <View style={styles.contactIconWrapper}>
+                  <Phone size={14} color="#10B981" />
+                </View>
+                <Text style={styles.previewContactText}>{phone}</Text>
+              </View>
+            )}
+
+            {(city || country) && (
+              <View style={styles.previewContactItem}>
+                <View style={styles.contactIconWrapper}>
+                  <MapPin size={14} color="#3B82F6" />
+                </View>
+                <Text style={styles.previewContactText}>
+                  {city ? `${city}, ${country}` : country}
+                </Text>
+              </View>
+            )}
+
+            {email && (
+              <View style={styles.previewContactItem}>
+                <View style={styles.contactIconWrapper}>
+                  <Mail size={14} color="#8B5CF6" />
+                </View>
+                <Text style={styles.previewContactText} numberOfLines={1}>
+                  {email}
+                </Text>
+              </View>
+            )}
+
+            {openingHours && (
+              <View style={styles.previewContactItem}>
+                <View style={styles.contactIconWrapper}>
+                  <Clock size={14} color="#F59E0B" />
+                </View>
+                <Text style={styles.previewContactText}>{openingHours}</Text>
               </View>
             )}
           </View>
         </View>
-      </View>
-    );
-  };
 
-  // Form Steps
-  const renderStep1 = () => (
-    <View style={styles.formContent}>
-      <Text style={styles.stepTitle}>Informations de base</Text>
-      <Text style={styles.stepDescription}>
-        Commencez par nommer votre boutique et la décrire
-      </Text>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Nom de la boutique *</Text>
-        <TextInput
-          style={styles.input}
-          value={shopName}
-          onChangeText={setShopName}
-          placeholder="Ex: Boutique Artisanat Dakar"
-          placeholderTextColor="#9CA3AF"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Description</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          value={shopDescription}
-          onChangeText={setShopDescription}
-          placeholder="Décrivez votre boutique et ce que vous vendez..."
-          placeholderTextColor="#9CA3AF"
-          multiline
-          numberOfLines={4}
-          textAlignVertical="top"
-        />
-      </View>
-    </View>
-  );
-
-  const handleCustomLogo = () => {
-    Alert.prompt(
-      'Logo personnalisé',
-      'Collez le lien URL de votre logo',
-      [
-        {
-          text: 'Annuler',
-          onPress: () => setCustomLogoUrl(null),
-          style: 'cancel',
-        },
-        {
-          text: 'Ajouter',
-          onPress: (url: any) => {
-            if (url && url.trim()) {
-              setCustomLogoUrl(url.trim());
-            }
-          },
-        },
-      ],
-      'plain-text'
-    );
-  };
-
-  const handleCustomBanner = () => {
-    Alert.prompt(
-      'Bannière personnalisée',
-      'Collez le lien URL de votre bannière',
-      [
-        {
-          text: 'Annuler',
-          onPress: () => setCustomBannerUrl(null),
-          style: 'cancel',
-        },
-        {
-          text: 'Ajouter',
-          onPress: (url: any) => {
-            if (url && url.trim()) {
-              setCustomBannerUrl(url.trim());
-            }
-          },
-        },
-      ],
-      'plain-text'
-    );
-  };
-
-  const renderStep2 = () => (
-    <View style={styles.formContent}>
-      <Text style={styles.stepTitle}>Design de la boutique</Text>
-      <Text style={styles.stepDescription}>
-        Choisissez un logo et une bannière pour votre boutique
-      </Text>
-
-      <View style={styles.inputGroup}>
-        <View style={styles.labelRow}>
-          <Text style={styles.label}>Logo</Text>
-          <TouchableOpacity onPress={handleCustomLogo}>
-            <Text style={styles.customLink}>+ URL personnalisée</Text>
-          </TouchableOpacity>
+        {/* Action Buttons Preview */}
+        <View style={styles.previewActions}>
+          <View style={styles.previewActionButton}>
+            <Phone size={16} color="#FFF" />
+            <Text style={styles.previewActionText}>Appeler</Text>
+          </View>
+          <View style={[styles.previewActionButton, styles.previewActionSecondary]}>
+            <Mail size={16} color="#F59E0B" />
+            <Text style={[styles.previewActionText, styles.previewActionTextSecondary]}>Message</Text>
+          </View>
         </View>
-        {customLogoUrl && (
-          <TouchableOpacity
-            style={styles.customPreview}
-            onPress={() => setCustomLogoUrl(null)}>
-            <Text style={styles.customPreviewText}>URL: {customLogoUrl.substring(0, 30)}...</Text>
-            <Text style={styles.customRemoveText}>✕ Supprimer</Text>
-          </TouchableOpacity>
-        )}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.logosScroll}>
-          {SHOP_LOGOS.map(logo => (
-            <TouchableOpacity
-              key={logo.id}
-              style={[
-                styles.logoOption,
-                { backgroundColor: logo.bgColor },
-                selectedLogo.id === logo.id && !customLogoUrl && styles.logoOptionSelected,
-              ]}
-              onPress={() => {
-                setCustomLogoUrl(null);
-                setSelectedLogo(logo);
-              }}>
-              <Text style={styles.logoOptionIcon}>{logo.icon}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
       </View>
+    </View>
+  );
 
-      <View style={styles.inputGroup}>
-        <View style={styles.labelRow}>
-          <Text style={styles.label}>Bannière</Text>
-          <TouchableOpacity onPress={handleCustomBanner}>
-            <Text style={styles.customLink}>+ URL personnalisée</Text>
-          </TouchableOpacity>
+  // Afficher un écran de chargement pendant la vérification
+  if (checkingShop) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#F59E0B" />
+          <Text style={styles.loadingText}>Vérification de votre boutique...</Text>
         </View>
-        {customBannerUrl && (
-          <TouchableOpacity
-            style={styles.customPreview}
-            onPress={() => setCustomBannerUrl(null)}>
-            <Text style={styles.customPreviewText}>URL: {customBannerUrl.substring(0, 30)}...</Text>
-            <Text style={styles.customRemoveText}>✕ Supprimer</Text>
-          </TouchableOpacity>
-        )}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.bannersScroll}>
-          {SHOP_BANNERS.map(banner => {
-            const bannerStyle = getBannerStyle(banner);
-            return (
-              <TouchableOpacity
-                key={banner.id}
-                style={[
-                  styles.bannerOption,
-                  { backgroundColor: bannerStyle.background },
-                  selectedBanner.id === banner.id && !customBannerUrl && styles.bannerOptionSelected,
-                ]}
-                onPress={() => {
-                  setCustomBannerUrl(null);
-                  setSelectedBanner(banner);
-                }}
-              />
-            );
-          })}
-        </ScrollView>
-      </View>
-    </View>
-  );
-
-  const renderStep3 = () => (
-    <View style={styles.formContent}>
-      <Text style={styles.stepTitle}>Informations de contact</Text>
-      <Text style={styles.stepDescription}>
-        Aidez vos clients à vous contacter facilement
-      </Text>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Téléphone</Text>
-        <TextInput
-          style={styles.input}
-          value={phone}
-          onChangeText={setPhone}
-          placeholder="+221 XX XXX XX XX"
-          keyboardType="phone-pad"
-          placeholderTextColor="#9CA3AF"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Pays</Text>
-        <TextInput
-          style={styles.input}
-          value={country}
-          onChangeText={setCountry}
-          placeholder="Sénégal"
-          placeholderTextColor="#9CA3AF"
-        />
-      </View>
-    </View>
-  );
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <ArrowLeft size={24} color="#374151" />
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
           <Store size={28} color="#F59E0B" />
           <Text style={styles.headerTitle}>Créer ma boutique</Text>
         </View>
-        <View style={styles.stepIndicator}>
-          <Text style={styles.stepIndicatorText}>
-            Étape {currentStep}/3
-          </Text>
-        </View>
+        <View style={{ width: 40 }} />
       </View>
 
-      {/* Split View */}
-      <View style={styles.content}>
-        {/* Form Side */}
-        <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
-          {currentStep === 1 && renderStep1()}
-          {currentStep === 2 && renderStep2()}
-          {currentStep === 3 && renderStep3()}
-        </ScrollView>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.content}
+      >
+        {/* Split View */}
+        <View style={styles.splitContainer}>
+          {/* Form Side */}
+          <ScrollView
+            style={styles.formContainer}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.formContent}
+          >
+            <Text style={styles.formTitle}>Informations de la boutique</Text>
+            <Text style={styles.formSubtitle}>
+              Remplissez les informations et voyez l'aperçu en temps réel
+            </Text>
 
-        {/* Preview Side */}
-        <View style={styles.previewSide}>
-          {renderPreview()}
+            {/* Shop Name */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <User size={16} color="#F59E0B" />
+                <Text style={styles.label}>Nom de la boutique *</Text>
+              </View>
+              <TextInput
+                style={styles.input}
+                value={shopName}
+                onChangeText={setShopName}
+                placeholder="Ex: Boutique Artisanat Dakar"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+
+            {/* Description */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <FileText size={16} color="#F59E0B" />
+                <Text style={styles.label}>Description</Text>
+              </View>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={shopDescription}
+                onChangeText={setShopDescription}
+                placeholder="Décrivez votre boutique et ce que vous vendez..."
+                placeholderTextColor="#9CA3AF"
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+            </View>
+
+            {/* Phone */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Phone size={16} color="#F59E0B" />
+                <Text style={styles.label}>Téléphone *</Text>
+              </View>
+              <TextInput
+                style={styles.input}
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="+221 77 123 45 67"
+                keyboardType="phone-pad"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+
+            {/* Country & City Row */}
+            <View style={styles.rowInputs}>
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <View style={styles.labelRow}>
+                  <Globe size={16} color="#F59E0B" />
+                  <Text style={styles.label}>Pays</Text>
+                </View>
+                <TextInput
+                  style={styles.input}
+                  value={country}
+                  onChangeText={setCountry}
+                  placeholder="Sénégal"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <View style={styles.labelRow}>
+                  <MapPin size={16} color="#F59E0B" />
+                  <Text style={styles.label}>Ville</Text>
+                </View>
+                <TextInput
+                  style={styles.input}
+                  value={city}
+                  onChangeText={setCity}
+                  placeholder="Dakar"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+            </View>
+
+            {/* Email */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Mail size={16} color="#F59E0B" />
+                <Text style={styles.label}>Email (optionnel)</Text>
+              </View>
+              <TextInput
+                style={styles.input}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="contact@maboutique.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+
+            {/* Opening Hours */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Clock size={16} color="#F59E0B" />
+                <Text style={styles.label}>Horaires (optionnel)</Text>
+              </View>
+              <TextInput
+                style={styles.input}
+                value={openingHours}
+                onChangeText={setOpeningHours}
+                placeholder="Lun-Sam: 8h-18h"
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+          </ScrollView>
+
+          {/* Preview Side */}
+          <View style={styles.previewSide}>
+            <LivePreview />
+          </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
-      {/* Navigation Footer */}
+      {/* Footer */}
       <View style={styles.footer}>
-        {currentStep > 1 && (
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={handlePrevious}
-            disabled={loading}>
-            <ArrowLeft size={20} color="#374151" />
-            <Text style={styles.secondaryButtonText}>Retour</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={styles.cancelButton}
+          onPress={() => router.back()}
+          disabled={loading}
+        >
+          <Text style={styles.cancelButtonText}>Annuler</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.primaryButton, { flex: currentStep === 1 ? 1 : 0.48 }]}
-          onPress={currentStep === 3 ? handleFinish : handleNext}
-          disabled={loading}>
+          style={[styles.createButton, (!shopName || !phone) && styles.createButtonDisabled]}
+          onPress={handleCreateShop}
+          disabled={loading || !shopName || !phone}
+        >
           {loading ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
             <>
-              <Text style={styles.primaryButtonText}>
-                {currentStep === 3 ? 'Créer ma boutique' : 'Suivant'}
-              </Text>
-              {currentStep < 3 && <ArrowRight size={20} color="#FFFFFF" />}
+              <Text style={styles.createButtonText}>Créer ma boutique</Text>
+              <ArrowRight size={20} color="#FFFFFF" />
             </>
           )}
         </TouchableOpacity>
@@ -416,6 +479,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -426,7 +500,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
-  headerLeft: {
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerCenter: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -436,148 +518,69 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#111827',
   },
-  stepIndicator: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  stepIndicatorText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#D97706',
-  },
   content: {
+    flex: 1,
+  },
+  splitContainer: {
     flex: 1,
     flexDirection: 'row',
   },
   formContainer: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 24,
+    backgroundColor: '#FFFFFF',
   },
   formContent: {
-    flex: 1,
+    padding: 20,
+    paddingBottom: 40,
   },
-  stepTitle: {
+  formTitle: {
     fontSize: 24,
     fontWeight: '700',
     color: '#111827',
     marginBottom: 8,
   },
-  stepDescription: {
-    fontSize: 16,
+  formSubtitle: {
+    fontSize: 14,
     color: '#6B7280',
     marginBottom: 24,
-    lineHeight: 24,
+    lineHeight: 20,
   },
   inputGroup: {
     marginBottom: 20,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
   },
   label: {
     fontSize: 14,
     fontWeight: '600',
     color: '#374151',
-    marginBottom: 8,
   },
   input: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F9FAFB',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
     color: '#111827',
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: '#E5E7EB',
   },
   textArea: {
     minHeight: 100,
     paddingTop: 14,
   },
-  logosScroll: {
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
-  },
-  logoOption: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    borderWidth: 3,
-    borderColor: 'transparent',
-  },
-  logoOptionSelected: {
-    borderColor: '#F59E0B',
-    shadowColor: '#F59E0B',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  logoOptionIcon: {
-    fontSize: 32,
-  },
-  bannersScroll: {
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
-  },
-  bannerOption: {
-    width: 120,
-    height: 70,
-    borderRadius: 12,
-    marginRight: 12,
-    borderWidth: 3,
-    borderColor: 'transparent',
-  },
-  bannerOptionSelected: {
-    borderColor: '#F59E0B',
-    shadowColor: '#F59E0B',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  labelRow: {
+  rowInputs: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  customLink: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#3B82F6',
-  },
-  customPreview: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#3B82F6',
-  },
-  customPreviewText: {
-    flex: 1,
-    fontSize: 12,
-    color: '#1E40AF',
-    fontWeight: '500',
-  },
-  customRemoveText: {
-    fontSize: 12,
-    color: '#EF4444',
-    fontWeight: '600',
-    marginLeft: 8,
+    gap: 12,
   },
   previewSide: {
     flex: 1,
     backgroundColor: '#F3F4F6',
-    padding: 20,
+    padding: 16,
   },
   previewContainer: {
     flex: 1,
@@ -595,75 +598,154 @@ const styles = StyleSheet.create({
   },
   previewCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
   },
-  previewBannerContainer: {
+  previewBanner: {
     width: '100%',
-    height: 120,
+    height: 100,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  previewBannerText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    opacity: 0.7,
+  bannerPattern: {
+    opacity: 0.5,
   },
-  previewLogoContainer: {
-    marginTop: -40,
+  previewLogoWrapper: {
+    marginTop: -35,
     alignSelf: 'center',
+    position: 'relative',
+  },
+  previewLogo: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    borderWidth: 4,
+    borderColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 4,
   },
-  previewLogo: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
+  previewLogoText: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  verifiedBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#10B981',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  previewLogoIcon: {
-    fontSize: 36,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   previewInfo: {
-    padding: 20,
-    paddingTop: 16,
+    padding: 16,
+    paddingTop: 12,
   },
   previewShopName: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#111827',
     textAlign: 'center',
     marginBottom: 8,
   },
   previewDescription: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#6B7280',
     textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 16,
+    lineHeight: 18,
+    marginBottom: 12,
   },
-  previewContact: {
-    gap: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+  previewDescriptionPlaceholder: {
+    fontSize: 13,
+    color: '#D1D5DB',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  previewContactSection: {
+    gap: 10,
+  },
+  previewContactItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  contactIconWrapper: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   previewContactText: {
     fontSize: 13,
     color: '#374151',
     fontWeight: '500',
+    flex: 1,
+  },
+  previewActions: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  previewActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#F59E0B',
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  previewActionSecondary: {
+    backgroundColor: '#FEF3C7',
+  },
+  previewActionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  previewActionTextSecondary: {
+    color: '#F59E0B',
   },
   footer: {
     flexDirection: 'row',
@@ -674,7 +756,20 @@ const styles = StyleSheet.create({
     borderTopColor: '#E5E7EB',
     gap: 12,
   },
-  primaryButton: {
+  cancelButton: {
+    flex: 0.35,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  createButton: {
+    flex: 0.65,
     backgroundColor: '#F59E0B',
     borderRadius: 12,
     paddingVertical: 16,
@@ -682,27 +777,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  primaryButtonText: {
+  createButtonDisabled: {
+    backgroundColor: '#D1D5DB',
+    shadowOpacity: 0,
+  },
+  createButtonText: {
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
-  },
-  secondaryButton: {
-    flex: 0.48,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-  },
-  secondaryButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#374151',
   },
 });

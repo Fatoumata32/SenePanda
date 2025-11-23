@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MessageCircle, Search } from 'lucide-react-native';
+import { useTheme } from '@/contexts/ThemeContext';
 
 type ConversationDetail = {
   conversation_id: string;
@@ -27,9 +28,22 @@ type ConversationDetail = {
 
 export default function MessagesScreen() {
   const { user } = useAuth();
+  const { isDark } = useTheme();
   const [conversations, setConversations] = useState<ConversationDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [channel, setChannel] = useState<RealtimeChannel | null>(null);
+
+  // Theme colors
+  const themeColors = {
+    background: isDark ? '#111827' : '#FFF8F0',
+    card: isDark ? '#1F2937' : '#FFFFFF',
+    text: isDark ? '#F9FAFB' : '#1F2937',
+    textSecondary: isDark ? '#D1D5DB' : '#6B7280',
+    textMuted: isDark ? '#9CA3AF' : '#9CA3AF',
+    border: isDark ? '#374151' : '#F3F4F6',
+    headerBg: isDark ? '#1F2937' : '#FFFFFF',
+    searchBg: isDark ? '#374151' : '#F3F4F6',
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -107,7 +121,7 @@ export default function MessagesScreen() {
 
   const renderConversation = ({ item }: { item: ConversationDetail }) => (
     <TouchableOpacity
-      style={styles.conversationCard}
+      style={[styles.conversationCard, { backgroundColor: themeColors.card }]}
       onPress={() => router.push(`/chat/${item.conversation_id}`)}
       activeOpacity={0.7}
     >
@@ -128,10 +142,10 @@ export default function MessagesScreen() {
 
       <View style={styles.conversationContent}>
         <View style={styles.conversationHeader}>
-          <Text style={styles.userName} numberOfLines={1}>
+          <Text style={[styles.userName, { color: themeColors.text }]} numberOfLines={1}>
             {item.other_user_name}
           </Text>
-          <Text style={styles.timestamp}>
+          <Text style={[styles.timestamp, { color: themeColors.textMuted }]}>
             {formatTime(item.last_message_at)}
           </Text>
         </View>
@@ -146,7 +160,8 @@ export default function MessagesScreen() {
           <Text
             style={[
               styles.lastMessage,
-              item.unread_count > 0 && styles.unreadMessage,
+              { color: themeColors.textSecondary },
+              item.unread_count > 0 && [styles.unreadMessage, { color: themeColors.text }],
             ]}
             numberOfLines={1}
           >
@@ -174,13 +189,13 @@ export default function MessagesScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
+      <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]} edges={['top']}>
+        <View style={[styles.header, { backgroundColor: themeColors.headerBg, borderBottomColor: themeColors.border }]}>
           <Text style={styles.headerTitle}>MESSAGES</Text>
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FF8C42" />
-          <Text style={styles.loadingText}>Chargement...</Text>
+          <Text style={[styles.loadingText, { color: themeColors.textSecondary }]}>Chargement...</Text>
         </View>
       </SafeAreaView>
     );
@@ -188,14 +203,14 @@ export default function MessagesScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
+      <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]} edges={['top']}>
+        <View style={[styles.header, { backgroundColor: themeColors.headerBg, borderBottomColor: themeColors.border }]}>
           <Text style={styles.headerTitle}>MESSAGES</Text>
         </View>
         <View style={styles.emptyContainer}>
-          <MessageCircle size={80} color="#D1D5DB" strokeWidth={1.5} />
-          <Text style={styles.emptyTitle}>Connexion requise</Text>
-          <Text style={styles.emptyText}>
+          <MessageCircle size={80} color={themeColors.textMuted} strokeWidth={1.5} />
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Connexion requise</Text>
+          <Text style={[styles.emptyText, { color: themeColors.textSecondary }]}>
             Connectez-vous pour voir vos conversations
           </Text>
           <TouchableOpacity
@@ -216,14 +231,14 @@ export default function MessagesScreen() {
 
   if (conversations.length === 0) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
+      <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]} edges={['top']}>
+        <View style={[styles.header, { backgroundColor: themeColors.headerBg, borderBottomColor: themeColors.border }]}>
           <Text style={styles.headerTitle}>MESSAGES</Text>
         </View>
         <View style={styles.emptyContainer}>
-          <MessageCircle size={80} color="#D1D5DB" strokeWidth={1.5} />
-          <Text style={styles.emptyTitle}>Aucune conversation</Text>
-          <Text style={styles.emptyText}>
+          <MessageCircle size={80} color={themeColors.textMuted} strokeWidth={1.5} />
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Aucune conversation</Text>
+          <Text style={[styles.emptyText, { color: themeColors.textSecondary }]}>
             Vos conversations avec les vendeurs et acheteurs apparaîtront ici
           </Text>
           <TouchableOpacity
@@ -243,9 +258,9 @@ export default function MessagesScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]} edges={['top']}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: themeColors.headerBg, borderBottomColor: themeColors.border }]}>
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>MESSAGES</Text>
           {getTotalUnread() > 0 && (
@@ -254,8 +269,8 @@ export default function MessagesScreen() {
             </View>
           )}
         </View>
-        <TouchableOpacity style={styles.searchButton}>
-          <Search size={22} color="#6B7280" />
+        <TouchableOpacity style={[styles.searchButton, { backgroundColor: themeColors.searchBg }]}>
+          <Search size={22} color={themeColors.textSecondary} />
         </TouchableOpacity>
       </View>
 

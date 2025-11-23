@@ -41,9 +41,20 @@ export default function ShopPage() {
         .select('*')
         .eq('id', id)
         .eq('is_seller', true)
-        .single();
+        .maybeSingle();
 
-      if (shopError) throw shopError;
+      if (shopError) {
+        console.error('Error loading shop:', shopError);
+        throw shopError;
+      }
+
+      if (!shopData) {
+        console.warn('Shop not found with id:', id);
+        setShop(null);
+        setProducts([]);
+        return;
+      }
+
       setShop(shopData);
 
       // Charger les produits de la boutique

@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+import { Tabs, useSegments } from 'expo-router';
 import { Colors } from '@/constants/Colors';
 import { useNavigation } from '@/contexts/NavigationContext';
 import NavigationService from '@/lib/navigation';
@@ -7,24 +7,31 @@ import ShopIcon from '@/components/icons/ShopIcon';
 import HeartIcon from '@/components/icons/HeartIcon';
 import MessageIcon from '@/components/icons/MessageIcon';
 import UserIcon from '@/components/icons/UserIcon';
-import Badge from '@/components/Badge';
 import { View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import CartBadge from '@/components/cart/CartBadge';
 
 export default function TabLayout() {
-  const { isAuthenticated, hasRoleSelected } = useNavigation();
+  const { isAuthenticated, hasRoleSelected, isLoading } = useNavigation();
+  const segments = useSegments();
+
+  // Vérifier si on est sur une page où on ne veut pas afficher les tabs
+  const currentPath = segments.join('/');
+  const hideTabBar =
+    isLoading || // Cacher pendant le chargement
+    !isAuthenticated || // Cacher si non connecté
+    currentPath === ''; // Cacher sur la page d'accueil initiale
 
   const handleTabPress = (e: any, routeName: string) => {
-    // Bloquer l'accès si non connecté et ce n'est pas la page profile ou index
-    if (!isAuthenticated && routeName !== 'profile' && routeName !== 'index') {
-      e.preventDefault();
-      NavigationService.goToLogin(`/(tabs)/${routeName}` as any);
-      return;
+    // La page d'accueil (home) et le profil sont toujours accessibles
+    if (routeName === 'home' || routeName === 'profile') {
+      return; // Laisser la navigation se faire normalement
     }
 
-    // Bloquer l'accès si le rôle n'est pas sélectionné
-    if (isAuthenticated && !hasRoleSelected && routeName !== 'profile') {
+    // Pour les autres pages, bloquer si non connecté
+    if (!isAuthenticated) {
       e.preventDefault();
-      NavigationService.goToRoleSelection();
+      NavigationService.goToLogin(`/(tabs)/${routeName}` as any);
       return;
     }
   };
@@ -35,25 +42,27 @@ export default function TabLayout() {
         headerShown: false,
         tabBarActiveTintColor: Colors.primaryGold,
         tabBarInactiveTintColor: Colors.textMuted,
-        tabBarStyle: {
-          backgroundColor: Colors.white,
-          borderTopWidth: 0,
-          paddingBottom: 8,
-          paddingTop: 8,
-          height: 65,
-          elevation: 20,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.1,
-          shadowRadius: 12,
-        },
+        tabBarStyle: hideTabBar
+          ? { display: 'none' } // Cacher complètement la barre de navigation
+          : {
+              backgroundColor: Colors.white,
+              borderTopWidth: 0,
+              paddingBottom: 8,
+              paddingTop: 8,
+              height: 65,
+              elevation: 20,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: -4 },
+              shadowOpacity: 0.1,
+              shadowRadius: 12,
+            },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
         },
       }}>
       <Tabs.Screen
-        name="index"
+        name="home"
         options={{
           title: 'Accueil',
           tabBarIcon: ({ color, focused }) => (
@@ -61,7 +70,7 @@ export default function TabLayout() {
           ),
         }}
         listeners={{
-          tabPress: (e) => handleTabPress(e, 'index'),
+          tabPress: (e) => handleTabPress(e, 'home'),
         }}
       />
       <Tabs.Screen
@@ -86,6 +95,25 @@ export default function TabLayout() {
         }}
         listeners={{
           tabPress: (e) => handleTabPress(e, 'favorites'),
+        }}
+      />
+      <Tabs.Screen
+        name="cart"
+        options={{
+          title: 'Panier',
+          tabBarIcon: ({ color, focused }) => (
+            <View>
+              <Ionicons
+                name={focused ? 'cart' : 'cart-outline'}
+                size={26}
+                color={color}
+              />
+              <CartBadge />
+            </View>
+          ),
+        }}
+        listeners={{
+          tabPress: (e) => handleTabPress(e, 'cart'),
         }}
       />
       <Tabs.Screen

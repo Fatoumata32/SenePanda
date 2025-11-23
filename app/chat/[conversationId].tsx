@@ -11,6 +11,148 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
 import { uploadChatImage, uploadVoiceMessage } from '@/lib/uploadMedia';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '@/contexts/ThemeContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Chat themes
+type ChatTheme = {
+  id: string;
+  name: string;
+  emoji: string;
+  background: string;
+  headerBg: string;
+  inputBg: string;
+  ownBubble: string;
+  otherBubble: string;
+  ownText: string;
+  otherText: string;
+  textSecondary: string;
+  border: string;
+  accent: string;
+};
+
+const chatThemes: ChatTheme[] = [
+  {
+    id: 'default',
+    name: 'Classique',
+    emoji: '💬',
+    background: '#F9FAFB',
+    headerBg: '#FFFFFF',
+    inputBg: '#FFFFFF',
+    ownBubble: '#F97316',
+    otherBubble: '#FFFFFF',
+    ownText: '#FFFFFF',
+    otherText: '#1F2937',
+    textSecondary: '#6B7280',
+    border: '#E5E7EB',
+    accent: '#F97316',
+  },
+  {
+    id: 'naruto',
+    name: 'Naruto',
+    emoji: '🍥',
+    background: '#FFF4E6',
+    headerBg: '#FF6B00',
+    inputBg: '#FFF8F0',
+    ownBubble: '#FF6B00',
+    otherBubble: '#FFE4CC',
+    ownText: '#FFFFFF',
+    otherText: '#8B4513',
+    textSecondary: '#D2691E',
+    border: '#FFB366',
+    accent: '#FF6B00',
+  },
+  {
+    id: 'ocean',
+    name: 'Océan',
+    emoji: '🌊',
+    background: '#E6F3FF',
+    headerBg: '#0077B6',
+    inputBg: '#F0F8FF',
+    ownBubble: '#0077B6',
+    otherBubble: '#CAF0F8',
+    ownText: '#FFFFFF',
+    otherText: '#023E8A',
+    textSecondary: '#48CAE4',
+    border: '#90E0EF',
+    accent: '#0077B6',
+  },
+  {
+    id: 'sakura',
+    name: 'Sakura',
+    emoji: '🌸',
+    background: '#FFF0F5',
+    headerBg: '#FF69B4',
+    inputBg: '#FFF5F8',
+    ownBubble: '#FF69B4',
+    otherBubble: '#FFE4EC',
+    ownText: '#FFFFFF',
+    otherText: '#8B008B',
+    textSecondary: '#DB7093',
+    border: '#FFB6C1',
+    accent: '#FF69B4',
+  },
+  {
+    id: 'forest',
+    name: 'Forêt',
+    emoji: '🌲',
+    background: '#E8F5E9',
+    headerBg: '#2E7D32',
+    inputBg: '#F1F8E9',
+    ownBubble: '#2E7D32',
+    otherBubble: '#C8E6C9',
+    ownText: '#FFFFFF',
+    otherText: '#1B5E20',
+    textSecondary: '#558B2F',
+    border: '#A5D6A7',
+    accent: '#2E7D32',
+  },
+  {
+    id: 'galaxy',
+    name: 'Galaxie',
+    emoji: '🌌',
+    background: '#1A1A2E',
+    headerBg: '#16213E',
+    inputBg: '#0F3460',
+    ownBubble: '#E94560',
+    otherBubble: '#16213E',
+    ownText: '#FFFFFF',
+    otherText: '#E0E0E0',
+    textSecondary: '#9CA3AF',
+    border: '#0F3460',
+    accent: '#E94560',
+  },
+  {
+    id: 'gold',
+    name: 'Premium',
+    emoji: '👑',
+    background: '#FFFBEB',
+    headerBg: '#B8860B',
+    inputBg: '#FEF3C7',
+    ownBubble: '#B8860B',
+    otherBubble: '#FEF3C7',
+    ownText: '#FFFFFF',
+    otherText: '#78350F',
+    textSecondary: '#D97706',
+    border: '#FCD34D',
+    accent: '#B8860B',
+  },
+  {
+    id: 'midnight',
+    name: 'Minuit',
+    emoji: '🌙',
+    background: '#111827',
+    headerBg: '#1F2937',
+    inputBg: '#374151',
+    ownBubble: '#6366F1',
+    otherBubble: '#1F2937',
+    ownText: '#FFFFFF',
+    otherText: '#F9FAFB',
+    textSecondary: '#9CA3AF',
+    border: '#374151',
+    accent: '#6366F1',
+  },
+];
 
 type Message = {
   id: string;
@@ -136,6 +278,7 @@ function VoiceMessagePlayer({ voiceUrl, duration, isOwn }: { voiceUrl: string; d
 export default function ChatScreen() {
   const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
   const { user } = useAuth();
+  const { isDark } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -145,9 +288,54 @@ export default function ChatScreen() {
   const [channel, setChannel] = useState<RealtimeChannel | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
+  // Chat theme state
+  const [currentTheme, setCurrentTheme] = useState<ChatTheme>(chatThemes[0]);
+  const [showThemeModal, setShowThemeModal] = useState(false);
+
   // Audio recording states
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+
+  // Load saved chat theme
+  useEffect(() => {
+    loadChatTheme();
+  }, []);
+
+  // Apply dark mode theme when isDark changes
+  useEffect(() => {
+    if (isDark && currentTheme.id === 'default') {
+      setCurrentTheme(chatThemes.find(t => t.id === 'midnight') || chatThemes[0]);
+    } else if (!isDark && currentTheme.id === 'midnight') {
+      setCurrentTheme(chatThemes[0]);
+    }
+  }, [isDark]);
+
+  const loadChatTheme = async () => {
+    try {
+      const savedThemeId = await AsyncStorage.getItem('chat_theme');
+      if (savedThemeId) {
+        const theme = chatThemes.find(t => t.id === savedThemeId);
+        if (theme) {
+          setCurrentTheme(theme);
+        }
+      } else if (isDark) {
+        setCurrentTheme(chatThemes.find(t => t.id === 'midnight') || chatThemes[0]);
+      }
+    } catch (error) {
+      console.error('Error loading chat theme:', error);
+    }
+  };
+
+  const selectTheme = async (theme: ChatTheme) => {
+    setCurrentTheme(theme);
+    setShowThemeModal(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await AsyncStorage.setItem('chat_theme', theme.id);
+    } catch (error) {
+      console.error('Error saving chat theme:', error);
+    }
+  };
   const [recordingDuration, setRecordingDuration] = useState(0);
   const recordingInterval = useRef<any>(null);
 
@@ -936,9 +1124,9 @@ export default function ChatScreen() {
       <>
         {showDateSeparator && (
           <View style={styles.dateSeparator}>
-            <View style={styles.dateSeparatorLine} />
-            <Text style={styles.dateSeparatorText}>{getDateSeparator(item.created_at)}</Text>
-            <View style={styles.dateSeparatorLine} />
+            <View style={[styles.dateSeparatorLine, { backgroundColor: currentTheme.border }]} />
+            <Text style={[styles.dateSeparatorText, { color: currentTheme.textSecondary, backgroundColor: currentTheme.background }]}>{getDateSeparator(item.created_at)}</Text>
+            <View style={[styles.dateSeparatorLine, { backgroundColor: currentTheme.border }]} />
           </View>
         )}
         <View style={[styles.messageContainer, isOwn ? styles.ownMessage : styles.otherMessage]}>
@@ -950,7 +1138,7 @@ export default function ChatScreen() {
           )}
 
 {isOwn ? (
-            <View style={[styles.messageBubble, styles.ownBubble]}>
+            <View style={[styles.messageBubble, styles.ownBubble, { backgroundColor: currentTheme.ownBubble, borderColor: currentTheme.ownBubble }]}>
               {/* Image message */}
               {item.message_type === 'image' && item.image_url && (
                 <TouchableOpacity onPress={() => {
@@ -976,7 +1164,7 @@ export default function ChatScreen() {
 
               {/* Text content */}
               {item.content && (
-                <Text style={[styles.messageText, styles.ownText]}>
+                <Text style={[styles.messageText, styles.ownText, { color: currentTheme.ownText }]}>
                   {item.content}
                 </Text>
               )}
@@ -1010,7 +1198,7 @@ export default function ChatScreen() {
               </View>
             </View>
           ) : (
-            <View style={[styles.messageBubble, styles.otherBubble]}>
+            <View style={[styles.messageBubble, styles.otherBubble, { backgroundColor: currentTheme.otherBubble, borderColor: currentTheme.border }]}>
               {/* Image message */}
               {item.message_type === 'image' && item.image_url && (
                 <TouchableOpacity onPress={() => {
@@ -1036,7 +1224,7 @@ export default function ChatScreen() {
 
               {/* Text content */}
               {item.content && (
-                <Text style={[styles.messageText, styles.otherText]}>
+                <Text style={[styles.messageText, styles.otherText, { color: currentTheme.otherText }]}>
                   {item.content}
                 </Text>
               )}
@@ -1079,8 +1267,8 @@ export default function ChatScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#F97316" />
+      <View style={[styles.loadingContainer, { backgroundColor: currentTheme.background }]}>
+        <ActivityIndicator size="large" color={currentTheme.accent} />
       </View>
     );
   }
@@ -1092,16 +1280,16 @@ export default function ChatScreen() {
           headerShown: false,
         }}
       />
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: currentTheme.headerBg }]} edges={['top']}>
         <KeyboardAvoidingView
-          style={styles.container}
+          style={[styles.container, { backgroundColor: currentTheme.background }]}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={0}
         >
           {/* Custom Header */}
-          <View style={styles.customHeader}>
+          <View style={[styles.customHeader, { backgroundColor: currentTheme.headerBg, borderBottomColor: currentTheme.border }]}>
             <TouchableOpacity onPress={() => router.push('/(tabs)/messages')} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={24} color="#111827" />
+              <Ionicons name="arrow-back" size={24} color={currentTheme.id === 'default' || currentTheme.id === 'gold' ? '#111827' : '#FFFFFF'} />
             </TouchableOpacity>
 
             <View style={styles.headerUserInfo}>
@@ -1113,11 +1301,11 @@ export default function ChatScreen() {
                 style={styles.headerAvatar}
               />
               <View style={styles.headerTextContainer}>
-                <Text style={styles.headerName} numberOfLines={1}>
+                <Text style={[styles.headerName, { color: currentTheme.id === 'default' || currentTheme.id === 'gold' ? '#111827' : '#FFFFFF' }]} numberOfLines={1}>
                   {otherUser?.full_name || otherUser?.username || 'Utilisateur'}
                 </Text>
                 {otherUser?.product && (
-                  <Text style={styles.headerProduct} numberOfLines={1}>
+                  <Text style={[styles.headerProduct, { color: currentTheme.id === 'default' || currentTheme.id === 'gold' ? '#6B7280' : 'rgba(255, 255, 255, 0.8)' }]} numberOfLines={1}>
                     📦 {otherUser.product.title}
                   </Text>
                 )}
@@ -1125,6 +1313,18 @@ export default function ChatScreen() {
             </View>
 
             <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.themeButton}
+                onPress={() => {
+                  setShowThemeModal(true);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}>
+                <Ionicons
+                  name="color-palette-outline"
+                  size={24}
+                  color={currentTheme.id === 'default' || currentTheme.id === 'gold' ? currentTheme.accent : '#FFFFFF'}
+                />
+              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.profileButton}
                 onPress={async () => {
@@ -1134,7 +1334,11 @@ export default function ChatScreen() {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }
                 }}>
-                <Ionicons name="person-circle-outline" size={28} color="#FF8C42" />
+                <Ionicons
+                  name="person-circle-outline"
+                  size={28}
+                  color={currentTheme.id === 'default' || currentTheme.id === 'gold' ? currentTheme.accent : '#FFFFFF'}
+                />
               </TouchableOpacity>
             </View>
           </View>
@@ -1149,17 +1353,17 @@ export default function ChatScreen() {
         />
 
         {quickReplies.length > 0 && (
-          <View style={styles.quickRepliesContainer}>
+          <View style={[styles.quickRepliesContainer, { backgroundColor: currentTheme.inputBg, borderTopColor: currentTheme.border }]}>
             <FlatList
               horizontal
               data={quickReplies}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={styles.quickReplyButton}
+                  style={[styles.quickReplyButton, { backgroundColor: currentTheme.background, borderColor: currentTheme.border }]}
                   onPress={() => sendMessage(item.message)}
                 >
-                  <Text style={styles.quickReplyText} numberOfLines={1}>
+                  <Text style={[styles.quickReplyText, { color: currentTheme.accent }]} numberOfLines={1}>
                     {item.message}
                   </Text>
                 </TouchableOpacity>
@@ -1192,21 +1396,22 @@ export default function ChatScreen() {
 
         {/* Input container */}
         {!isRecording && (
-          <View style={styles.inputContainer}>
+          <View style={[styles.inputContainer, { backgroundColor: currentTheme.inputBg, borderTopColor: currentTheme.border }]}>
             {uploadingMedia ? (
               <View style={styles.uploadingContainer}>
-                <ActivityIndicator size="small" color="#F97316" />
-                <Text style={styles.uploadingText}>Envoi en cours...</Text>
+                <ActivityIndicator size="small" color={currentTheme.accent} />
+                <Text style={[styles.uploadingText, { color: currentTheme.textSecondary }]}>Envoi en cours...</Text>
               </View>
             ) : (
               <>
                 <TouchableOpacity style={styles.imageButton} onPress={pickImage} disabled={sending}>
-                  <Ionicons name="image" size={24} color={sending ? "#D1D5DB" : "#F97316"} />
+                  <Ionicons name="image" size={24} color={sending ? currentTheme.textSecondary : currentTheme.accent} />
                 </TouchableOpacity>
 
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: currentTheme.background, borderColor: currentTheme.border, color: currentTheme.otherText }]}
                   placeholder="Votre message..."
+                  placeholderTextColor={currentTheme.textSecondary}
                   value={newMessage}
                   onChangeText={setNewMessage}
                   multiline
@@ -1234,12 +1439,12 @@ export default function ChatScreen() {
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
-                    style={styles.voiceButton}
+                    style={[styles.voiceButton, { backgroundColor: currentTheme.background, borderColor: currentTheme.border }]}
                     onPress={startRecording}
                     disabled={sending}
                     onLongPress={startRecording}
                   >
-                    <Ionicons name="mic" size={24} color={sending ? "#D1D5DB" : "#F97316"} />
+                    <Ionicons name="mic" size={24} color={sending ? currentTheme.textSecondary : currentTheme.accent} />
                   </TouchableOpacity>
                 )}
               </>
@@ -1381,6 +1586,59 @@ export default function ChatScreen() {
                 </TouchableOpacity>
               </View>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Theme Selection Modal */}
+      <Modal
+        visible={showThemeModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowThemeModal(false)}
+      >
+        <View style={styles.themeModalOverlay}>
+          <View style={[styles.themeModalContent, { backgroundColor: currentTheme.background }]}>
+            {/* Modal Header */}
+            <View style={[styles.themeModalHeader, { borderBottomColor: currentTheme.border }]}>
+              <Text style={[styles.themeModalTitle, { color: currentTheme.otherText }]}>Choisir un thème</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowThemeModal(false);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                style={styles.themeModalCloseButton}
+              >
+                <Ionicons name="close" size={24} color={currentTheme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Theme Grid */}
+            <View style={styles.themeGrid}>
+              {chatThemes.map((theme) => (
+                <TouchableOpacity
+                  key={theme.id}
+                  style={[
+                    styles.themeItem,
+                    currentTheme.id === theme.id && styles.themeItemSelected,
+                    { borderColor: currentTheme.id === theme.id ? theme.accent : currentTheme.border }
+                  ]}
+                  onPress={() => selectTheme(theme)}
+                >
+                  <View style={[styles.themePreview, { backgroundColor: theme.background }]}>
+                    <View style={[styles.themePreviewBubble1, { backgroundColor: theme.ownBubble }]} />
+                    <View style={[styles.themePreviewBubble2, { backgroundColor: theme.otherBubble }]} />
+                  </View>
+                  <Text style={styles.themeEmoji}>{theme.emoji}</Text>
+                  <Text style={[styles.themeName, { color: currentTheme.otherText }]}>{theme.name}</Text>
+                  {currentTheme.id === theme.id && (
+                    <View style={[styles.themeCheckmark, { backgroundColor: theme.accent }]}>
+                      <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </View>
       </Modal>
@@ -2001,5 +2259,104 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#EF4444',
+  },
+  // Theme modal styles
+  themeModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  themeModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  themeModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  themeModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  themeModalCloseButton: {
+    padding: 4,
+  },
+  themeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 16,
+    gap: 12,
+  },
+  themeItem: {
+    width: '22%',
+    aspectRatio: 0.8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    padding: 8,
+    position: 'relative',
+  },
+  themeItemSelected: {
+    borderWidth: 3,
+  },
+  themePreview: {
+    width: '100%',
+    height: '50%',
+    borderRadius: 8,
+    marginBottom: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    padding: 4,
+  },
+  themePreviewBubble1: {
+    width: '60%',
+    height: 8,
+    borderRadius: 4,
+    alignSelf: 'flex-end',
+    marginBottom: 4,
+  },
+  themePreviewBubble2: {
+    width: '60%',
+    height: 8,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  themeEmoji: {
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  themeName: {
+    fontSize: 10,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  themeCheckmark: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  themeButton: {
+    padding: 4,
   },
 });

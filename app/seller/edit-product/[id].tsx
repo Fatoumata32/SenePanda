@@ -56,9 +56,19 @@ export default function EditProductScreen() {
         .from('products')
         .select('*')
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error loading product:', error);
+        throw error;
+      }
+
+      if (!data) {
+        console.warn('Product not found with id:', id);
+        Alert.alert('Erreur', 'Produit introuvable');
+        router.back();
+        return;
+      }
 
       setTitle(data.title);
       setDescription(data.description || '');

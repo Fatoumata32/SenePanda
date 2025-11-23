@@ -8,6 +8,20 @@
 -- Note: Vous devrez d'abord créer l'utilisateur dans Supabase Auth
 -- via le dashboard ou l'API avant d'exécuter ce script
 
+-- S'assurer que la colonne country existe avant les inserts
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS country TEXT;
+
+-- ==========================================
+-- PROFILS DE TEST (COMMENTÉS)
+-- ==========================================
+-- Ces INSERT sont des exemples. Pour les utiliser:
+-- 1. Créez d'abord les utilisateurs dans Supabase Auth Dashboard
+-- 2. Récupérez leurs UUIDs
+-- 3. Remplacez 'USER_UUID_HERE' et 'SELLER_UUID_HERE' par les vrais UUIDs
+-- 4. Décommentez les blocs ci-dessous
+-- ==========================================
+
+/*
 -- Insertion d'un profil de test (client)
 -- Remplacez 'USER_UUID_HERE' par l'UUID de l'utilisateur créé dans auth.users
 INSERT INTO profiles (
@@ -76,3 +90,4 @@ SET
   phone = EXCLUDED.phone,
   country = EXCLUDED.country,
   updated_at = now();
+*/

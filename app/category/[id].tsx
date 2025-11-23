@@ -33,13 +33,22 @@ export default function CategoryScreen() {
       setLoading(true);
 
       // Charger la catégorie
-      const { data: categoryData } = await supabase
+      const { data: categoryData, error: categoryError } = await supabase
         .from('categories')
         .select('*')
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
-      setCategory(categoryData);
+      if (categoryError) {
+        console.error('Error loading category:', categoryError);
+      }
+
+      if (!categoryData) {
+        console.warn('Category not found with id:', id);
+        setCategory(null);
+      } else {
+        setCategory(categoryData);
+      }
 
       // Charger les produits de cette catégorie avec informations du vendeur
       const { data: productsData } = await supabase

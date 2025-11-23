@@ -1,0 +1,572 @@
+import { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { supabase } from '@/lib/supabase';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Phone, ArrowRight, Shield } from 'lucide-react-native';
+import PandaLogo from '@/components/PandaLogo';
+import { Colors, Gradients, Typography, Spacing, BorderRadius, Shadows } from '@/constants/Colors';
+import * as Speech from 'expo-speech';
+
+type AuthStep = 'phone' | 'otp' | 'profile';
+
+export default function PhoneAuthScreen() {
+  const router = useRouter();
+  const [step, setStep] = useState<AuthStep>('phone');
+  const [loading, setLoading] = useState(false);
+
+  // Données du formulaire
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [otp, setOtp] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+
+  // Nettoyer le numéro de téléphone (retirer les espaces et tirets)
+  const cleanPhoneNumber = (phone: string): string => {
+    return phone.replace(/[\s-]/g, '');
+  };
+
+  // Formater le numéro pour l'affichage
+  const formatPhoneNumber = (phone: string): string => {
+    const cleaned = cleanPhoneNumber(phone);
+    // Format: +221 77 123 45 67
+    if (cleaned.startsWith('+221') && cleaned.length >= 12) {
+      return `+221 ${cleaned.substring(4, 6)} ${cleaned.substring(6, 9)} ${cleaned.substring(9, 11)} ${cleaned.substring(11, 13)}`;
+    }
+    return phone;
+  };
+
+  // Valider le numéro de téléphone
+  const isValidPhone = (phone: string): boolean => {
+    const cleaned = cleanPhoneNumber(phone);
+    // Vérifier format international +221XXXXXXXXX (Sénégal)
+    return /^\+221[0-9]{9}$/.test(cleaned);
+  };
+
+  // Envoyer le code OTP
+  const sendOTP = async () => {
+    if (!phoneNumber.trim()) {
+      Alert.alert('Erreur', 'Veuillez entrer votre numéro de téléphone');
+      return;
+    }
+
+    const cleaned = cleanPhoneNumber(phoneNumber);
+    if (!isValidPhone(cleaned)) {
+      Alert.alert(
+        'Numéro invalide',
+        'Format attendu: +221 77 123 45 67\n\nAssurez-vous que votre numéro commence par +221'
+      );
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // Envoyer OTP via Supabase
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: cleaned,
+      });
+
+      if (error) throw error;
+
+      setStep('otp');
+      Speech.speak('Code de vérification envoyé par SMS', { language: 'fr-FR' });
+      Alert.alert(
+        'Code envoyé!',
+        `Un code de vérification a été envoyé au ${formatPhoneNumber(cleaned)}`
+      );
+    } catch (error: any) {
+      console.error('Error sending OTP:', error);
+      Alert.alert('Erreur', error.message || 'Impossible d\'envoyer le code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Vérifier le code OTP
+  const verifyOTP = async () => {
+    if (otp.length !== 6) {
+      Alert.alert('Erreur', 'Le code doit contenir 6 chiffres');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const cleaned = cleanPhoneNumber(phoneNumber);
+
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone: cleaned,
+        token: otp,
+        type: 'sms',
+      });
+
+      if (error) throw error;
+
+      if (!data.user) {
+        throw new Error('Erreur lors de la vérification');
+      }
+
+      // Vérifier si le profil existe
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .maybeSingle();
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        throw profileError;
+      }
+
+      // Si le profil n'existe pas, demander les infos
+      if (!profile) {
+        setStep('profile');
+        Alert.alert(
+          'Nouveau compte',
+          'Complétez votre profil pour continuer'
+        );
+      } else {
+        // Profil existe, connexion réussie
+        Speech.speak('Connexion réussie! Bienvenue', { language: 'fr-FR' });
+        router.replace('/role-selection');
+      }
+    } catch (error: any) {
+      console.error('Error verifying OTP:', error);
+      Alert.alert('Code incorrect', 'Le code saisi est incorrect ou a expiré');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Créer le profil
+  const createProfile = async () => {
+    if (!firstName.trim() || !lastName.trim()) {
+      Alert.alert('Erreur', 'Veuillez renseigner votre prénom et nom');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Utilisateur non trouvé');
+
+      const cleaned = cleanPhoneNumber(phoneNumber);
+
+      // Créer le profil
+      const { error: profileError } = await supabase.from('profiles').insert({
+        id: user.id,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        full_name: `${firstName.trim()} ${lastName.trim()}`,
+        phone: cleaned,
+        username: `user_${user.id.substring(0, 8)}`, // Username temporaire
+        is_seller: false,
+      });
+
+      if (profileError) throw profileError;
+
+      Speech.speak('Compte créé avec succès! Bienvenue', { language: 'fr-FR' });
+      Alert.alert('Succès', 'Votre compte a été créé avec succès!');
+
+      // Rediriger vers la sélection de rôle
+      router.replace('/role-selection');
+    } catch (error: any) {
+      console.error('Error creating profile:', error);
+      Alert.alert('Erreur', error.message || 'Impossible de créer le profil');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Renvoyer le code
+  const resendOTP = async () => {
+    setOtp('');
+    await sendOTP();
+  };
+
+  // Modifier le numéro
+  const changeNumber = () => {
+    setStep('phone');
+    setOtp('');
+  };
+
+  // Rendu conditionnel selon l'étape
+  const renderContent = () => {
+    switch (step) {
+      case 'phone':
+        return (
+          <View style={styles.formContainer}>
+            <View style={styles.iconContainer}>
+              <Phone size={60} color={Colors.primaryGold} />
+            </View>
+
+            <Text style={styles.title}>Connexion / Inscription</Text>
+            <Text style={styles.subtitle}>
+              Entrez votre numéro de téléphone pour recevoir un code de vérification
+            </Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Numéro de téléphone</Text>
+              <View style={styles.phoneInputContainer}>
+                <Phone size={20} color={Colors.textMuted} style={styles.phoneIcon} />
+                <TextInput
+                  style={styles.phoneInput}
+                  value={phoneNumber}
+                  onChangeText={setPhoneNumber}
+                  placeholder="+221 77 123 45 67"
+                  keyboardType="phone-pad"
+                  placeholderTextColor={Colors.textMuted}
+                  autoFocus
+                />
+              </View>
+              <Text style={styles.hint}>
+                Format: +221 suivi de votre numéro (9 chiffres)
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+              onPress={sendOTP}
+              disabled={loading}>
+              <LinearGradient
+                colors={Gradients.goldOrange.colors}
+                start={Gradients.goldOrange.start}
+                end={Gradients.goldOrange.end}
+                style={StyleSheet.absoluteFill}
+              />
+              {loading ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <>
+                  <Text style={styles.buttonText}>Recevoir le code</Text>
+                  <ArrowRight size={20} color={Colors.white} />
+                </>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.securityNote}>
+              <Shield size={16} color={Colors.successGreen} />
+              <Text style={styles.securityText}>
+                Connexion sécurisée par code SMS
+              </Text>
+            </View>
+          </View>
+        );
+
+      case 'otp':
+        return (
+          <View style={styles.formContainer}>
+            <View style={styles.iconContainer}>
+              <Shield size={60} color={Colors.primaryGold} />
+            </View>
+
+            <Text style={styles.title}>Code de vérification</Text>
+            <Text style={styles.subtitle}>
+              Entrez le code à 6 chiffres envoyé au{'\n'}
+              <Text style={styles.phoneHighlight}>
+                {formatPhoneNumber(cleanPhoneNumber(phoneNumber))}
+              </Text>
+            </Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Code de vérification</Text>
+              <TextInput
+                style={styles.otpInput}
+                value={otp}
+                onChangeText={setOtp}
+                placeholder="000000"
+                keyboardType="number-pad"
+                maxLength={6}
+                placeholderTextColor={Colors.textMuted}
+                autoFocus
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+              onPress={verifyOTP}
+              disabled={loading || otp.length !== 6}>
+              <LinearGradient
+                colors={Gradients.goldOrange.colors}
+                start={Gradients.goldOrange.start}
+                end={Gradients.goldOrange.end}
+                style={StyleSheet.absoluteFill}
+              />
+              {loading ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <>
+                  <Text style={styles.buttonText}>Vérifier</Text>
+                  <ArrowRight size={20} color={Colors.white} />
+                </>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.actionLinks}>
+              <TouchableOpacity onPress={resendOTP} disabled={loading}>
+                <Text style={styles.linkText}>Renvoyer le code</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={changeNumber} disabled={loading}>
+                <Text style={styles.linkText}>Modifier le numéro</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        );
+
+      case 'profile':
+        return (
+          <View style={styles.formContainer}>
+            <View style={styles.iconContainer}>
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarText}>
+                  {firstName.charAt(0).toUpperCase()}
+                  {lastName.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.title}>Complétez votre profil</Text>
+            <Text style={styles.subtitle}>
+              Dernière étape! Dites-nous comment vous appeler
+            </Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Prénom</Text>
+              <TextInput
+                style={styles.input}
+                value={firstName}
+                onChangeText={setFirstName}
+                placeholder="Jean"
+                placeholderTextColor={Colors.textMuted}
+                autoFocus
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Nom</Text>
+              <TextInput
+                style={styles.input}
+                value={lastName}
+                onChangeText={setLastName}
+                placeholder="Dupont"
+                placeholderTextColor={Colors.textMuted}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, loading && styles.buttonDisabled]}
+              onPress={createProfile}
+              disabled={loading}>
+              <LinearGradient
+                colors={Gradients.goldOrange.colors}
+                start={Gradients.goldOrange.start}
+                end={Gradients.goldOrange.end}
+                style={StyleSheet.absoluteFill}
+              />
+              {loading ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <>
+                  <Text style={styles.buttonText}>Créer mon compte</Text>
+                  <ArrowRight size={20} color={Colors.white} />
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        );
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardView}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          <View style={styles.logoContainer}>
+            <PandaLogo size="medium" showText={true} />
+          </View>
+
+          {renderContent()}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.backgroundLight,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    padding: Spacing.xl,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginTop: Spacing.xl,
+    marginBottom: Spacing['2xl'],
+  },
+  formContainer: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  iconContainer: {
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+  },
+  avatarPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Colors.primaryGold,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: Colors.white,
+  },
+  title: {
+    fontSize: Typography.fontSize['2xl'],
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
+  },
+  subtitle: {
+    fontSize: Typography.fontSize.base,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: Spacing['2xl'],
+    lineHeight: 24,
+  },
+  phoneHighlight: {
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.primaryOrange,
+  },
+  inputGroup: {
+    marginBottom: Spacing.xl,
+  },
+  label: {
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+  },
+  phoneInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 2,
+    borderColor: Colors.borderLight,
+    paddingHorizontal: Spacing.md,
+    ...Shadows.small,
+  },
+  phoneIcon: {
+    marginRight: Spacing.sm,
+  },
+  phoneInput: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    fontSize: Typography.fontSize.lg,
+    color: Colors.textPrimary,
+    fontWeight: Typography.fontWeight.semibold,
+  },
+  input: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 2,
+    borderColor: Colors.borderLight,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    fontSize: Typography.fontSize.base,
+    color: Colors.textPrimary,
+    ...Shadows.small,
+  },
+  otpInput: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 2,
+    borderColor: Colors.primaryOrange,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.lg,
+    fontSize: Typography.fontSize['3xl'],
+    color: Colors.textPrimary,
+    fontWeight: Typography.fontWeight.bold,
+    textAlign: 'center',
+    letterSpacing: 8,
+    ...Shadows.medium,
+  },
+  hint: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.textMuted,
+    marginTop: Spacing.xs,
+    fontStyle: 'italic',
+  },
+  primaryButton: {
+    borderRadius: BorderRadius.lg,
+    paddingVertical: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    ...Shadows.orange,
+    overflow: 'hidden',
+    marginTop: Spacing.md,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonText: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.white,
+  },
+  securityNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.xl,
+    padding: Spacing.md,
+    backgroundColor: '#D1FAE5',
+    borderRadius: BorderRadius.md,
+  },
+  securityText: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.successGreen,
+    fontWeight: Typography.fontWeight.semibold,
+  },
+  actionLinks: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: Spacing.xl,
+  },
+  linkText: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.primaryOrange,
+    fontWeight: Typography.fontWeight.semibold,
+  },
+});

@@ -22,9 +22,19 @@ export default function ShopSuccessScreen() {
         .from('profiles')
         .select('*')
         .eq('id', shopId)
-        .single();
+        .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error loading shop:', error);
+        throw error;
+      }
+
+      if (!data) {
+        console.warn('Shop not found with id:', shopId);
+        setShop(null);
+        return;
+      }
+
       setShop(data);
     } catch (error) {
       console.error('Error loading shop:', error);

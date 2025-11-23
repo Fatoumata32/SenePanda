@@ -11,6 +11,8 @@ import {
   Dimensions,
   Linking,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -39,6 +41,8 @@ import {
   Sun,
   Upload,
   MessageCircle,
+  ArrowLeft,
+  X,
 } from 'lucide-react-native';
 import { ConfettiAnimation } from '@/components/ConfettiAnimation';
 import { Toast } from '@/components/Toast';
@@ -104,6 +108,7 @@ export default function ShopWizardV2() {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
+  const [checkingShop, setCheckingShop] = useState(true);
 
   // Undo/Redo state
   const [history, setHistory] = useState<any[]>([]);
@@ -163,8 +168,12 @@ export default function ShopWizardV2() {
   const trans = t[language];
 
   useEffect(() => {
-    checkUser();
-    loadProgress();
+    const init = async () => {
+      await checkUser();
+      await loadProgress();
+    };
+
+    init();
 
     // Animation d'entrée
     Animated.parallel([
@@ -200,44 +209,56 @@ export default function ShopWizardV2() {
   }, [shopName, shopDescription, shopSlogan, facebook, instagram, twitter, whatsapp, website]);
 
   const checkUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    setUser(user);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    } catch (error) {
+      console.error('Error checking user:', error);
+    }
   };
 
   const saveProgress = async () => {
-    const progress = {
-      shopName,
-      shopDescription,
-      shopSlogan,
-      logoUri,
-      bannerUri,
-      facebook,
-      instagram,
-      twitter,
-      whatsapp,
-      website,
-      selectedTheme,
-      currentStep,
-    };
-    await AsyncStorage.setItem('shop_wizard_progress', JSON.stringify(progress));
+    try {
+      const progress = {
+        shopName,
+        shopDescription,
+        shopSlogan,
+        logoUri,
+        bannerUri,
+        facebook,
+        instagram,
+        twitter,
+        whatsapp,
+        website,
+        selectedTheme,
+        currentStep,
+      };
+      await AsyncStorage.setItem('shop_wizard_progress', JSON.stringify(progress));
+    } catch (error) {
+      console.error('Error saving progress:', error);
+    }
   };
 
   const loadProgress = async () => {
-    const saved = await AsyncStorage.getItem('shop_wizard_progress');
-    if (saved) {
-      const progress = JSON.parse(saved);
-      setShopName(progress.shopName || '');
-      setShopDescription(progress.shopDescription || '');
-      setShopSlogan(progress.shopSlogan || '');
-      setLogoUri(progress.logoUri || null);
-      setBannerUri(progress.bannerUri || null);
-      setFacebook(progress.facebook || '');
-      setInstagram(progress.instagram || '');
-      setTwitter(progress.twitter || '');
-      setWhatsapp(progress.whatsapp || '');
-      setWebsite(progress.website || '');
-      setSelectedTheme(progress.selectedTheme || 'modern');
-      setCurrentStep(progress.currentStep || 1);
+    try {
+      const saved = await AsyncStorage.getItem('shop_wizard_progress');
+      if (saved) {
+        const progress = JSON.parse(saved);
+        setShopName(progress.shopName || '');
+        setShopDescription(progress.shopDescription || '');
+        setShopSlogan(progress.shopSlogan || '');
+        setLogoUri(progress.logoUri || null);
+        setBannerUri(progress.bannerUri || null);
+        setFacebook(progress.facebook || '');
+        setInstagram(progress.instagram || '');
+        setTwitter(progress.twitter || '');
+        setWhatsapp(progress.whatsapp || '');
+        setWebsite(progress.website || '');
+        setSelectedTheme(progress.selectedTheme || 'modern');
+        setCurrentStep(progress.currentStep || 1);
+      }
+    } catch (error) {
+      console.error('Error loading progress:', error);
     }
   };
 
@@ -280,21 +301,26 @@ export default function ShopWizardV2() {
   };
 
   const pickImage = async (type: 'logo' | 'banner') => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: type === 'logo' ? [1, 1] : [16, 9],
-      quality: 0.8,
-    });
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: type === 'logo' ? [1, 1] : [16, 9],
+        quality: 0.8,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      const uri = result.assets[0].uri;
-      if (type === 'logo') {
-        setLogoUri(uri);
-      } else {
-        setBannerUri(uri);
+      if (!result.canceled && result.assets[0]) {
+        const uri = result.assets[0].uri;
+        if (type === 'logo') {
+          setLogoUri(uri);
+        } else {
+          setBannerUri(uri);
+        }
+        saveToHistory();
       }
-      saveToHistory();
+    } catch (error) {
+      console.error('Error picking image:', error);
+      showToast(language === 'fr' ? 'Erreur lors de la sélection de l\'image' : 'Error selecting image', 'error');
     }
   };
 
@@ -389,7 +415,14 @@ export default function ShopWizardV2() {
 
       {/* Header */}
       <View style={[styles.header, { backgroundColor: cardBg }]}>
-        <Text style={[styles.headerTitle, { color: textColor }]}>{trans.title}</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backButton}>
+            <ArrowLeft size={24} color={textColor} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: textColor }]}>{trans.title}</Text>
+        </View>
         <View style={styles.headerActions}>
           {/* Language Toggle */}
           <TouchableOpacity
@@ -669,6 +702,20 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 22,

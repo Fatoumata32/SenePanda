@@ -22,9 +22,23 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Heart, ShoppingBag, Sparkles, Eye, MessageCircle, Trash2, Star, ChevronLeft, User } from 'lucide-react-native';
 import { favoritesEvents } from '@/hooks/useFavorites';
 import { useCallback } from 'react';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export default function FavoritesScreen() {
   const router = useRouter();
+  const { isDark } = useTheme();
+
+  // Theme colors
+  const themeColors = {
+    background: isDark ? '#111827' : '#FFF8F0',
+    card: isDark ? '#1F2937' : '#FFFFFF',
+    text: isDark ? '#F9FAFB' : '#1F2937',
+    textSecondary: isDark ? '#D1D5DB' : '#6B7280',
+    textMuted: isDark ? '#9CA3AF' : '#9CA3AF',
+    border: isDark ? '#374151' : '#E5E7EB',
+    headerBg: isDark ? '#1F2937' : '#FFFFFF',
+    viewButtonBg: isDark ? '#374151' : '#F3F4F6',
+  };
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -183,17 +197,17 @@ export default function FavoritesScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: themeColors.background }]}>
         <ActivityIndicator size="large" color={Colors.primaryGold} />
-        <Text style={styles.loadingText}>Chargement...</Text>
+        <Text style={[styles.loadingText, { color: themeColors.textSecondary }]}>Chargement...</Text>
       </View>
     );
   }
 
   if (!user) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
+      <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]}>
+        <View style={[styles.header, { backgroundColor: themeColors.headerBg }]}>
           <LinearGradient
             colors={['#FF6B6B', '#FF4757']}
             start={{ x: 0, y: 0 }}
@@ -212,8 +226,8 @@ export default function FavoritesScreen() {
             style={styles.emptyIconCircle}>
             <User size={40} color="#FFFFFF" strokeWidth={2} />
           </LinearGradient>
-          <Text style={styles.emptyTitle}>Connexion requise</Text>
-          <Text style={styles.emptyText}>
+          <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Connexion requise</Text>
+          <Text style={[styles.emptyText, { color: themeColors.textSecondary }]}>
             Connectez-vous pour voir vos produits favoris
           </Text>
           <TouchableOpacity
@@ -288,15 +302,15 @@ export default function FavoritesScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]} edges={['top']}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: themeColors.headerBg }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ChevronLeft size={24} color="#1F2937" />
+          <ChevronLeft size={24} color={themeColors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>MES FAVORIS</Text>
         <TouchableOpacity style={styles.heartButton}>
-          <Heart size={24} color="#000000" fill="#FFFFFF" strokeWidth={2} />
+          <Heart size={24} color={themeColors.text} fill={themeColors.card} strokeWidth={2} />
           {favorites.length > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{favorites.length}</Text>
@@ -313,7 +327,7 @@ export default function FavoritesScreen() {
           const hasDiscount = discountPercentage && discountPercentage > 0;
 
           return (
-            <View style={[styles.productCard, index === 1 && styles.productCardSelected]}>
+            <View style={[styles.productCard, { backgroundColor: themeColors.card }, index === 1 && styles.productCardSelected]}>
               {/* Product Image */}
               <View style={styles.imageContainer}>
                 <Image
@@ -335,7 +349,7 @@ export default function FavoritesScreen() {
 
               {/* Product Info */}
               <View style={styles.productInfo}>
-                <Text style={styles.productName} numberOfLines={2}>
+                <Text style={[styles.productName, { color: themeColors.text }]} numberOfLines={2}>
                   {item.title}
                 </Text>
                 <Text style={styles.productPrice}>
@@ -345,7 +359,7 @@ export default function FavoritesScreen() {
                 {/* Rating */}
                 <View style={styles.ratingContainer}>
                   <Star size={14} color="#FFA500" fill="#FFA500" />
-                  <Text style={styles.ratingText}>
+                  <Text style={[styles.ratingText, { color: themeColors.textSecondary }]}>
                     {item.average_rating?.toFixed(1) || '0.0'} ({item.total_reviews || 0} avis)
                   </Text>
                 </View>
@@ -353,10 +367,10 @@ export default function FavoritesScreen() {
                 {/* Action Buttons */}
                 <View style={styles.actionButtons}>
                   <TouchableOpacity
-                    style={styles.viewButton}
+                    style={[styles.viewButton, { backgroundColor: themeColors.viewButtonBg }]}
                     onPress={() => router.push(`/product/${item.id}`)}>
-                    <Eye size={18} color="#6B7280" />
-                    <Text style={styles.viewButtonText}>Voir</Text>
+                    <Eye size={18} color={themeColors.textSecondary} />
+                    <Text style={[styles.viewButtonText, { color: themeColors.textSecondary }]}>Voir</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -396,9 +410,9 @@ export default function FavoritesScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Heart size={64} color="#D1D5DB" strokeWidth={1.5} />
-            <Text style={styles.emptyTitle}>Aucun favori</Text>
-            <Text style={styles.emptyText}>
+            <Heart size={64} color={themeColors.textMuted} strokeWidth={1.5} />
+            <Text style={[styles.emptyTitle, { color: themeColors.text }]}>Aucun favori</Text>
+            <Text style={[styles.emptyText, { color: themeColors.textSecondary }]}>
               Commencez à ajouter des produits à vos favoris
             </Text>
             <TouchableOpacity

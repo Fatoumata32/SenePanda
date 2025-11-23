@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,21 +10,39 @@ import {
   Alert,
   FlatList,
   Dimensions,
+  Animated,
+  Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { Product, ProductReview } from '@/types/database';
-import { ArrowLeft, ShoppingCart, Minus, Plus, MessageSquare, Edit, MessageCircle, Store, Heart, ChevronLeft, ChevronRight, Check, Star, MapPin, ShoppingBag, UserPlus } from 'lucide-react-native';
+import { ArrowLeft, ShoppingCart, Minus, Plus, MessageSquare, Edit, MessageCircle, Store, Heart, ChevronLeft, ChevronRight, Check, Star, MapPin, ShoppingBag, UserPlus, Phone, Share2, Shield, Truck, RotateCcw, Clock } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import RatingStars from '@/components/RatingStars';
 import ReviewCard from '@/components/ReviewCard';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
+import { useCart } from '@/contexts/CartContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const { addToCart: addToCartContext, loading: cartLoading } = useCart();
+  const { isDark } = useTheme();
+
+  // Theme colors
+  const themeColors = {
+    background: isDark ? '#111827' : '#FFFFFF',
+    card: isDark ? '#1F2937' : '#FFFFFF',
+    text: isDark ? '#F9FAFB' : '#1F2937',
+    textSecondary: isDark ? '#D1D5DB' : '#6B7280',
+    textMuted: isDark ? '#9CA3AF' : '#9CA3AF',
+    border: isDark ? '#374151' : '#E5E7EB',
+    surface: isDark ? '#374151' : '#F9FAFB',
+  };
   const [product, setProduct] = useState<Product | null>(null);
   const [reviews, setReviews] = useState<ProductReview[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,8 +55,26 @@ export default function ProductDetailScreen() {
   const [sellerInfo, setSellerInfo] = useState<any>(null);
   const [isFollowing, setIsFollowing] = useState(false);
 
-  // Mock images for carousel (in real app, these would come from product.images array)
-  const productImages = product?.image_url ? [product.image_url, product.image_url, product.image_url, product.image_url] : [];
+  // Animations
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const heartAnim = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Animate on mount
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  // Get product images - use images array if available, otherwise use image_url
+  const productImages = product?.images && Array.isArray(product.images) && product.images.length > 0
+    ? product.images
+    : product?.image_url
+    ? [product.image_url]
+    : [];
 
   useEffect(() => {
     if (id) {
@@ -53,6 +89,7 @@ export default function ProductDetailScreen() {
     if (product) {
       fetchSellerInfo();
       fetchSimilarProducts();
+      checkFollowing();
     }
   }, [product]);
 
@@ -144,7 +181,7 @@ export default function ProductDetailScreen() {
           'Veuillez vous connecter pour contacter le vendeur',
           [
             { text: 'Annuler', style: 'cancel' },
-            { text: 'Se connecter', onPress: () => router.push('/profile') },
+            { text: 'Se connecter', onPress: () => router.push('/simple-auth') },
           ]
         );
         return;
@@ -155,19 +192,41 @@ export default function ProductDetailScreen() {
         return;
       }
 
-      // Create or get conversation
-      const { data: conversationId, error } = await supabase.rpc('get_or_create_conversation', {
-        p_buyer_id: user.id,
-        p_seller_id: product?.seller_id,
-        p_product_id: id as string,
-      });
+      // Check if conversation already exists
+      const { data: existingConversation } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('buyer_id', user.id)
+        .eq('seller_id', product?.seller_id)
+        .eq('product_id', id)
+        .maybeSingle();
 
-      if (error) throw error;
+      let conversationId: string;
+
+      if (existingConversation) {
+        conversationId = existingConversation.id;
+      } else {
+        // Create new conversation
+        const { data: newConversation, error: createError } = await supabase
+          .from('conversations')
+          .insert({
+            buyer_id: user.id,
+            seller_id: product?.seller_id,
+            product_id: id as string,
+            last_message: 'Nouvelle conversation',
+            last_message_time: new Date().toISOString(),
+          })
+          .select('id')
+          .single();
+
+        if (createError) throw createError;
+        conversationId = newConversation.id;
+      }
 
       router.push(`/chat/${conversationId}`);
     } catch (error: any) {
       console.error('Error creating conversation:', error);
-      Alert.alert('Erreur', 'Impossible de contacter le vendeur');
+      Alert.alert('Erreur', 'Impossible de contacter le vendeur. Veuillez réessayer.');
     }
   };
 
@@ -197,6 +256,23 @@ export default function ProductDetailScreen() {
         return;
       }
 
+      // Haptic feedback
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      // Heart animation
+      Animated.sequence([
+        Animated.timing(heartAnim, {
+          toValue: 1.3,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(heartAnim, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
       if (isFavorite) {
         await supabase
           .from('favorites')
@@ -213,6 +289,19 @@ export default function ProductDetailScreen() {
     } catch (error) {
       console.error('Error toggling favorite:', error);
     }
+  };
+
+  const callSeller = () => {
+    if (sellerInfo?.phone) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      Linking.openURL(`tel:${sellerInfo.phone}`);
+    }
+  };
+
+  const shareProduct = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Implement share functionality
+    Alert.alert('Partager', 'Fonctionnalité de partage bientôt disponible');
   };
 
   const fetchSellerInfo = async () => {
@@ -248,70 +337,74 @@ export default function ProductDetailScreen() {
     }
   };
 
+  const checkFollowing = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !product?.seller_id) return;
+
+      const { data } = await supabase
+        .from('followers')
+        .select('id')
+        .eq('follower_id', user.id)
+        .eq('following_id', product.seller_id)
+        .maybeSingle();
+
+      setIsFollowing(!!data);
+    } catch (error) {
+      console.error('Error checking following status:', error);
+    }
+  };
+
   const toggleFollow = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        Alert.alert('Connexion requise', 'Veuillez vous connecter');
+        Alert.alert('Connexion requise', 'Veuillez vous connecter pour suivre ce vendeur');
         return;
       }
 
-      // Toggle follow logic here (implement followers table if needed)
-      setIsFollowing(!isFollowing);
-    } catch (error) {
+      if (!product?.seller_id) return;
+
+      if (isFollowing) {
+        // Unfollow
+        await supabase
+          .from('followers')
+          .delete()
+          .eq('follower_id', user.id)
+          .eq('following_id', product.seller_id);
+        setIsFollowing(false);
+      } else {
+        // Follow
+        await supabase
+          .from('followers')
+          .insert({
+            follower_id: user.id,
+            following_id: product.seller_id,
+          });
+        setIsFollowing(true);
+      }
+    } catch (error: any) {
       console.error('Error toggling follow:', error);
+      // Si la table n'existe pas, on continue sans erreur
+      if (error?.code === 'PGRST204' || error?.message?.includes('does not exist')) {
+        console.warn('La table followers n\'existe pas encore. Créez-la avec la migration.');
+      } else {
+        Alert.alert('Erreur', 'Impossible de suivre ce vendeur');
+      }
     }
   };
 
   const addToCart = async () => {
+    if (!id) return;
+
+    setAdding(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (!user) {
-        Alert.alert(
-          'Connexion requise',
-          'Veuillez vous connecter pour ajouter des articles au panier',
-          [
-            { text: 'Annuler', style: 'cancel' },
-            { text: 'Se connecter', onPress: () => router.push('/profile') },
-          ]
-        );
-        return;
-      }
-
-      setAdding(true);
-
-      const { data: existingItem, error: checkError } = await supabase
-        .from('cart_items')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('product_id', id)
-        .maybeSingle();
-
-      if (checkError && checkError.code !== 'PGRST116') throw checkError;
-
-      if (existingItem) {
-        const { error } = await supabase
-          .from('cart_items')
-          .update({ quantity: existingItem.quantity + quantity })
-          .eq('id', existingItem.id);
-
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('cart_items')
-          .insert({
-            user_id: user.id,
-            product_id: id as string,
-            quantity,
-          });
-
-        if (error) throw error;
-      }
-
-      Alert.alert('Succès', 'Produit ajouté au panier');
+      // Utiliser le contexte du panier pour synchroniser
+      await addToCartContext(id as string, quantity);
+      // Haptic feedback
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error: any) {
-      Alert.alert('Erreur', error.message);
+      console.error('Error adding to cart:', error);
     } finally {
       setAdding(false);
     }
@@ -339,16 +432,23 @@ export default function ProductDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: themeColors.background, borderBottomColor: themeColors.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ChevronLeft size={24} color="#1F2937" />
+          <ChevronLeft size={24} color={themeColors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>DÉTAILS</Text>
-        <TouchableOpacity onPress={toggleFavorite} style={styles.favoriteButton}>
-          <Heart size={24} color={isFavorite ? "#EC4899" : "#6B7280"} fill={isFavorite ? "#EC4899" : "none"} />
-        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: themeColors.text }]}>DÉTAILS</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity onPress={shareProduct} style={styles.headerIconButton}>
+            <Share2 size={20} color={themeColors.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={toggleFavorite} style={styles.favoriteButton}>
+            <Animated.View style={{ transform: [{ scale: heartAnim }] }}>
+              <Heart size={24} color={isFavorite ? "#EC4899" : "#6B7280"} fill={isFavorite ? "#EC4899" : "none"} />
+            </Animated.View>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -410,68 +510,125 @@ export default function ProductDetailScreen() {
         </View>
 
         {/* Product Info */}
-        <View style={styles.content}>
-          <Text style={styles.productName}>{product.title}</Text>
+        <View style={[styles.content, { backgroundColor: themeColors.background }]}>
+          <Text style={[styles.productName, { color: themeColors.text }]}>{product.title}</Text>
           <Text style={styles.productPrice}>
             {product.price.toLocaleString('fr-FR')} <Text style={styles.currency}>F CFA</Text>
           </Text>
 
           {/* Rating */}
-          <View style={styles.ratingRow}>
-            <Star size={16} color="#FFA500" fill="#FFA500" />
-            <Text style={styles.ratingText}>
-              {product.average_rating?.toFixed(1) || '4.8'} ({product.total_reviews || 156} avis)
-            </Text>
-          </View>
+          {(product.average_rating > 0 || product.total_reviews > 0) && (
+            <View style={styles.ratingRow}>
+              <Star size={16} color="#FFA500" fill="#FFA500" />
+              <Text style={[styles.ratingText, { color: themeColors.textSecondary }]}>
+                {product.average_rating > 0 ? product.average_rating.toFixed(1) : 'Nouveau'}
+                {product.total_reviews > 0 && ` (${product.total_reviews} avis)`}
+              </Text>
+            </View>
+          )}
 
           {/* Description */}
-          <Text style={styles.description}>
-            {product.description || 'Ce savon naturel éclaircissant est formulé avec des ingrédients de haute qualité pour donner à votre peau un éclat naturel. Parfait pour tous les types de peau.'}
-          </Text>
+          {product.description && (
+            <Text style={[styles.description, { color: themeColors.textSecondary }]}>
+              {product.description}
+            </Text>
+          )}
 
-          {/* Seller Info Card */}
+          {/* Seller Info Card - Enhanced */}
           {sellerInfo && (
             <View style={styles.sellerCard}>
-              <View style={styles.sellerHeader}>
-                <ShoppingBag size={20} color="#FF8C42" />
-                <Text style={styles.sellerShopName}>{sellerInfo.shop_name || 'Santé Yalla Boutique'}</Text>
-              </View>
-
-              <View style={styles.sellerInfoRow}>
-                <Image
-                  source={{ uri: sellerInfo.avatar_url || 'https://via.placeholder.com/60' }}
-                  style={styles.sellerAvatar}
-                />
-                <View style={styles.sellerDetails}>
-                  <Text style={styles.sellerName}>{sellerInfo.full_name || 'Eleka'}</Text>
-                  <View style={styles.sellerLocationRow}>
-                    <MapPin size={14} color="#6B7280" />
-                    <Text style={styles.sellerLocation}>{sellerInfo.city || 'Dakar'}, {sellerInfo.country || 'Sénégal'}</Text>
+              {/* Shop Header with Gradient */}
+              <LinearGradient
+                colors={['#FFF7ED', '#FFEDD5']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.sellerHeaderGradient}>
+                <View style={styles.sellerHeader}>
+                  <View style={styles.shopIconContainer}>
+                    <ShoppingBag size={18} color="#FF8C42" />
                   </View>
-                  <View style={styles.sellerStatsRow}>
-                    <Star size={14} color="#FFA500" fill="#FFA500" />
-                    <Text style={styles.sellerRating}>4.3</Text>
-                    <Text style={styles.sellerYears}>• 12 ans</Text>
+                  <View style={styles.shopNameContainer}>
+                    <Text style={styles.sellerShopName}>{sellerInfo.shop_name || 'Ma Boutique'}</Text>
+                    {sellerInfo.is_verified && (
+                      <View style={styles.verifiedBadgeSmall}>
+                        <Check size={10} color="#FFFFFF" strokeWidth={3} />
+                      </View>
+                    )}
                   </View>
                 </View>
-                <TouchableOpacity onPress={toggleFollow}>
+              </LinearGradient>
+
+              <View style={styles.sellerInfoRow}>
+                <View style={styles.avatarContainer}>
+                  <Image
+                    source={{ uri: sellerInfo.avatar_url || 'https://via.placeholder.com/60' }}
+                    style={styles.sellerAvatar}
+                  />
+                  <View style={styles.onlineIndicator} />
+                </View>
+                <View style={styles.sellerDetails}>
+                  <Text style={styles.sellerName}>{sellerInfo.full_name || sellerInfo.username || 'Vendeur'}</Text>
+                  <View style={styles.sellerLocationRow}>
+                    <MapPin size={14} color="#FF8C42" />
+                    <Text style={styles.sellerLocation}>
+                      {sellerInfo.city || 'Dakar'}{sellerInfo.country ? `, ${sellerInfo.country}` : ', Sénégal'}
+                    </Text>
+                  </View>
+                  <View style={styles.sellerStatsRow}>
+                    <View style={styles.statBadge}>
+                      <Star size={12} color="#FFA500" fill="#FFA500" />
+                      <Text style={styles.sellerRating}>
+                        {sellerInfo.average_rating > 0 ? sellerInfo.average_rating.toFixed(1) : '5.0'}
+                      </Text>
+                    </View>
+                    <View style={styles.statBadge}>
+                      <Text style={styles.sellerYears}>
+                        {Math.max(1, new Date().getFullYear() - new Date(sellerInfo.created_at || Date.now()).getFullYear())} an{Math.max(1, new Date().getFullYear() - new Date(sellerInfo.created_at || Date.now()).getFullYear()) > 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                    {sellerInfo.total_sales > 0 && (
+                      <View style={styles.statBadge}>
+                        <Text style={styles.salesCount}>{sellerInfo.total_sales}+ ventes</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+                <TouchableOpacity onPress={toggleFollow} style={styles.followButtonContainer}>
                   <LinearGradient
-                    colors={['#FFD700', '#FFA500', '#FF8C00']}
+                    colors={isFollowing ? ['#10B981', '#059669'] : ['#FFD700', '#FFA500', '#FF8C00']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={styles.followButton}>
+                    {isFollowing ? (
+                      <Check size={14} color="#FFFFFF" />
+                    ) : (
+                      <UserPlus size={14} color="#FFFFFF" />
+                    )}
                     <Text style={styles.followButtonText}>{isFollowing ? 'Abonné' : 'Suivre'}</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
+
+              {/* Phone Number - if available */}
+              {sellerInfo.phone && (
+                <TouchableOpacity style={styles.phoneRow} onPress={callSeller} activeOpacity={0.7}>
+                  <View style={styles.phoneIconContainer}>
+                    <Phone size={16} color="#FF8C42" />
+                  </View>
+                  <Text style={styles.phoneNumber}>{sellerInfo.phone}</Text>
+                  <View style={styles.callBadge}>
+                    <Text style={styles.callBadgeText}>Appeler</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
 
               {/* Action Buttons */}
               <View style={styles.sellerActions}>
                 <TouchableOpacity
                   style={styles.boutiqueButton}
                   onPress={() => router.push(`/shop/${product.seller_id}`)}>
-                  <ShoppingBag size={18} color="#6B7280" />
-                  <Text style={styles.boutiqueButtonText}>Boutique</Text>
+                  <ShoppingBag size={18} color="#FF8C42" />
+                  <Text style={styles.boutiqueButtonText}>Voir la boutique</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={{ flex: 1 }} onPress={contactSeller}>
                   <LinearGradient
@@ -480,12 +637,43 @@ export default function ProductDetailScreen() {
                     end={{ x: 1, y: 1 }}
                     style={styles.discuterButton}>
                     <MessageCircle size={18} color="#FFFFFF" />
-                    <Text style={styles.discuterButtonText}>Discuter</Text>
+                    <Text style={styles.discuterButtonText}>Contacter</Text>
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
             </View>
           )}
+
+          {/* Trust Badges */}
+          <View style={styles.trustSection}>
+            <View style={styles.trustBadge}>
+              <View style={styles.trustIconContainer}>
+                <Truck size={18} color="#10B981" />
+              </View>
+              <View style={styles.trustTextContainer}>
+                <Text style={styles.trustTitle}>Livraison rapide</Text>
+                <Text style={styles.trustSubtitle}>Partout au Sénégal</Text>
+              </View>
+            </View>
+            <View style={styles.trustBadge}>
+              <View style={styles.trustIconContainer}>
+                <RotateCcw size={18} color="#3B82F6" />
+              </View>
+              <View style={styles.trustTextContainer}>
+                <Text style={styles.trustTitle}>Retours faciles</Text>
+                <Text style={styles.trustSubtitle}>Sous 7 jours</Text>
+              </View>
+            </View>
+            <View style={styles.trustBadge}>
+              <View style={styles.trustIconContainer}>
+                <Shield size={18} color="#8B5CF6" />
+              </View>
+              <View style={styles.trustTextContainer}>
+                <Text style={styles.trustTitle}>Paiement sécurisé</Text>
+                <Text style={styles.trustSubtitle}>100% protégé</Text>
+              </View>
+            </View>
+          </View>
 
           {/* Similar Products */}
           <View style={styles.similarSection}>
@@ -513,6 +701,48 @@ export default function ProductDetailScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Bottom Bar avec Quantité et Panier */}
+      <View style={styles.bottomBar}>
+        <View style={styles.quantityContainer}>
+          <Text style={styles.quantityLabel}>Quantité</Text>
+          <View style={styles.quantityControls}>
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={() => setQuantity(Math.max(1, quantity - 1))}
+              disabled={quantity <= 1}>
+              <Minus size={18} color={quantity <= 1 ? '#D1D5DB' : '#1F2937'} />
+            </TouchableOpacity>
+            <Text style={styles.quantityValue}>{quantity}</Text>
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={() => setQuantity(Math.min(product?.stock || 99, quantity + 1))}
+              disabled={quantity >= (product?.stock || 99)}>
+              <Plus size={18} color={quantity >= (product?.stock || 99) ? '#D1D5DB' : '#1F2937'} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.addToCartButton, adding && styles.addToCartButtonDisabled]}
+          onPress={addToCart}
+          disabled={adding}>
+          <LinearGradient
+            colors={adding ? ['#D1D5DB', '#9CA3AF'] : ['#FFD700', '#FFA500', '#FF8C00']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.addToCartGradient}>
+            {adding ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <ShoppingCart size={20} color="#FFFFFF" />
+                <Text style={styles.addToCartText}>Ajouter au panier</Text>
+              </>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -558,6 +788,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FF8C42',
     letterSpacing: 0.5,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  headerIconButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   favoriteButton: {
     width: 40,
@@ -694,37 +935,83 @@ const styles = StyleSheet.create({
   },
   sellerCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
     marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowColor: '#FF8C42',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  sellerHeaderGradient: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   sellerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
+  },
+  shopIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  shopNameContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    marginBottom: 16,
   },
   sellerShopName: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '800',
     color: '#1F2937',
+    letterSpacing: 0.3,
+  },
+  verifiedBadgeSmall: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   sellerInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    padding: 16,
+    paddingTop: 12,
+  },
+  avatarContainer: {
+    position: 'relative',
   },
   sellerAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     borderWidth: 3,
     borderColor: '#FF8C42',
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#10B981',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   sellerDetails: {
     flex: 1,
@@ -740,55 +1027,115 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   sellerLocation: {
     fontSize: 13,
     color: '#6B7280',
+    fontWeight: '500',
   },
   sellerStatsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  statBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   sellerRating: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: '#1F2937',
   },
   sellerYears: {
-    fontSize: 13,
+    fontSize: 11,
+    fontWeight: '600',
     color: '#6B7280',
   },
+  salesCount: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#10B981',
+  },
+  followButtonContainer: {
+    marginLeft: 8,
+  },
   followButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
     overflow: 'hidden',
   },
   followButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  phoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    gap: 10,
+  },
+  phoneIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#FFF7ED',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  phoneNumber: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+    letterSpacing: 0.5,
+    flex: 1,
+  },
+  callBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  callBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#10B981',
+  },
   sellerActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   boutiqueButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: '#F3F4F6',
+    gap: 8,
+    backgroundColor: '#FFF7ED',
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
   },
   boutiqueButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#6B7280',
+    color: '#FF8C42',
   },
   discuterButton: {
     flex: 1,
@@ -804,6 +1151,48 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  trustSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  trustBadge: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  trustIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  trustTextContainer: {
+    alignItems: 'center',
+  },
+  trustTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1F2937',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  trustSubtitle: {
+    fontSize: 9,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    textAlign: 'center',
   },
   similarSection: {
     marginBottom: 24,
@@ -851,5 +1240,73 @@ const styles = StyleSheet.create({
   similarCurrency: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  quantityContainer: {
+    flex: 1,
+  },
+  quantityLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 6,
+  },
+  quantityControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  quantityButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quantityValue: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  addToCartButton: {
+    flex: 2,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  addToCartButtonDisabled: {
+    opacity: 0.7,
+  },
+  addToCartGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  addToCartText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

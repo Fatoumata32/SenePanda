@@ -43,7 +43,18 @@
       "Bash(if exist .expo rmdir /s /q .expo)",
       "Bash(if exist node_modules.cache rmdir /s /q node_modules.cache)",
       "Bash(tasklist:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAjout de composants utiles et amélioration de l''interface\n\nNouveaux composants ajoutés:\n- Badge: Pour notifications, statuts et labels (7 variants)\n- SkeletonLoader: Animations de chargement (6 variants: rect, circle, text, avatar, card, product)\n- StatusIndicator: Indicateurs de statut avec animation pulse (online, offline, away, busy, active)\n- EmptyState: États vides avec icône et action optionnelle\n- PriceTag: Affichage cohérent des prix avec remises et formatage\n\nAméliorations du WaveDivider:\n- Ajout de 4 variants (wave, curve, double-wave, smooth)\n- Animation subtile pour effet dynamique\n- Gradient amélioré pour transition plus douce\n- Utilisation des constantes Colors\n- Props animated pour contrôler l''animation\n\nAméliorations de la page d''accueil:\n- Standardisation des gradients (Gradients.hero, Gradients.goldOrange)\n- Utilisation cohérente de Colors.* pour toutes les couleurs\n- Amélioration du WaveDivider (variant \"smooth\" avec animation)\n- Ajout d''accessibilityRole et accessibilityLabel sur les boutons CTA\n- Meilleure expérience utilisateur avec animations fluides\n\nDocumentation:\n- Ajout de components/README.md avec exemples d''utilisation\n- Documentation complète de tous les nouveaux composants\n- Bonnes pratiques et exemples d''intégration\n\nBénéfices:\n✅ Cohérence visuelle améliorée\n✅ Meilleure expérience de chargement\n✅ Composants réutilisables et maintenables\n✅ Accessibilité renforcée\n✅ Design system plus complet\n✅ Aucune erreur TypeScript\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit:*)",
+      "Bash(done)",
+      "Bash(move \"supabase\\migrations\\create_cart_and_orders_system.sql\" \"supabase\\migrations\\create_cart_and_orders_system.sql.backup\")",
+      "Bash(mv:*)",
+      "Bash(git rm:*)",
+      "Bash(bash:*)",
+      "Bash(powershell -Command \"Remove-Item -Path ''\\?\\C:\\Users\\PC\\Downloads\\project-bolt-sb1-qw6kprzq\\project\\nul'' -Force\")",
+      "Bash(cmd /c \"echo. 2>nul && del /f /q nul 2>nul || rd /s /q nul 2>nul || echo done\")",
+      "Bash(.gitignore)"
     ],
     "deny": [],
     "ask": []

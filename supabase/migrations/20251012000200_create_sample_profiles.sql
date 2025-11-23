@@ -12,6 +12,23 @@
 -- 4. Copiez l'UUID généré
 -- 5. Remplacez les UUIDs ci-dessous
 
+-- S'assurer que la colonne country existe avant les inserts
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS country TEXT;
+
+-- ==========================================
+-- PROFILS DE TEST (COMMENTÉS)
+-- ==========================================
+-- Ces INSERT sont des exemples et utilisent gen_random_uuid()
+-- qui créera des profils SANS utilisateurs auth correspondants.
+--
+-- Pour les utiliser correctement:
+-- 1. Créez d'abord les utilisateurs dans Supabase Auth Dashboard
+-- 2. Récupérez leurs UUIDs
+-- 3. Remplacez gen_random_uuid() par les vrais UUIDs
+-- 4. Décommentez les blocs ci-dessous
+-- ==========================================
+
+/*
 -- ==========================================
 -- PROFILS CLIENTS
 -- ==========================================
@@ -231,6 +248,7 @@ INSERT INTO profiles (
   now(),
   now()
 ) ON CONFLICT (id) DO NOTHING;
+*/
 
 -- ==========================================
 -- INSTRUCTIONS

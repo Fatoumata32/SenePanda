@@ -468,3 +468,276 @@ export type BlockedUser = {
   reason: string | null;
   created_at: string;
 };
+
+// ========================================
+// SYSTÈME COMPLET DE POINTS BONUS
+// ========================================
+
+// Daily Streak Types
+export type DailyStreak = {
+  id: string;
+  user_id: string;
+  current_streak: number;
+  longest_streak: number;
+  last_login_date: string;
+  total_logins: number;
+  created_at: string;
+  updated_at: string;
+};
+
+// Survey Types
+export type SurveyQuestion = {
+  id: number;
+  type: 'rating' | 'multiple_choice' | 'text' | 'yes_no';
+  question: string;
+  options?: string[];
+  required: boolean;
+};
+
+export type Survey = {
+  id: string;
+  title: string;
+  description: string | null;
+  questions: SurveyQuestion[];
+  points_reward: number;
+  category: 'feedback' | 'product' | 'service' | 'general';
+  target_audience: string[];
+  min_level: 'bronze' | 'silver' | 'gold' | 'platinum' | null;
+  max_responses: number | null;
+  current_responses: number;
+  is_active: boolean;
+  starts_at: string;
+  ends_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SurveyResponse = {
+  id: string;
+  survey_id: string;
+  user_id: string;
+  answers: Record<string, any>;
+  points_earned: number;
+  completed_at: string;
+};
+
+// Seller of Month Types
+export type SellerOfMonth = {
+  id: string;
+  seller_id: string;
+  month: number;
+  year: number;
+  total_sales: number;
+  total_orders: number;
+  average_rating: number;
+  positive_reviews_count: number;
+  response_time_hours: number | null;
+  reward_points: number;
+  reward_description: string | null;
+  badge_url: string | null;
+  is_awarded: boolean;
+  awarded_at: string | null;
+  created_at: string;
+};
+
+export type SellerMonthlyStats = {
+  id: string;
+  seller_id: string;
+  month: number;
+  year: number;
+  total_sales: number;
+  total_orders: number;
+  completed_orders: number;
+  cancelled_orders: number;
+  average_rating: number;
+  total_reviews: number;
+  positive_reviews: number;
+  negative_reviews: number;
+  average_response_time_hours: number | null;
+  average_shipping_time_days: number | null;
+  performance_score: number;
+  created_at: string;
+  updated_at: string;
+};
+
+// Merchandising Types
+export type MerchandiseCategory = 't-shirt' | 'cap' | 'mug' | 'sticker' | 'bag';
+
+export type MerchandiseItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  category: MerchandiseCategory;
+  size: string | null;
+  color: string | null;
+  image_url: string | null;
+  images: string[] | null;
+  price_points: number | null;
+  price_cash: number | null;
+  stock: number;
+  low_stock_threshold: number;
+  is_active: boolean;
+  is_featured: boolean;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MerchandiseOrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+export type PaymentMethod = 'points' | 'cash' | 'mixed';
+
+export type MerchandiseOrder = {
+  id: string;
+  user_id: string;
+  merchandise_id: string;
+  quantity: number;
+  payment_method: PaymentMethod;
+  points_used: number;
+  cash_paid: number;
+  shipping_name: string;
+  shipping_phone: string;
+  shipping_address: string;
+  shipping_city: string;
+  shipping_postal_code: string | null;
+  status: MerchandiseOrderStatus;
+  tracking_number: string | null;
+  confirmed_at: string | null;
+  shipped_at: string | null;
+  delivered_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+  updated_at: string;
+  merchandise?: MerchandiseItem;
+};
+
+// Charitable Types
+export type CharitableCauseCategory = 'education' | 'health' | 'environment' | 'poverty' | 'animals';
+
+export type CharitableCause = {
+  id: string;
+  name: string;
+  description: string;
+  organization: string;
+  category: CharitableCauseCategory;
+  goal_amount: number | null;
+  current_amount: number;
+  image_url: string | null;
+  is_active: boolean;
+  starts_at: string;
+  ends_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CharitableDonation = {
+  id: string;
+  user_id: string;
+  cause_id: string;
+  points_donated: number;
+  amount_converted: number;
+  is_anonymous: boolean;
+  message: string | null;
+  created_at: string;
+  cause?: CharitableCause;
+};
+
+// Extended Points Transaction Types
+export type PointsTransactionType =
+  | 'purchase'
+  | 'review'
+  | 'referral'
+  | 'redemption'
+  | 'bonus'
+  | 'welcome'
+  | 'daily_streak'
+  | 'survey'
+  | 'seller_of_month'
+  | 'merchandise'
+  | 'charity';
+
+export type ExtendedPointsTransaction = {
+  id: string;
+  user_id: string;
+  points: number;
+  type: PointsTransactionType;
+  description: string | null;
+  reference_id: string | null;
+  created_at: string;
+};
+
+// Rewards Catalog Types (Extended)
+export type RewardCategory = 'discount' | 'boost' | 'premium' | 'gift';
+
+export type RewardsCatalogItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  category: RewardCategory;
+  points_cost: number;
+  value: number | null;
+  duration_days: number | null;
+  icon: string | null;
+  is_active: boolean;
+  stock: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserReward = {
+  id: string;
+  user_id: string;
+  reward_id: string;
+  points_spent: number;
+  status: 'active' | 'used' | 'expired';
+  expires_at: string | null;
+  used_at: string | null;
+  order_id: string | null;
+  created_at: string;
+  reward?: RewardsCatalogItem;
+};
+
+// API Response Types
+export type WelcomeBonusResponse = {
+  success: boolean;
+  error?: string;
+  points_earned?: number;
+  message?: string;
+};
+
+export type DailyStreakResponse = {
+  success: boolean;
+  already_logged_today: boolean;
+  current_streak: number;
+  longest_streak?: number;
+  points_earned: number;
+  total_logins?: number;
+};
+
+export type SurveySubmissionResponse = {
+  success: boolean;
+  error?: string;
+  points_earned?: number;
+  message?: string;
+};
+
+export type DonationResponse = {
+  success: boolean;
+  error?: string;
+  points_donated?: number;
+  amount_converted?: number;
+  cause_name?: string;
+  remaining_points?: number;
+  message?: string;
+};
+
+export type MerchandiseOrderResponse = {
+  success: boolean;
+  error?: string;
+  order_id?: string;
+  points_used?: number;
+  cash_paid?: number;
+  message?: string;
+  available_stock?: number;
+  required?: number;
+  available?: number;
+};

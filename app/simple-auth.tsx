@@ -61,8 +61,8 @@ export default function SimpleAuthScreen() {
       return;
     }
 
-    if (!password.trim() || password.length < 4) {
-      Alert.alert('Erreur', 'Le code PIN doit contenir au moins 4 chiffres');
+    if (!password.trim() || password.length < 6) {
+      Alert.alert('Erreur', 'Le code PIN doit contenir au moins 6 chiffres');
       return;
     }
 
@@ -155,8 +155,8 @@ export default function SimpleAuthScreen() {
       return;
     }
 
-    if (password.length < 4) {
-      Alert.alert('Erreur', 'Le code PIN doit contenir au moins 4 chiffres');
+    if (password.length < 6) {
+      Alert.alert('Erreur', 'Le code PIN doit contenir au moins 6 chiffres');
       return;
     }
 
@@ -168,34 +168,11 @@ export default function SimpleAuthScreen() {
     try {
       setLoading(true);
 
-      // Vérifier si le numéro existe déjà
-      const { data: existingProfile, error: checkError } = await supabase
-        .from('profiles')
-        .select('id, phone')
-        .eq('phone', cleaned)
-        .maybeSingle();
-
-      if (checkError && checkError.code !== 'PGRST116') {
-        throw checkError;
-      }
-
-      if (existingProfile) {
-        Alert.alert(
-          'Numéro déjà utilisé',
-          'Ce numéro de téléphone est déjà associé à un compte. Voulez-vous vous connecter ?',
-          [
-            { text: 'Annuler', style: 'cancel' },
-            { text: 'Se connecter', onPress: () => setMode('signin') }
-          ]
-        );
-        return;
-      }
-
       // Créer un email à partir du téléphone
       const email = `${cleaned}@senepanda.app`;
 
-      // Créer le compte dans Supabase Auth avec options pour éviter l'email de confirmation
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // Tenter de créer le compte directement
+      const { data: signUpData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -204,59 +181,108 @@ export default function SimpleAuthScreen() {
             first_name: firstName.trim(),
             last_name: lastName.trim(),
           },
-          emailRedirectTo: undefined, // Pas de redirection email
         }
       });
 
+      // Gérer les erreurs
       if (authError) {
-        if (authError.message.includes('already registered')) {
+        console.log('SignUp error:', authError.message);
+
+        // Erreur réseau
+        if (authError.message.includes('Network') || authError.message.includes('fetch')) {
           Alert.alert(
-            'Email déjà utilisé',
-            'Ce numéro est déjà enregistré. Essayez de vous connecter.',
-            [
-              { text: 'OK', onPress: () => setMode('signin') }
-            ]
+            'Erreur réseau',
+            'Vérifiez votre connexion internet et réessayez.',
+            [{ text: 'OK' }]
           );
           return;
         }
+
+        // Compte déjà existant
+        if (authError.message.includes('already registered') ||
+            authError.message.includes('User already registered')) {
+          Alert.alert(
+            'Numéro déjà utilisé',
+            'Ce numéro est déjà enregistré. Essayez de vous connecter.',
+            [{ text: 'OK', onPress: () => setMode('signin') }]
+          );
+          return;
+        }
+
+        // Database error = le compte auth est créé mais le trigger a échoué
+        if (authError.message.includes('Database error')) {
+          // Attendre et essayer de se connecter
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          const { data: signInData } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+
+          if (signInData?.user) {
+            // Créer le profil
+            await supabase.from('profiles').upsert({
+              id: signInData.user.id,
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+              full_name: `${firstName.trim()} ${lastName.trim()}`,
+              phone: cleaned,
+              username: `user_${signInData.user.id.substring(0, 8)}`,
+              email: email,
+              is_seller: false,
+            }, { onConflict: 'id' });
+
+            Speech.speak('Compte créé!', { language: 'fr-FR' });
+            Alert.alert('Succès', 'Compte créé avec succès!', [
+              { text: 'OK', onPress: () => router.replace('/role-selection') }
+            ]);
+            return;
+          }
+
+          // Proposer de se connecter
+          Alert.alert(
+            'Compte créé',
+            'Essayez de vous connecter avec vos identifiants.',
+            [{ text: 'OK', onPress: () => setMode('signin') }]
+          );
+          return;
+        }
+
         throw authError;
       }
 
-      if (!authData.user) {
-        throw new Error('Impossible de créer le compte');
-      }
+      // Succès - créer le profil
+      if (signUpData?.user?.id) {
+        await supabase.from('profiles').upsert({
+          id: signUpData.user.id,
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          full_name: `${firstName.trim()} ${lastName.trim()}`,
+          phone: cleaned,
+          username: `user_${signUpData.user.id.substring(0, 8)}`,
+          email: email,
+          is_seller: false,
+        }, { onConflict: 'id' });
 
-      // Créer le profil dans la table profiles
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: authData.user.id,
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        full_name: `${firstName.trim()} ${lastName.trim()}`,
-        phone: cleaned,
-        username: `user_${authData.user.id.substring(0, 8)}`,
-        email: email,
-        is_seller: false,
-      });
+        // Connecter automatiquement
+        await supabase.auth.signInWithPassword({ email, password });
 
-      if (profileError) {
-        console.error('Profile creation error:', profileError);
-        // Ne pas bloquer si l'erreur est que le profil existe déjà
-        if (!profileError.message.includes('duplicate key')) {
-          throw profileError;
-        }
-      }
-
-      Speech.speak('Compte créé avec succès! Bienvenue', { language: 'fr-FR' });
-      Alert.alert(
-        'Compte créé !',
-        `Votre compte a été créé avec succès.\n\nNuméro: ${cleaned}\nCode PIN: ${password}\n\nNotez bien votre code PIN, vous en aurez besoin pour vous connecter.`,
-        [
+        Speech.speak('Compte créé!', { language: 'fr-FR' });
+        Alert.alert('Succès', 'Bienvenue sur SenePanda!', [
           { text: 'Continuer', onPress: () => router.replace('/role-selection') }
-        ]
-      );
+        ]);
+      } else {
+        throw new Error('Erreur lors de la création');
+      }
     } catch (error: any) {
       console.error('Error signing up:', error);
-      Alert.alert('Erreur', error.message || 'Impossible de créer le compte');
+
+      // Message d'erreur plus simple
+      const message = error.message?.includes('Network')
+        ? 'Vérifiez votre connexion internet'
+        : 'Erreur lors de la création du compte';
+
+      Alert.alert('Erreur', message);
     } finally {
       setLoading(false);
     }
@@ -361,7 +387,7 @@ export default function SimpleAuthScreen() {
             {/* Code PIN */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>
-                {mode === 'signin' ? 'Code PIN (4-6 chiffres)' : 'Créer un code PIN (4-6 chiffres)'}
+                {mode === 'signin' ? 'Code PIN (6 chiffres)' : 'Créer un code PIN (6 chiffres)'}
               </Text>
               <View style={styles.passwordContainer}>
                 <TextInput
@@ -387,8 +413,8 @@ export default function SimpleAuthScreen() {
               </View>
               <Text style={styles.hint}>
                 {mode === 'signup'
-                  ? 'Choisissez un code PIN facile à retenir (ex: 1234)'
-                  : 'Entrez votre code PIN de 4 à 6 chiffres'}
+                  ? 'Choisissez un code PIN facile à retenir (ex: 123456)'
+                  : 'Entrez votre code PIN de 6 chiffres'}
               </Text>
             </View>
 
