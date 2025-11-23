@@ -10,6 +10,7 @@ import { CartProvider } from '@/contexts/CartContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Colors } from '@/constants/Colors';
+import PrivacyPolicyModal from '@/components/PrivacyPolicyModal';
 
 export default function RootLayout() {
   useFrameworkReady();
@@ -98,6 +99,7 @@ export default function RootLayout() {
           <CartProvider>
             <AuthGuard>
               <Stack screenOptions={{ headerShown: false }} />
+              <PrivacyPolicyModal />
               <StatusBar style="auto" />
             </AuthGuard>
           </CartProvider>
