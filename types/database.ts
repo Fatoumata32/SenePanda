@@ -5,6 +5,7 @@ export type Profile = {
   first_name: string | null;
   last_name: string | null;
   avatar_url: string | null;
+  bio: string | null;
   is_seller: boolean;
   is_premium: boolean;
   shop_name: string | null;
@@ -35,6 +36,7 @@ export type Profile = {
   total_referrals: number;
   referral_points: number;
   panda_coins: number;
+  followers_count: number;
   created_at: string;
   updated_at: string;
 };
