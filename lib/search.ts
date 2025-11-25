@@ -201,7 +201,7 @@ export async function getSearchSuggestions(
 
     // Extraire les termes uniques pour les suggestions
     const suggestions = new Set<string>();
-    result.hits.forEach((hit) => {
+    result.hits.forEach((hit: ProductSearchResult) => {
       suggestions.add(hit.name);
       if (hit.category_name) suggestions.add(hit.category_name);
     });
@@ -282,7 +282,7 @@ export async function autocomplete(
     const productsResult = await searchProducts(query, { limit });
 
     return {
-      products: productsResult.hits.map((hit) => ({
+      products: productsResult.hits.map((hit: ProductSearchResult) => ({
         id: hit.id,
         name: hit.name,
         price: hit.price,

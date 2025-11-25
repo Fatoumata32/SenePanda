@@ -72,7 +72,7 @@ export default function CheckoutScreen() {
     }
   };
 
-  const shippingCost = cartTotal > 50 ? 0 : 5.99;
+  const shippingCost = cartTotal > 25000 ? 0 : 2500;
   const tax = cartTotal * 0.1; // 10% tax
   const total = cartTotal + shippingCost + tax;
 
@@ -107,7 +107,7 @@ export default function CheckoutScreen() {
           p_shipping_address: address,
           p_shipping_city: city,
           p_shipping_postal_code: postalCode || null,
-          p_shipping_country: country || 'USA',
+          p_shipping_country: country || 'Sénégal',
           p_order_notes: orderNotes || null,
           p_payment_method: 'cash_on_delivery'
         });
@@ -175,7 +175,7 @@ export default function CheckoutScreen() {
                 <Text style={styles.itemQuantity}>Quantité: {item.quantity}</Text>
               </View>
               <Text style={styles.itemPrice}>
-                ${((item.product?.price || 0) * item.quantity).toFixed(2)}
+                {((item.product?.price || 0) * item.quantity).toLocaleString()} FCFA
               </Text>
             </View>
           ))}
@@ -183,24 +183,24 @@ export default function CheckoutScreen() {
           <View style={styles.pricingDetails}>
             <View style={styles.priceRow}>
               <Text style={styles.priceLabel}>Sous-total</Text>
-              <Text style={styles.priceValue}>${cartTotal.toFixed(2)}</Text>
+              <Text style={styles.priceValue}>{cartTotal.toLocaleString()} FCFA</Text>
             </View>
             <View style={styles.priceRow}>
               <Text style={styles.priceLabel}>Livraison</Text>
               <Text style={[styles.priceValue, shippingCost === 0 && styles.freeShipping]}>
-                {shippingCost === 0 ? 'GRATUIT' : `$${shippingCost.toFixed(2)}`}
+                {shippingCost === 0 ? 'GRATUIT' : `${shippingCost.toLocaleString()} FCFA`}
               </Text>
             </View>
             <View style={styles.priceRow}>
               <Text style={styles.priceLabel}>Taxes (10%)</Text>
-              <Text style={styles.priceValue}>${tax.toFixed(2)}</Text>
+              <Text style={styles.priceValue}>{Math.round(tax).toLocaleString()} FCFA</Text>
             </View>
           </View>
 
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalAmount}>
-              ${total.toFixed(2)}
+              {Math.round(total).toLocaleString()} FCFA
             </Text>
           </View>
         </View>
@@ -218,7 +218,7 @@ export default function CheckoutScreen() {
               style={styles.input}
               value={fullName}
               onChangeText={setFullName}
-              placeholder="Ex: John Doe"
+              placeholder="Ex: Mamadou Diallo"
               placeholderTextColor="#9CA3AF"
             />
           </View>
@@ -229,7 +229,7 @@ export default function CheckoutScreen() {
               style={[styles.input, styles.textArea]}
               value={address}
               onChangeText={setAddress}
-              placeholder="Ex: 123 Main Street, Apt 4B"
+              placeholder="Ex: Rue 10, Médina, Appartement 4B"
               placeholderTextColor="#9CA3AF"
               multiline
               numberOfLines={3}
@@ -243,7 +243,7 @@ export default function CheckoutScreen() {
                 style={styles.input}
                 value={city}
                 onChangeText={setCity}
-                placeholder="Ex: New York"
+                placeholder="Ex: Dakar"
                 placeholderTextColor="#9CA3AF"
               />
             </View>
@@ -254,7 +254,7 @@ export default function CheckoutScreen() {
                 style={styles.input}
                 value={postalCode}
                 onChangeText={setPostalCode}
-                placeholder="Ex: 10001"
+                placeholder="Ex: 12000"
                 placeholderTextColor="#9CA3AF"
                 keyboardType="numeric"
               />
@@ -267,7 +267,7 @@ export default function CheckoutScreen() {
               style={styles.input}
               value={country}
               onChangeText={setCountry}
-              placeholder="Ex: USA"
+              placeholder="Ex: Sénégal"
               placeholderTextColor="#9CA3AF"
             />
           </View>
@@ -278,7 +278,7 @@ export default function CheckoutScreen() {
               style={styles.input}
               value={phone}
               onChangeText={setPhone}
-              placeholder="+1 XXX XXX XXXX"
+              placeholder="+221 XX XXX XX XX"
               keyboardType="phone-pad"
               placeholderTextColor="#9CA3AF"
             />

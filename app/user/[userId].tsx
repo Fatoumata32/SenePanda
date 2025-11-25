@@ -472,14 +472,14 @@ export default function UserProfileScreen() {
           </View>
         )}
 
-        {profile?.average_rating > 0 && (
+        {profile?.average_rating && profile.average_rating > 0 && (
           <View style={styles.infoRow}>
             <View style={[styles.infoIconCircle, { backgroundColor: '#FEE2E2' }]}>
               <Star size={20} color="#EF4444" />
             </View>
             <View style={styles.infoRowContent}>
               <Text style={styles.infoText}>Note: {profile.average_rating.toFixed(1)}/5</Text>
-              <Text style={styles.infoSubtext}>{profile.total_reviews || 0} avis clients</Text>
+              <Text style={styles.infoSubtext}>{profile?.total_reviews || 0} avis clients</Text>
             </View>
           </View>
         )}

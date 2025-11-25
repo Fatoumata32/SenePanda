@@ -4,7 +4,9 @@
  */
 
 export const Colors = {
-  // Primary Colors
+  // Primary Colors (aliases for backwards compatibility)
+  primary: '#FF8C00',
+  secondary: '#FFD700',
   primaryGold: '#FFD700',
   primaryOrange: '#FF8C00',
 
@@ -12,18 +14,29 @@ export const Colors = {
   successGreen: '#32CD32',
   darkGreen: '#228B22',
 
+  // Semantic Colors
+  error: '#EF4444',
+  warning: '#F59E0B',
+  info: '#3B82F6',
+  success: '#10B981',
+
   // Neutral Colors
   dark: '#1C1C1C',
   beige: '#f9eddd',
   lemon: '#FFFACD',
   white: '#FFFFFF',
+  gray: '#6B7280',
+  lightGray: '#F3F4F6',
+  darkGray: '#374151',
 
   // Text Colors
+  text: '#1F2937',
   textPrimary: '#1C1C1C',
   textSecondary: '#666666',
   textMuted: '#9CA3AF',
 
   // Background Colors
+  background: '#F9FAFB',
   backgroundLight: '#F9FAFB',
   backgroundBeige: '#f9eddd',
   backgroundLemon: '#FFFACD',

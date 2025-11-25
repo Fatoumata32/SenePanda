@@ -3,21 +3,47 @@ import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import PandaLogo from '@/components/PandaLogo';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { NavigationProvider } from '@/contexts/NavigationContext';
 import { CartProvider } from '@/contexts/CartContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { ToastProvider } from '@/contexts/ToastContext';
 import { AuthGuard } from '@/components/AuthGuard';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Colors } from '@/constants/Colors';
 import PrivacyPolicyModal from '@/components/PrivacyPolicyModal';
+import OnboardingScreen, { ONBOARDING_COMPLETED_KEY } from '@/components/OnboardingScreen';
+import OfflineBanner from '@/components/OfflineBanner';
 
 export default function RootLayout() {
   useFrameworkReady();
   const [showSplash, setShowSplash] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [scaleAnim] = useState(new Animated.Value(0.3));
   const [rotateAnim] = useState(new Animated.Value(0));
+
+  useEffect(() => {
+    checkOnboarding();
+  }, []);
+
+  const checkOnboarding = async () => {
+    try {
+      const completed = await AsyncStorage.getItem(ONBOARDING_COMPLETED_KEY);
+      setShowOnboarding(!completed);
+    } catch (error) {
+      console.error('Error checking onboarding:', error);
+    } finally {
+      setOnboardingChecked(true);
+    }
+  };
+
+  const handleOnboardingComplete = () => {
+    setShowOnboarding(false);
+  };
 
   useEffect(() => {
     // Start animation immediately
@@ -92,20 +118,35 @@ export default function RootLayout() {
     );
   }
 
+  // Show onboarding for new users
+  if (onboardingChecked && showOnboarding) {
+    return (
+      <>
+        <OnboardingScreen onComplete={handleOnboardingComplete} />
+        <StatusBar style="dark" />
+      </>
+    );
+  }
+
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <NavigationProvider>
-          <CartProvider>
-            <AuthGuard>
-              <Stack screenOptions={{ headerShown: false }} />
-              <PrivacyPolicyModal />
-              <StatusBar style="auto" />
-            </AuthGuard>
-          </CartProvider>
-        </NavigationProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <NavigationProvider>
+            <CartProvider>
+              <ToastProvider>
+                <AuthGuard>
+                  <Stack screenOptions={{ headerShown: false }} />
+                  <PrivacyPolicyModal />
+                  <OfflineBanner />
+                  <StatusBar style="auto" />
+                </AuthGuard>
+              </ToastProvider>
+            </CartProvider>
+          </NavigationProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

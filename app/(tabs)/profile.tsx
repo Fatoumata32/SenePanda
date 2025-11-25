@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -18,9 +18,9 @@ import { useRouter, Link } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { signInWithUsernameOrEmail } from '@/lib/auth-helpers';
 import {
-  validateName,
-  validatePhone,
-  validateLocation,
+  validateUsername,
+  validatePhoneNumber,
+  validateAddress,
 } from '@/lib/validation';
 import { Profile } from '@/types/database';
 import {
@@ -66,6 +66,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ClipboardLib from 'expo-clipboard';
 import { Colors } from '@/constants/Colors';
 import { useBonusSystem } from '@/hooks/useBonusSystem';
+import SubscriptionModal from '@/components/SubscriptionModal';
 
 const { width } = Dimensions.get('window');
 
@@ -154,6 +155,7 @@ export default function ProfileScreen() {
   const [termsModalVisible, setTermsModalVisible] = useState(false);
   const [deleteAccountModalVisible, setDeleteAccountModalVisible] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [subscriptionModalVisible, setSubscriptionModalVisible] = useState(false);
 
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
@@ -170,6 +172,37 @@ export default function ProfileScreen() {
 
   // Animation
   const [modalAnim] = useState(new Animated.Value(0));
+
+  // Memoized values
+  const totalPoints = useMemo(() =>
+    userPoints?.points || profile?.panda_coins || 0,
+    [userPoints?.points, profile?.panda_coins]
+  );
+
+  const referralPoints = useMemo(() =>
+    (profile?.total_referrals || 0) * 50,
+    [profile?.total_referrals]
+  );
+
+  const themeColors = useMemo(() => ({
+    background: isDark ? '#111827' : '#FAFAFA',
+    card: isDark ? '#1F2937' : '#FFFFFF',
+    text: isDark ? '#F9FAFB' : '#1F2937',
+    textSecondary: isDark ? '#D1D5DB' : '#6B7280',
+    border: isDark ? '#374151' : '#E5E7EB',
+    headerGradient: isDark
+      ? ['#1F2937', '#374151'] as const
+      : ['#FAF5EF', '#FFF9ED'] as const,
+  }), [isDark]);
+
+  const userInitials = useMemo(() => {
+    const fullName = profile?.full_name || profile?.username || 'User';
+    const names = fullName.split(' ');
+    if (names.length >= 2) {
+      return (names[0][0] + names[1][0]).toUpperCase();
+    }
+    return fullName.substring(0, 2).toUpperCase();
+  }, [profile?.full_name, profile?.username]);
 
   useEffect(() => {
     checkUser();
@@ -365,33 +398,33 @@ export default function ProfileScreen() {
       setSaving(true);
 
       // Validation du prénom
-      const firstNameValidation = validateName(editFirstName, 'Prénom');
+      const firstNameValidation = validateUsername(editFirstName);
       if (!firstNameValidation.isValid) {
-        Alert.alert('Erreur', firstNameValidation.error);
+        Alert.alert('Erreur', firstNameValidation.errors.join(', '));
         setSaving(false);
         return;
       }
 
       // Validation du nom
-      const lastNameValidation = validateName(editLastName, 'Nom');
+      const lastNameValidation = validateUsername(editLastName);
       if (!lastNameValidation.isValid) {
-        Alert.alert('Erreur', lastNameValidation.error);
+        Alert.alert('Erreur', lastNameValidation.errors.join(', '));
         setSaving(false);
         return;
       }
 
       // Validation du téléphone
-      const phoneValidation = validatePhone(editPhone);
+      const phoneValidation = validatePhoneNumber(editPhone);
       if (!phoneValidation.isValid) {
-        Alert.alert('Erreur', phoneValidation.error);
+        Alert.alert('Erreur', phoneValidation.errors.join(', '));
         setSaving(false);
         return;
       }
 
       // Validation du pays
-      const countryValidation = validateLocation(editCountry, 'Pays');
+      const countryValidation = validateAddress(editCountry);
       if (!countryValidation.isValid) {
-        Alert.alert('Erreur', countryValidation.error);
+        Alert.alert('Erreur', countryValidation.errors.join(', '));
         setSaving(false);
         return;
       }
@@ -421,22 +454,13 @@ export default function ProfileScreen() {
     }
   };
 
-  const copyReferralCode = async () => {
+  const copyReferralCode = useCallback(async () => {
     if (profile?.referral_code) {
       await ClipboardLib.setStringAsync(profile.referral_code);
       Speech.speak('Code copié', { language: 'fr-FR' });
       Alert.alert('✓ Copié!', 'Code de parrainage copié');
     }
-  };
-
-  const getUserInitials = () => {
-    const fullName = profile?.full_name || profile?.username || 'User';
-    const names = fullName.split(' ');
-    if (names.length >= 2) {
-      return (names[0][0] + names[1][0]).toUpperCase();
-    }
-    return fullName.substring(0, 2).toUpperCase();
-  };
+  }, [profile?.referral_code]);
 
   if (loading) {
     return (
@@ -458,20 +482,7 @@ export default function ProfileScreen() {
   }
 
   // PROFILE SCREEN (Logged in) - REDESIGNED
-  const totalPoints = userPoints?.points || profile?.panda_coins || 0;
-  const referralPoints = (profile?.total_referrals || 0) * 50;
-
-  // Theme colors
-  const themeColors = {
-    background: isDark ? '#111827' : '#FAFAFA',
-    card: isDark ? '#1F2937' : '#FFFFFF',
-    text: isDark ? '#F9FAFB' : '#1F2937',
-    textSecondary: isDark ? '#D1D5DB' : '#6B7280',
-    border: isDark ? '#374151' : '#E5E7EB',
-    headerGradient: isDark
-      ? ['#1F2937', '#374151'] as const
-      : ['#FAF5EF', '#FFF9ED'] as const,
-  };
+  // Already memoized above
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]}>
@@ -493,7 +504,7 @@ export default function ProfileScreen() {
                 <Image source={{ uri: avatarUri }} style={styles.avatar} />
               ) : (
                 <View style={styles.avatarPlaceholder}>
-                  <Text style={styles.avatarText}>{getUserInitials()}</Text>
+                  <Text style={styles.avatarText}>{userInitials}</Text>
                 </View>
               )}
               <View style={styles.cameraButton}>
@@ -675,7 +686,7 @@ export default function ProfileScreen() {
         {!isPremium && (
           <TouchableOpacity
             style={styles.premiumCard}
-            onPress={() => router.push('/seller/subscription-plans')}
+            onPress={() => setSubscriptionModalVisible(true)}
             activeOpacity={0.8}>
             <LinearGradient
               colors={DesignTokens.colors.gradient.gold}
@@ -857,6 +868,35 @@ export default function ProfileScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Premium & Parrainage */}
+              <View style={styles.settingsSection}>
+                <Text style={[styles.settingsSectionTitle, { color: themeColors.textSecondary }]}>Premium & Récompenses</Text>
+
+                <TouchableOpacity
+                  style={[styles.settingsItem, { backgroundColor: themeColors.background }]}
+                  onPress={() => {
+                    closeModal(setSettingsModalVisible);
+                    setSubscriptionModalVisible(true);
+                  }}>
+                  <Crown size={20} color="#F59E0B" />
+                  <Text style={[styles.settingsText, { color: themeColors.text }]}>
+                    {isPremium ? 'Gérer mon abonnement' : 'Passer à Premium'}
+                  </Text>
+                  <ChevronRight size={18} color={themeColors.textSecondary} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.settingsItem, { backgroundColor: themeColors.background }]}
+                  onPress={() => {
+                    closeModal(setSettingsModalVisible);
+                    router.push('/referral');
+                  }}>
+                  <Users size={20} color="#8B5CF6" />
+                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Parrainage</Text>
+                  <ChevronRight size={18} color={themeColors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
               <View style={styles.settingsSection}>
                 <Text style={[styles.settingsSectionTitle, { color: themeColors.textSecondary }]}>Apparence</Text>
 
@@ -1312,6 +1352,15 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Subscription Modal */}
+      <SubscriptionModal
+        visible={subscriptionModalVisible}
+        onClose={() => setSubscriptionModalVisible(false)}
+        onSuccess={() => {
+          fetchProfile(user.id);
+        }}
+      />
     </SafeAreaView>
   );
 }

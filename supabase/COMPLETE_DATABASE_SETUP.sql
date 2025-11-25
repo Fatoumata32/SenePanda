@@ -37,53 +37,132 @@ DROP FUNCTION IF EXISTS public.create_new_user_profile() CASCADE;
 DROP FUNCTION IF EXISTS public.create_profile_on_signup() CASCADE;
 
 -- =============================================
--- 0.1 CREATION/VERIFICATION TABLE PROFILES
+-- 0.1 CREATION/VERIFICATION TABLE PROFILES (DYNAMIQUE)
 -- =============================================
 
 -- Creer la table profiles si elle n'existe pas
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT,
-  first_name TEXT,
-  last_name TEXT,
-  full_name TEXT,
-  phone TEXT,
-  username TEXT,
-  avatar_url TEXT,
-  is_seller BOOLEAN DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Ajouter les colonnes manquantes
+-- Fonction utilitaire pour ajouter une colonne dynamiquement
+CREATE OR REPLACE FUNCTION add_column_if_not_exists(
+  p_table TEXT,
+  p_column TEXT,
+  p_type TEXT,
+  p_default TEXT DEFAULT NULL
+) RETURNS VOID AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = p_table
+    AND column_name = p_column
+  ) THEN
+    IF p_default IS NOT NULL THEN
+      EXECUTE format('ALTER TABLE %I ADD COLUMN %I %s DEFAULT %s', p_table, p_column, p_type, p_default);
+    ELSE
+      EXECUTE format('ALTER TABLE %I ADD COLUMN %I %s', p_table, p_column, p_type);
+    END IF;
+    RAISE NOTICE 'Colonne ajoutee: %.%', p_table, p_column;
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Ajouter toutes les colonnes manquantes a profiles dynamiquement
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'email') THEN
-    ALTER TABLE profiles ADD COLUMN email TEXT;
+  -- Informations de base
+  PERFORM add_column_if_not_exists('profiles', 'email', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'username', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'first_name', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'last_name', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'full_name', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'phone', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'avatar_url', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'bio', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'city', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'country', 'TEXT', '''Senegal''');
+  PERFORM add_column_if_not_exists('profiles', 'address', 'TEXT');
+
+  -- Statuts utilisateur
+  PERFORM add_column_if_not_exists('profiles', 'is_seller', 'BOOLEAN', 'FALSE');
+  PERFORM add_column_if_not_exists('profiles', 'is_verified', 'BOOLEAN', 'FALSE');
+  PERFORM add_column_if_not_exists('profiles', 'is_premium', 'BOOLEAN', 'FALSE');
+
+  -- Informations boutique vendeur
+  PERFORM add_column_if_not_exists('profiles', 'shop_name', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'shop_description', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'shop_logo_url', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'shop_banner_url', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'shop_category', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'business_hours', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'return_policy', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'shipping_info', 'TEXT');
+
+  -- Statistiques
+  PERFORM add_column_if_not_exists('profiles', 'average_rating', 'DECIMAL(3,2)', '0');
+  PERFORM add_column_if_not_exists('profiles', 'total_reviews', 'INTEGER', '0');
+  PERFORM add_column_if_not_exists('profiles', 'total_sales', 'INTEGER', '0');
+  PERFORM add_column_if_not_exists('profiles', 'followers_count', 'INTEGER', '0');
+  PERFORM add_column_if_not_exists('profiles', 'following_count', 'INTEGER', '0');
+
+  -- Systeme de parrainage
+  PERFORM add_column_if_not_exists('profiles', 'referral_code', 'TEXT');
+  PERFORM add_column_if_not_exists('profiles', 'referred_by', 'UUID');
+
+  -- Abonnement vendeur
+  PERFORM add_column_if_not_exists('profiles', 'subscription_plan', 'TEXT', '''free''');
+  PERFORM add_column_if_not_exists('profiles', 'subscription_expires_at', 'TIMESTAMP WITH TIME ZONE');
+
+  -- Timestamps
+  PERFORM add_column_if_not_exists('profiles', 'created_at', 'TIMESTAMP WITH TIME ZONE', 'NOW()');
+  PERFORM add_column_if_not_exists('profiles', 'updated_at', 'TIMESTAMP WITH TIME ZONE', 'NOW()');
+
+  RAISE NOTICE 'Toutes les colonnes de profiles ont ete verifiees/ajoutees';
+END $$;
+
+-- Ajouter les contraintes manquantes
+DO $$
+BEGIN
+  -- Contrainte UNIQUE sur username si pas deja presente
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'profiles_username_key' AND conrelid = 'profiles'::regclass
+  ) THEN
+    BEGIN
+      ALTER TABLE profiles ADD CONSTRAINT profiles_username_key UNIQUE (username);
+    EXCEPTION WHEN others THEN
+      RAISE NOTICE 'Contrainte username deja existante ou erreur: %', SQLERRM;
+    END;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'first_name') THEN
-    ALTER TABLE profiles ADD COLUMN first_name TEXT;
+
+  -- Contrainte UNIQUE sur referral_code si pas deja presente
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'profiles_referral_code_key' AND conrelid = 'profiles'::regclass
+  ) THEN
+    BEGIN
+      ALTER TABLE profiles ADD CONSTRAINT profiles_referral_code_key UNIQUE (referral_code);
+    EXCEPTION WHEN others THEN
+      RAISE NOTICE 'Contrainte referral_code deja existante ou erreur: %', SQLERRM;
+    END;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'last_name') THEN
-    ALTER TABLE profiles ADD COLUMN last_name TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'full_name') THEN
-    ALTER TABLE profiles ADD COLUMN full_name TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'phone') THEN
-    ALTER TABLE profiles ADD COLUMN phone TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'username') THEN
-    ALTER TABLE profiles ADD COLUMN username TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'is_seller') THEN
-    ALTER TABLE profiles ADD COLUMN is_seller BOOLEAN DEFAULT false;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'created_at') THEN
-    ALTER TABLE profiles ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'updated_at') THEN
-    ALTER TABLE profiles ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+
+  -- Foreign key sur referred_by si pas deja presente
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'profiles_referred_by_fkey' AND conrelid = 'profiles'::regclass
+  ) THEN
+    BEGIN
+      ALTER TABLE profiles ADD CONSTRAINT profiles_referred_by_fkey
+        FOREIGN KEY (referred_by) REFERENCES profiles(id);
+    EXCEPTION WHEN others THEN
+      RAISE NOTICE 'Contrainte referred_by deja existante ou erreur: %', SQLERRM;
+    END;
   END IF;
 END $$;
 
@@ -211,6 +290,37 @@ DO $$ BEGIN
         IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'updated_at') THEN
             ALTER TABLE orders ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
         END IF;
+        -- Nouvelles colonnes pour le système de panier amélioré
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'shipping_name') THEN
+            ALTER TABLE orders ADD COLUMN shipping_name TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'shipping_postal_code') THEN
+            ALTER TABLE orders ADD COLUMN shipping_postal_code TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'shipping_country') THEN
+            ALTER TABLE orders ADD COLUMN shipping_country TEXT DEFAULT 'Senegal';
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'order_notes') THEN
+            ALTER TABLE orders ADD COLUMN order_notes TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'tracking_number') THEN
+            ALTER TABLE orders ADD COLUMN tracking_number TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'discount_amount') THEN
+            ALTER TABLE orders ADD COLUMN discount_amount DECIMAL(10,2) DEFAULT 0;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'points_used') THEN
+            ALTER TABLE orders ADD COLUMN points_used INTEGER DEFAULT 0;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'subtotal') THEN
+            ALTER TABLE orders ADD COLUMN subtotal DECIMAL(10,2);
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'shipping_cost') THEN
+            ALTER TABLE orders ADD COLUMN shipping_cost DECIMAL(10,2) DEFAULT 0;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'tax_amount') THEN
+            ALTER TABLE orders ADD COLUMN tax_amount DECIMAL(10,2) DEFAULT 0;
+        END IF;
     END IF;
 END $$;
 
@@ -232,6 +342,22 @@ DO $$ BEGIN
         -- Permettre NULL dans unit_price si elle existe
         IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'order_items' AND column_name = 'unit_price') THEN
             ALTER TABLE order_items ALTER COLUMN unit_price DROP NOT NULL;
+        END IF;
+        -- Nouvelles colonnes pour le système de panier amélioré
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'order_items' AND column_name = 'product_title') THEN
+            ALTER TABLE order_items ADD COLUMN product_title TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'order_items' AND column_name = 'product_image_url') THEN
+            ALTER TABLE order_items ADD COLUMN product_image_url TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'order_items' AND column_name = 'total_price') THEN
+            ALTER TABLE order_items ADD COLUMN total_price DECIMAL(10,2);
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'order_items' AND column_name = 'seller_commission') THEN
+            ALTER TABLE order_items ADD COLUMN seller_commission DECIMAL(10,2) DEFAULT 0;
+        END IF;
+        IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'order_items' AND column_name = 'platform_fee') THEN
+            ALTER TABLE order_items ADD COLUMN platform_fee DECIMAL(10,2) DEFAULT 0;
         END IF;
     END IF;
 END $$;
@@ -736,262 +862,384 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Table historique des abonnements (pour suivi des paiements)
+CREATE TABLE IF NOT EXISTS subscription_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    plan_type TEXT NOT NULL,
+    action TEXT NOT NULL, -- 'upgrade', 'downgrade', 'renewal', 'cancel'
+    amount DECIMAL(10,2) DEFAULT 0,
+    currency TEXT DEFAULT 'XOF',
+    payment_method TEXT, -- 'orange_money', 'wave', 'free_money', 'card', 'bank'
+    billing_period TEXT, -- 'monthly', 'yearly'
+    expires_at TIMESTAMP WITH TIME ZONE,
+    transaction_id TEXT,
+    status TEXT DEFAULT 'completed', -- 'pending', 'completed', 'failed'
+    metadata JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- =============================================
--- 8. INDEX POUR PERFORMANCES
+-- 8. INDEX POUR PERFORMANCES (avec verification)
 -- =============================================
 
-CREATE INDEX IF NOT EXISTS idx_products_seller ON products(seller_id);
-CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
-CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active);
-CREATE INDEX IF NOT EXISTS idx_products_created ON products(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
-CREATE INDEX IF NOT EXISTS idx_favorites_product ON favorites(product_id);
-CREATE INDEX IF NOT EXISTS idx_cart_user ON cart_items(user_id);
-CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
-CREATE INDEX IF NOT EXISTS idx_orders_seller ON orders(seller_id);
-CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
-CREATE INDEX IF NOT EXISTS idx_conversations_buyer ON conversations(buyer_id);
-CREATE INDEX IF NOT EXISTS idx_conversations_seller ON conversations(seller_id);
-CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_reviews_product ON product_reviews(product_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
-CREATE INDEX IF NOT EXISTS idx_followers_follower ON followers(follower_id);
-CREATE INDEX IF NOT EXISTS idx_followers_following ON followers(following_id);
+DO $$
+BEGIN
+  -- Index products
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'seller_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_products_seller ON products(seller_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'category_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'is_active') THEN
+    CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'created_at') THEN
+    CREATE INDEX IF NOT EXISTS idx_products_created ON products(created_at DESC);
+  END IF;
+
+  -- Index favorites
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'favorites' AND column_name = 'user_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'favorites' AND column_name = 'product_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_favorites_product ON favorites(product_id);
+  END IF;
+
+  -- Index cart_items
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cart_items' AND column_name = 'user_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_cart_user ON cart_items(user_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cart_items' AND column_name = 'product_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_cart_product ON cart_items(product_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cart_items' AND column_name = 'created_at') THEN
+    CREATE INDEX IF NOT EXISTS idx_cart_created ON cart_items(created_at DESC);
+  END IF;
+
+  -- Index orders
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'user_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'seller_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_orders_seller ON orders(seller_id);
+  END IF;
+
+  -- Index order_items
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'order_items' AND column_name = 'order_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
+  END IF;
+
+  -- Index conversations
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'conversations' AND column_name = 'buyer_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_conversations_buyer ON conversations(buyer_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'conversations' AND column_name = 'seller_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_conversations_seller ON conversations(seller_id);
+  END IF;
+
+  -- Index messages
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'conversation_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'created_at') THEN
+    CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
+  END IF;
+
+  -- Index product_reviews
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'product_reviews' AND column_name = 'product_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_reviews_product ON product_reviews(product_id);
+  END IF;
+
+  -- Index notifications
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'user_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+  END IF;
+
+  -- Index followers
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'followers' AND column_name = 'follower_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_followers_follower ON followers(follower_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'followers' AND column_name = 'following_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_followers_following ON followers(following_id);
+  END IF;
+
+  -- Index subscription_history
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_history' AND column_name = 'user_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_subscription_history_user ON subscription_history(user_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'subscription_history' AND column_name = 'created_at') THEN
+    CREATE INDEX IF NOT EXISTS idx_subscription_history_created ON subscription_history(created_at DESC);
+  END IF;
+END $$;
 
 -- =============================================
 -- 9. ROW LEVEL SECURITY (RLS)
 -- =============================================
 
--- Activer RLS sur toutes les tables
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
-ALTER TABLE followers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE cart_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE blocked_users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE product_reviews ENABLE ROW LEVEL SECURITY;
-ALTER TABLE seller_reviews ENABLE ROW LEVEL SECURITY;
-ALTER TABLE loyalty_points ENABLE ROW LEVEL SECURITY;
-ALTER TABLE points_transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE rewards ENABLE ROW LEVEL SECURITY;
-ALTER TABLE claimed_rewards ENABLE ROW LEVEL SECURITY;
-ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE flash_deals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
-ALTER TABLE subscription_plans ENABLE ROW LEVEL SECURITY;
-ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
-
--- Policies pour profiles
-DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON profiles;
-CREATE POLICY "Public profiles are viewable by everyone" ON profiles FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
-CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
-
-DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
-CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
-
--- Policies pour products
-DROP POLICY IF EXISTS "Products are viewable by everyone" ON products;
-CREATE POLICY "Products are viewable by everyone" ON products FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "Sellers can insert products" ON products;
-CREATE POLICY "Sellers can insert products" ON products FOR INSERT WITH CHECK (auth.uid() = seller_id);
-
-DROP POLICY IF EXISTS "Sellers can update own products" ON products;
-CREATE POLICY "Sellers can update own products" ON products FOR UPDATE USING (auth.uid() = seller_id);
-
-DROP POLICY IF EXISTS "Sellers can delete own products" ON products;
-CREATE POLICY "Sellers can delete own products" ON products FOR DELETE USING (auth.uid() = seller_id);
-
--- Policies pour categories
-DROP POLICY IF EXISTS "Categories are viewable by everyone" ON categories;
-CREATE POLICY "Categories are viewable by everyone" ON categories FOR SELECT USING (true);
-
--- Policies pour favorites
-DROP POLICY IF EXISTS "Users can view own favorites" ON favorites;
-CREATE POLICY "Users can view own favorites" ON favorites FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can add favorites" ON favorites;
-CREATE POLICY "Users can add favorites" ON favorites FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can remove favorites" ON favorites;
-CREATE POLICY "Users can remove favorites" ON favorites FOR DELETE USING (auth.uid() = user_id);
-
--- Policies pour followers
-DROP POLICY IF EXISTS "Anyone can view followers" ON followers;
-CREATE POLICY "Anyone can view followers" ON followers FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "Users can follow" ON followers;
-CREATE POLICY "Users can follow" ON followers FOR INSERT WITH CHECK (auth.uid() = follower_id);
-
-DROP POLICY IF EXISTS "Users can unfollow" ON followers;
-CREATE POLICY "Users can unfollow" ON followers FOR DELETE USING (auth.uid() = follower_id);
-
--- Policies pour cart_items
-DROP POLICY IF EXISTS "Users can view own cart" ON cart_items;
-CREATE POLICY "Users can view own cart" ON cart_items FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can add to cart" ON cart_items;
-CREATE POLICY "Users can add to cart" ON cart_items FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can update cart" ON cart_items;
-CREATE POLICY "Users can update cart" ON cart_items FOR UPDATE USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can remove from cart" ON cart_items;
-CREATE POLICY "Users can remove from cart" ON cart_items FOR DELETE USING (auth.uid() = user_id);
-
--- Policies pour orders - Supprimer toutes les existantes d'abord
+-- Activer RLS sur toutes les tables (avec verification d'existence)
 DO $$
 DECLARE
-    pol RECORD;
+  tables_to_enable TEXT[] := ARRAY[
+    'profiles', 'products', 'categories', 'favorites', 'followers',
+    'cart_items', 'orders', 'order_items', 'conversations', 'messages',
+    'blocked_users', 'product_reviews', 'seller_reviews', 'loyalty_points',
+    'points_transactions', 'rewards', 'claimed_rewards', 'referrals',
+    'flash_deals', 'notifications', 'subscription_plans', 'subscriptions',
+    'subscription_history'
+  ];
+  tbl TEXT;
 BEGIN
-    FOR pol IN SELECT policyname FROM pg_policies WHERE tablename = 'orders'
-    LOOP
-        EXECUTE format('DROP POLICY IF EXISTS %I ON orders', pol.policyname);
-    END LOOP;
+  FOREACH tbl IN ARRAY tables_to_enable
+  LOOP
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = tbl) THEN
+      EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tbl);
+    END IF;
+  END LOOP;
 END $$;
 
--- Créer des policies simples pour orders
-CREATE POLICY "orders_select" ON orders FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "orders_insert" ON orders FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "orders_update" ON orders FOR UPDATE USING (auth.uid() = user_id);
+-- =============================================
+-- POLICIES RLS (avec verification d'existence des tables ET colonnes)
+-- =============================================
 
--- Policies pour order_items - Supprimer toutes les existantes d'abord
+-- Fonction utilitaire pour verifier si une colonne existe
+CREATE OR REPLACE FUNCTION column_exists(p_table TEXT, p_column TEXT) RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = p_table
+    AND column_name = p_column
+  );
+END;
+$$ LANGUAGE plpgsql;
+
 DO $$
-DECLARE
-    pol RECORD;
 BEGIN
-    FOR pol IN SELECT policyname FROM pg_policies WHERE tablename = 'order_items'
-    LOOP
-        EXECUTE format('DROP POLICY IF EXISTS %I ON order_items', pol.policyname);
-    END LOOP;
+  -- Policies pour profiles
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'profiles') THEN
+    DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON profiles;
+    CREATE POLICY "Public profiles are viewable by everyone" ON profiles FOR SELECT USING (true);
+    DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+    CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+    DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
+    CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+  END IF;
+
+  -- Policies pour products
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'products') THEN
+    DROP POLICY IF EXISTS "Products are viewable by everyone" ON products;
+    CREATE POLICY "Products are viewable by everyone" ON products FOR SELECT USING (true);
+    DROP POLICY IF EXISTS "Sellers can insert products" ON products;
+    CREATE POLICY "Sellers can insert products" ON products FOR INSERT WITH CHECK (auth.uid() = seller_id);
+    DROP POLICY IF EXISTS "Sellers can update own products" ON products;
+    CREATE POLICY "Sellers can update own products" ON products FOR UPDATE USING (auth.uid() = seller_id);
+    DROP POLICY IF EXISTS "Sellers can delete own products" ON products;
+    CREATE POLICY "Sellers can delete own products" ON products FOR DELETE USING (auth.uid() = seller_id);
+  END IF;
+
+  -- Policies pour categories
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'categories') THEN
+    DROP POLICY IF EXISTS "Categories are viewable by everyone" ON categories;
+    CREATE POLICY "Categories are viewable by everyone" ON categories FOR SELECT USING (true);
+  END IF;
+
+  -- Policies pour favorites
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'favorites')
+     AND column_exists('favorites', 'user_id') THEN
+    DROP POLICY IF EXISTS "Users can view own favorites" ON favorites;
+    CREATE POLICY "Users can view own favorites" ON favorites FOR SELECT USING (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "Users can add favorites" ON favorites;
+    CREATE POLICY "Users can add favorites" ON favorites FOR INSERT WITH CHECK (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "Users can remove favorites" ON favorites;
+    CREATE POLICY "Users can remove favorites" ON favorites FOR DELETE USING (auth.uid() = user_id);
+  END IF;
+
+  -- Policies pour followers
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'followers') THEN
+    DROP POLICY IF EXISTS "Anyone can view followers" ON followers;
+    CREATE POLICY "Anyone can view followers" ON followers FOR SELECT USING (true);
+    DROP POLICY IF EXISTS "Users can follow" ON followers;
+    CREATE POLICY "Users can follow" ON followers FOR INSERT WITH CHECK (auth.uid() = follower_id);
+    DROP POLICY IF EXISTS "Users can unfollow" ON followers;
+    CREATE POLICY "Users can unfollow" ON followers FOR DELETE USING (auth.uid() = follower_id);
+  END IF;
+
+  -- Policies pour cart_items
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'cart_items')
+     AND column_exists('cart_items', 'user_id') THEN
+    DROP POLICY IF EXISTS "Users can view own cart" ON cart_items;
+    CREATE POLICY "Users can view own cart" ON cart_items FOR SELECT USING (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "Users can add to cart" ON cart_items;
+    CREATE POLICY "Users can add to cart" ON cart_items FOR INSERT WITH CHECK (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "Users can update cart" ON cart_items;
+    CREATE POLICY "Users can update cart" ON cart_items FOR UPDATE USING (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "Users can remove from cart" ON cart_items;
+    CREATE POLICY "Users can remove from cart" ON cart_items FOR DELETE USING (auth.uid() = user_id);
+  END IF;
+
+  -- Policies pour orders
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'orders')
+     AND column_exists('orders', 'user_id') THEN
+    DROP POLICY IF EXISTS "orders_select" ON orders;
+    DROP POLICY IF EXISTS "orders_insert" ON orders;
+    DROP POLICY IF EXISTS "orders_update" ON orders;
+    CREATE POLICY "orders_select" ON orders FOR SELECT USING (auth.uid() = user_id);
+    CREATE POLICY "orders_insert" ON orders FOR INSERT WITH CHECK (auth.uid() = user_id);
+    CREATE POLICY "orders_update" ON orders FOR UPDATE USING (auth.uid() = user_id);
+  END IF;
+
+  -- Policies pour order_items
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'order_items') THEN
+    DROP POLICY IF EXISTS "order_items_select" ON order_items;
+    DROP POLICY IF EXISTS "order_items_insert" ON order_items;
+    DROP POLICY IF EXISTS "order_items_buyer_select" ON order_items;
+    CREATE POLICY "order_items_select" ON order_items FOR SELECT USING (auth.uid() = seller_id);
+    CREATE POLICY "order_items_insert" ON order_items FOR INSERT WITH CHECK (true);
+    CREATE POLICY "order_items_buyer_select" ON order_items FOR SELECT USING (
+      order_id IN (SELECT id FROM orders WHERE user_id = auth.uid())
+    );
+  END IF;
+
+  -- Policies pour conversations
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'conversations') THEN
+    DROP POLICY IF EXISTS "Users can view own conversations" ON conversations;
+    CREATE POLICY "Users can view own conversations" ON conversations FOR SELECT USING (auth.uid() = buyer_id OR auth.uid() = seller_id);
+    DROP POLICY IF EXISTS "Users can create conversations" ON conversations;
+    CREATE POLICY "Users can create conversations" ON conversations FOR INSERT WITH CHECK (auth.uid() = buyer_id OR auth.uid() = seller_id);
+    DROP POLICY IF EXISTS "Users can update own conversations" ON conversations;
+    CREATE POLICY "Users can update own conversations" ON conversations FOR UPDATE USING (auth.uid() = buyer_id OR auth.uid() = seller_id);
+  END IF;
+
+  -- Policies pour messages
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'messages') THEN
+    DROP POLICY IF EXISTS "Users can view messages in their conversations" ON messages;
+    CREATE POLICY "Users can view messages in their conversations" ON messages FOR SELECT USING (
+      EXISTS (SELECT 1 FROM conversations WHERE conversations.id = messages.conversation_id AND (conversations.buyer_id = auth.uid() OR conversations.seller_id = auth.uid()))
+    );
+    DROP POLICY IF EXISTS "Users can send messages" ON messages;
+    CREATE POLICY "Users can send messages" ON messages FOR INSERT WITH CHECK (auth.uid() = sender_id);
+    DROP POLICY IF EXISTS "Users can update own messages" ON messages;
+    CREATE POLICY "Users can update own messages" ON messages FOR UPDATE USING (auth.uid() = sender_id);
+  END IF;
+
+  -- Policies pour blocked_users
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'blocked_users') THEN
+    DROP POLICY IF EXISTS "Users can view own blocks" ON blocked_users;
+    CREATE POLICY "Users can view own blocks" ON blocked_users FOR SELECT USING (auth.uid() = blocker_id);
+    DROP POLICY IF EXISTS "Users can block" ON blocked_users;
+    CREATE POLICY "Users can block" ON blocked_users FOR INSERT WITH CHECK (auth.uid() = blocker_id);
+    DROP POLICY IF EXISTS "Users can unblock" ON blocked_users;
+    CREATE POLICY "Users can unblock" ON blocked_users FOR DELETE USING (auth.uid() = blocker_id);
+  END IF;
+
+  -- Policies pour product_reviews
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'product_reviews')
+     AND column_exists('product_reviews', 'user_id') THEN
+    DROP POLICY IF EXISTS "Reviews are viewable by everyone" ON product_reviews;
+    CREATE POLICY "Reviews are viewable by everyone" ON product_reviews FOR SELECT USING (true);
+    DROP POLICY IF EXISTS "Users can create reviews" ON product_reviews;
+    CREATE POLICY "Users can create reviews" ON product_reviews FOR INSERT WITH CHECK (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "Users can update own reviews" ON product_reviews;
+    CREATE POLICY "Users can update own reviews" ON product_reviews FOR UPDATE USING (auth.uid() = user_id);
+  END IF;
+
+  -- Policies pour seller_reviews
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'seller_reviews')
+     AND column_exists('seller_reviews', 'user_id') THEN
+    DROP POLICY IF EXISTS "Seller reviews are viewable by everyone" ON seller_reviews;
+    CREATE POLICY "Seller reviews are viewable by everyone" ON seller_reviews FOR SELECT USING (true);
+    DROP POLICY IF EXISTS "Users can create seller reviews" ON seller_reviews;
+    CREATE POLICY "Users can create seller reviews" ON seller_reviews FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+
+  -- Policies pour loyalty_points
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'loyalty_points')
+     AND column_exists('loyalty_points', 'user_id') THEN
+    DROP POLICY IF EXISTS "Users can view own points" ON loyalty_points;
+    CREATE POLICY "Users can view own points" ON loyalty_points FOR SELECT USING (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "Users can update own points" ON loyalty_points;
+    CREATE POLICY "Users can update own points" ON loyalty_points FOR UPDATE USING (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "System can insert points" ON loyalty_points;
+    CREATE POLICY "System can insert points" ON loyalty_points FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+
+  -- Policies pour points_transactions
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'points_transactions')
+     AND column_exists('points_transactions', 'user_id') THEN
+    DROP POLICY IF EXISTS "Users can view own transactions" ON points_transactions;
+    CREATE POLICY "Users can view own transactions" ON points_transactions FOR SELECT USING (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "System can insert transactions" ON points_transactions;
+    CREATE POLICY "System can insert transactions" ON points_transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+
+  -- Policies pour rewards
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'rewards') THEN
+    DROP POLICY IF EXISTS "Rewards are viewable by everyone" ON rewards;
+    CREATE POLICY "Rewards are viewable by everyone" ON rewards FOR SELECT USING (true);
+  END IF;
+
+  -- Policies pour claimed_rewards
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'claimed_rewards')
+     AND column_exists('claimed_rewards', 'user_id') THEN
+    DROP POLICY IF EXISTS "Users can view own claimed rewards" ON claimed_rewards;
+    CREATE POLICY "Users can view own claimed rewards" ON claimed_rewards FOR SELECT USING (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "Users can claim rewards" ON claimed_rewards;
+    CREATE POLICY "Users can claim rewards" ON claimed_rewards FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+
+  -- Policies pour referrals
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'referrals') THEN
+    DROP POLICY IF EXISTS "Users can view own referrals" ON referrals;
+    CREATE POLICY "Users can view own referrals" ON referrals FOR SELECT USING (auth.uid() = referrer_id OR auth.uid() = referred_id);
+  END IF;
+
+  -- Policies pour flash_deals
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'flash_deals') THEN
+    DROP POLICY IF EXISTS "Flash deals are viewable by everyone" ON flash_deals;
+    CREATE POLICY "Flash deals are viewable by everyone" ON flash_deals FOR SELECT USING (true);
+    DROP POLICY IF EXISTS "Sellers can create flash deals" ON flash_deals;
+    CREATE POLICY "Sellers can create flash deals" ON flash_deals FOR INSERT WITH CHECK (auth.uid() = seller_id);
+    DROP POLICY IF EXISTS "Sellers can update own flash deals" ON flash_deals;
+    CREATE POLICY "Sellers can update own flash deals" ON flash_deals FOR UPDATE USING (auth.uid() = seller_id);
+  END IF;
+
+  -- Policies pour notifications
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'notifications')
+     AND column_exists('notifications', 'user_id') THEN
+    DROP POLICY IF EXISTS "Users can view own notifications" ON notifications;
+    CREATE POLICY "Users can view own notifications" ON notifications FOR SELECT USING (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "Users can update own notifications" ON notifications;
+    CREATE POLICY "Users can update own notifications" ON notifications FOR UPDATE USING (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "System can insert notifications" ON notifications;
+    CREATE POLICY "System can insert notifications" ON notifications FOR INSERT WITH CHECK (true);
+  END IF;
+
+  -- Policies pour subscription_plans
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'subscription_plans') THEN
+    DROP POLICY IF EXISTS "Plans are viewable by everyone" ON subscription_plans;
+    CREATE POLICY "Plans are viewable by everyone" ON subscription_plans FOR SELECT USING (true);
+  END IF;
+
+  -- Policies pour subscriptions
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'subscriptions')
+     AND column_exists('subscriptions', 'user_id') THEN
+    DROP POLICY IF EXISTS "Users can view own subscriptions" ON subscriptions;
+    CREATE POLICY "Users can view own subscriptions" ON subscriptions FOR SELECT USING (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "Users can create subscriptions" ON subscriptions;
+    CREATE POLICY "Users can create subscriptions" ON subscriptions FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+
+  -- Policies pour subscription_history
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'subscription_history')
+     AND column_exists('subscription_history', 'user_id') THEN
+    DROP POLICY IF EXISTS "Users can view own subscription history" ON subscription_history;
+    CREATE POLICY "Users can view own subscription history" ON subscription_history FOR SELECT USING (auth.uid() = user_id);
+    DROP POLICY IF EXISTS "Users can create subscription history" ON subscription_history;
+    CREATE POLICY "Users can create subscription history" ON subscription_history FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
 END $$;
-
--- Créer des policies simples pour order_items (sans référence croisée)
-CREATE POLICY "order_items_select" ON order_items FOR SELECT USING (auth.uid() = seller_id);
-CREATE POLICY "order_items_insert" ON order_items FOR INSERT WITH CHECK (true);
-CREATE POLICY "order_items_buyer_select" ON order_items FOR SELECT USING (
-    order_id IN (SELECT id FROM orders WHERE user_id = auth.uid())
-);
-
--- Policies pour conversations
-DROP POLICY IF EXISTS "Users can view own conversations" ON conversations;
-CREATE POLICY "Users can view own conversations" ON conversations FOR SELECT USING (auth.uid() = buyer_id OR auth.uid() = seller_id);
-
-DROP POLICY IF EXISTS "Users can create conversations" ON conversations;
-CREATE POLICY "Users can create conversations" ON conversations FOR INSERT WITH CHECK (auth.uid() = buyer_id OR auth.uid() = seller_id);
-
-DROP POLICY IF EXISTS "Users can update own conversations" ON conversations;
-CREATE POLICY "Users can update own conversations" ON conversations FOR UPDATE USING (auth.uid() = buyer_id OR auth.uid() = seller_id);
-
--- Policies pour messages
-DROP POLICY IF EXISTS "Users can view messages in their conversations" ON messages;
-CREATE POLICY "Users can view messages in their conversations" ON messages FOR SELECT USING (
-    EXISTS (SELECT 1 FROM conversations WHERE conversations.id = messages.conversation_id AND (conversations.buyer_id = auth.uid() OR conversations.seller_id = auth.uid()))
-);
-
-DROP POLICY IF EXISTS "Users can send messages" ON messages;
-CREATE POLICY "Users can send messages" ON messages FOR INSERT WITH CHECK (auth.uid() = sender_id);
-
-DROP POLICY IF EXISTS "Users can update own messages" ON messages;
-CREATE POLICY "Users can update own messages" ON messages FOR UPDATE USING (auth.uid() = sender_id);
-
--- Policies pour blocked_users
-DROP POLICY IF EXISTS "Users can view own blocks" ON blocked_users;
-CREATE POLICY "Users can view own blocks" ON blocked_users FOR SELECT USING (auth.uid() = blocker_id);
-
-DROP POLICY IF EXISTS "Users can block" ON blocked_users;
-CREATE POLICY "Users can block" ON blocked_users FOR INSERT WITH CHECK (auth.uid() = blocker_id);
-
-DROP POLICY IF EXISTS "Users can unblock" ON blocked_users;
-CREATE POLICY "Users can unblock" ON blocked_users FOR DELETE USING (auth.uid() = blocker_id);
-
--- Policies pour product_reviews
-DROP POLICY IF EXISTS "Reviews are viewable by everyone" ON product_reviews;
-CREATE POLICY "Reviews are viewable by everyone" ON product_reviews FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "Users can create reviews" ON product_reviews;
-CREATE POLICY "Users can create reviews" ON product_reviews FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can update own reviews" ON product_reviews;
-CREATE POLICY "Users can update own reviews" ON product_reviews FOR UPDATE USING (auth.uid() = user_id);
-
--- Policies pour seller_reviews
-DROP POLICY IF EXISTS "Seller reviews are viewable by everyone" ON seller_reviews;
-CREATE POLICY "Seller reviews are viewable by everyone" ON seller_reviews FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "Users can create seller reviews" ON seller_reviews;
-CREATE POLICY "Users can create seller reviews" ON seller_reviews FOR INSERT WITH CHECK (auth.uid() = user_id);
-
--- Policies pour loyalty_points
-DROP POLICY IF EXISTS "Users can view own points" ON loyalty_points;
-CREATE POLICY "Users can view own points" ON loyalty_points FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can update own points" ON loyalty_points;
-CREATE POLICY "Users can update own points" ON loyalty_points FOR UPDATE USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "System can insert points" ON loyalty_points;
-CREATE POLICY "System can insert points" ON loyalty_points FOR INSERT WITH CHECK (auth.uid() = user_id);
-
--- Policies pour points_transactions
-DROP POLICY IF EXISTS "Users can view own transactions" ON points_transactions;
-CREATE POLICY "Users can view own transactions" ON points_transactions FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "System can insert transactions" ON points_transactions;
-CREATE POLICY "System can insert transactions" ON points_transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
-
--- Policies pour rewards
-DROP POLICY IF EXISTS "Rewards are viewable by everyone" ON rewards;
-CREATE POLICY "Rewards are viewable by everyone" ON rewards FOR SELECT USING (true);
-
--- Policies pour claimed_rewards
-DROP POLICY IF EXISTS "Users can view own claimed rewards" ON claimed_rewards;
-CREATE POLICY "Users can view own claimed rewards" ON claimed_rewards FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can claim rewards" ON claimed_rewards;
-CREATE POLICY "Users can claim rewards" ON claimed_rewards FOR INSERT WITH CHECK (auth.uid() = user_id);
-
--- Policies pour referrals
-DROP POLICY IF EXISTS "Users can view own referrals" ON referrals;
-CREATE POLICY "Users can view own referrals" ON referrals FOR SELECT USING (auth.uid() = referrer_id OR auth.uid() = referred_id);
-
--- Policies pour flash_deals
-DROP POLICY IF EXISTS "Flash deals are viewable by everyone" ON flash_deals;
-CREATE POLICY "Flash deals are viewable by everyone" ON flash_deals FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "Sellers can create flash deals" ON flash_deals;
-CREATE POLICY "Sellers can create flash deals" ON flash_deals FOR INSERT WITH CHECK (auth.uid() = seller_id);
-
-DROP POLICY IF EXISTS "Sellers can update own flash deals" ON flash_deals;
-CREATE POLICY "Sellers can update own flash deals" ON flash_deals FOR UPDATE USING (auth.uid() = seller_id);
-
--- Policies pour notifications
-DROP POLICY IF EXISTS "Users can view own notifications" ON notifications;
-CREATE POLICY "Users can view own notifications" ON notifications FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can update own notifications" ON notifications;
-CREATE POLICY "Users can update own notifications" ON notifications FOR UPDATE USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "System can insert notifications" ON notifications;
-CREATE POLICY "System can insert notifications" ON notifications FOR INSERT WITH CHECK (true);
-
--- Policies pour subscription_plans
-DROP POLICY IF EXISTS "Plans are viewable by everyone" ON subscription_plans;
-CREATE POLICY "Plans are viewable by everyone" ON subscription_plans FOR SELECT USING (true);
-
--- Policies pour subscriptions
-DROP POLICY IF EXISTS "Users can view own subscriptions" ON subscriptions;
-CREATE POLICY "Users can view own subscriptions" ON subscriptions FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can create subscriptions" ON subscriptions;
-CREATE POLICY "Users can create subscriptions" ON subscriptions FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- =============================================
 -- 10. FONCTIONS ET TRIGGERS
@@ -1022,19 +1270,84 @@ CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON orders FOR EACH ROW EXE
 DROP TRIGGER IF EXISTS update_conversations_updated_at ON conversations;
 CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON conversations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Fonction pour creer un profil automatiquement
+-- Fonction pour creer un profil automatiquement avec gestion du parrainage
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_referrer_id UUID;
+    v_referral_code TEXT;
+    v_used_referral_code TEXT;
 BEGIN
-    INSERT INTO profiles (id, email, full_name, avatar_url, referral_code)
+    -- Générer un code de parrainage unique
+    v_referral_code := UPPER(SUBSTRING(MD5(NEW.id::TEXT || NOW()::TEXT) FROM 1 FOR 8));
+
+    -- Vérifier si un code de parrainage a été utilisé lors de l'inscription
+    v_used_referral_code := NEW.raw_user_meta_data->>'referral_code';
+
+    IF v_used_referral_code IS NOT NULL AND v_used_referral_code != '' THEN
+        -- Trouver le parrain
+        SELECT id INTO v_referrer_id
+        FROM profiles
+        WHERE referral_code = UPPER(v_used_referral_code);
+    END IF;
+
+    -- Créer le profil
+    INSERT INTO profiles (id, email, full_name, avatar_url, referral_code, referred_by)
     VALUES (
         NEW.id,
         NEW.email,
         COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
         NEW.raw_user_meta_data->>'avatar_url',
-        UPPER(SUBSTRING(MD5(NEW.id::TEXT) FROM 1 FOR 8))
+        v_referral_code,
+        v_referrer_id
     )
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (id) DO UPDATE SET
+        email = EXCLUDED.email,
+        full_name = COALESCE(EXCLUDED.full_name, profiles.full_name),
+        avatar_url = COALESCE(EXCLUDED.avatar_url, profiles.avatar_url),
+        referral_code = COALESCE(profiles.referral_code, EXCLUDED.referral_code),
+        referred_by = COALESCE(profiles.referred_by, EXCLUDED.referred_by);
+
+    -- Si un parrain a été trouvé, créer l'enregistrement de parrainage
+    IF v_referrer_id IS NOT NULL THEN
+        INSERT INTO referrals (referrer_id, referred_id, status, reward_given)
+        VALUES (v_referrer_id, NEW.id, 'pending', FALSE)
+        ON CONFLICT (referred_id) DO NOTHING;
+
+        -- Donner des points de bienvenue au nouveau membre (bonus parrainage)
+        INSERT INTO points_transactions (user_id, points, type, description)
+        VALUES (
+            NEW.id,
+            100, -- 100 points de bienvenue pour le filleul
+            'referral_bonus',
+            'Bonus de bienvenue - inscription via parrainage'
+        );
+
+        -- Donner des points au parrain
+        INSERT INTO points_transactions (user_id, points, type, description, reference_id)
+        VALUES (
+            v_referrer_id,
+            200, -- 200 points pour le parrain
+            'referral',
+            'Bonus de parrainage - nouveau filleul inscrit',
+            NEW.id
+        );
+
+        -- Mettre à jour les points du parrain
+        UPDATE loyalty_points
+        SET
+            available_points = available_points + 200,
+            lifetime_points = lifetime_points + 200,
+            total_points = total_points + 200,
+            updated_at = NOW()
+        WHERE user_id = v_referrer_id;
+
+        -- Marquer le parrainage comme récompensé
+        UPDATE referrals
+        SET status = 'completed', reward_given = TRUE
+        WHERE referrer_id = v_referrer_id AND referred_id = NEW.id;
+    END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -1227,6 +1540,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- 12. FONCTION CREATE_ORDER_FROM_CART
 -- =============================================
 
+-- Supprimer l'ancienne version si elle existe
+DROP FUNCTION IF EXISTS create_order_from_cart(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT);
+
 -- Fonction pour créer une commande à partir du panier
 CREATE OR REPLACE FUNCTION create_order_from_cart(
     p_user_id UUID,
@@ -1242,43 +1558,72 @@ CREATE OR REPLACE FUNCTION create_order_from_cart(
 RETURNS UUID AS $$
 DECLARE
     v_order_id UUID;
+    v_subtotal DECIMAL(10,2) := 0;
+    v_shipping_cost DECIMAL(10,2) := 0;
+    v_tax_amount DECIMAL(10,2) := 0;
     v_total DECIMAL(10,2) := 0;
     v_cart_item RECORD;
+    v_item_total DECIMAL(10,2);
 BEGIN
     -- Vérifier qu'il y a des articles dans le panier
     IF NOT EXISTS (SELECT 1 FROM cart_items WHERE user_id = p_user_id) THEN
         RAISE EXCEPTION 'Le panier est vide';
     END IF;
 
-    -- Calculer le total
+    -- Calculer le sous-total
     SELECT COALESCE(SUM(ci.quantity * p.price), 0)
-    INTO v_total
+    INTO v_subtotal
     FROM cart_items ci
     JOIN products p ON p.id = ci.product_id
     WHERE ci.user_id = p_user_id;
 
+    -- Calculer les frais de livraison (gratuit au-dessus de 25000 XOF)
+    IF v_subtotal < 25000 THEN
+        v_shipping_cost := 2500; -- 2500 XOF pour les commandes < 25000 XOF
+    END IF;
+
+    -- Calculer la taxe (10%)
+    v_tax_amount := v_subtotal * 0.10;
+
+    -- Calculer le total
+    v_total := v_subtotal + v_shipping_cost + v_tax_amount;
+
     -- Créer la commande
     INSERT INTO orders (
         user_id,
+        subtotal,
+        shipping_cost,
+        tax_amount,
         total_amount,
+        shipping_name,
         shipping_address,
         shipping_city,
+        shipping_postal_code,
+        shipping_country,
         shipping_phone,
         payment_method,
         payment_status,
         status,
+        order_notes,
         notes,
         created_at,
         updated_at
     ) VALUES (
         p_user_id,
+        v_subtotal,
+        v_shipping_cost,
+        v_tax_amount,
         v_total,
-        CONCAT(p_shipping_name, ', ', p_shipping_address, ', ', p_shipping_postal_code),
+        p_shipping_name,
+        p_shipping_address,
         p_shipping_city,
+        p_shipping_postal_code,
+        p_shipping_country,
         p_shipping_phone,
         p_payment_method,
         'pending',
         'pending',
+        p_order_notes,
         p_order_notes,
         NOW(),
         NOW()
@@ -1286,11 +1631,13 @@ BEGIN
 
     -- Ajouter les articles de la commande
     FOR v_cart_item IN
-        SELECT ci.*, p.price, p.seller_id
+        SELECT ci.*, p.price, p.seller_id, p.title, p.image_url
         FROM cart_items ci
         JOIN products p ON p.id = ci.product_id
         WHERE ci.user_id = p_user_id
     LOOP
+        v_item_total := v_cart_item.quantity * v_cart_item.price;
+
         INSERT INTO order_items (
             order_id,
             product_id,
@@ -1298,6 +1645,9 @@ BEGIN
             quantity,
             price,
             unit_price,
+            total_price,
+            product_title,
+            product_image_url,
             created_at
         ) VALUES (
             v_order_id,
@@ -1306,19 +1656,96 @@ BEGIN
             v_cart_item.quantity,
             v_cart_item.price,
             v_cart_item.price,
+            v_item_total,
+            v_cart_item.title,
+            v_cart_item.image_url,
             NOW()
         );
 
         -- Réduire le stock du produit
         UPDATE products
-        SET stock = stock - v_cart_item.quantity
+        SET stock = GREATEST(0, stock - v_cart_item.quantity)
         WHERE id = v_cart_item.product_id;
     END LOOP;
 
     -- Vider le panier
     DELETE FROM cart_items WHERE user_id = p_user_id;
 
+    -- Ajouter des points de fidélité (1 point pour 1000 XOF dépensé)
+    INSERT INTO points_transactions (user_id, points, type, description, reference_id)
+    VALUES (
+        p_user_id,
+        FLOOR(v_total / 1000)::INTEGER,
+        'purchase',
+        'Points gagnés pour la commande',
+        v_order_id
+    );
+
+    -- Mettre à jour les points disponibles
+    UPDATE loyalty_points
+    SET
+        available_points = available_points + FLOOR(v_total / 1000)::INTEGER,
+        lifetime_points = lifetime_points + FLOOR(v_total / 1000)::INTEGER,
+        total_points = total_points + FLOOR(v_total / 1000)::INTEGER,
+        updated_at = NOW()
+    WHERE user_id = p_user_id;
+
     RETURN v_order_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- =============================================
+-- 12.1 FONCTIONS UTILITAIRES POUR LE PANIER
+-- =============================================
+
+-- Fonction pour calculer le total du panier
+CREATE OR REPLACE FUNCTION get_cart_total(p_user_id UUID)
+RETURNS TABLE (
+    subtotal DECIMAL(10,2),
+    shipping_cost DECIMAL(10,2),
+    tax_amount DECIMAL(10,2),
+    total DECIMAL(10,2),
+    item_count INTEGER
+) AS $$
+DECLARE
+    v_subtotal DECIMAL(10,2);
+    v_shipping DECIMAL(10,2);
+    v_tax DECIMAL(10,2);
+    v_count INTEGER;
+BEGIN
+    -- Calculer le sous-total et le nombre d'articles
+    SELECT
+        COALESCE(SUM(ci.quantity * p.price), 0),
+        COALESCE(SUM(ci.quantity), 0)
+    INTO v_subtotal, v_count
+    FROM cart_items ci
+    JOIN products p ON p.id = ci.product_id
+    WHERE ci.user_id = p_user_id;
+
+    -- Calculer les frais de livraison
+    IF v_subtotal < 25000 AND v_subtotal > 0 THEN
+        v_shipping := 2500;
+    ELSE
+        v_shipping := 0;
+    END IF;
+
+    -- Calculer la taxe (10%)
+    v_tax := v_subtotal * 0.10;
+
+    RETURN QUERY SELECT
+        v_subtotal,
+        v_shipping,
+        v_tax,
+        v_subtotal + v_shipping + v_tax,
+        v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Fonction pour vider le panier
+CREATE OR REPLACE FUNCTION clear_cart(p_user_id UUID)
+RETURNS VOID AS $$
+BEGIN
+    DELETE FROM cart_items WHERE user_id = p_user_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

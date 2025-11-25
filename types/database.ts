@@ -227,6 +227,7 @@ export type SubscriptionPlan = {
   name: string;
   description: string | null;
   price_monthly: number;
+  price_yearly: number | null;
   currency: string;
 
   // Commercial advantages

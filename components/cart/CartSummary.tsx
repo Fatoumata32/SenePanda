@@ -12,7 +12,7 @@ export default function CartSummary({ showCheckoutButton = true }: CartSummaryPr
   const { cartCount, cartTotal } = useCart();
   const router = useRouter();
 
-  const shippingCost = cartTotal > 50 ? 0 : 5.99;
+  const shippingCost = cartTotal > 25000 ? 0 : 2500;
   const tax = cartTotal * 0.1; // 10% tax
   const total = cartTotal + shippingCost + tax;
 
@@ -22,32 +22,32 @@ export default function CartSummary({ showCheckoutButton = true }: CartSummaryPr
 
       <View style={styles.row}>
         <Text style={styles.label}>Sous-total ({cartCount} articles)</Text>
-        <Text style={styles.value}>${cartTotal.toFixed(2)}</Text>
+        <Text style={styles.value}>{cartTotal.toLocaleString()} FCFA</Text>
       </View>
 
       <View style={styles.row}>
         <Text style={styles.label}>Livraison</Text>
         <Text style={[styles.value, shippingCost === 0 && styles.free]}>
-          {shippingCost === 0 ? 'GRATUIT' : `$${shippingCost.toFixed(2)}`}
+          {shippingCost === 0 ? 'GRATUIT' : `${shippingCost.toLocaleString()} FCFA`}
         </Text>
       </View>
 
-      {cartTotal > 0 && cartTotal < 50 && (
+      {cartTotal > 0 && cartTotal < 25000 && (
         <Text style={styles.freeShippingNote}>
-          Plus que ${(50 - cartTotal).toFixed(2)} pour la livraison gratuite!
+          Plus que {(25000 - cartTotal).toLocaleString()} FCFA pour la livraison gratuite!
         </Text>
       )}
 
       <View style={styles.row}>
         <Text style={styles.label}>Taxes (10%)</Text>
-        <Text style={styles.value}>${tax.toFixed(2)}</Text>
+        <Text style={styles.value}>{Math.round(tax).toLocaleString()} FCFA</Text>
       </View>
 
       <View style={styles.separator} />
 
       <View style={styles.row}>
         <Text style={styles.totalLabel}>Total</Text>
-        <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
+        <Text style={styles.totalValue}>{Math.round(total).toLocaleString()} FCFA</Text>
       </View>
 
       {showCheckoutButton && cartCount > 0 && (

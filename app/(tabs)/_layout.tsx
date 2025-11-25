@@ -98,25 +98,6 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="cart"
-        options={{
-          title: 'Panier',
-          tabBarIcon: ({ color, focused }) => (
-            <View>
-              <Ionicons
-                name={focused ? 'cart' : 'cart-outline'}
-                size={26}
-                color={color}
-              />
-              <CartBadge />
-            </View>
-          ),
-        }}
-        listeners={{
-          tabPress: (e) => handleTabPress(e, 'cart'),
-        }}
-      />
-      <Tabs.Screen
         name="messages"
         options={{
           title: 'Messages',

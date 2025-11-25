@@ -30,7 +30,7 @@ export default function CartItemCard({ item }: CartItemCardProps) {
         </Text>
 
         <View style={styles.priceRow}>
-          <Text style={styles.price}>${product.price.toFixed(2)}</Text>
+          <Text style={styles.price}>{product.price.toLocaleString()} FCFA</Text>
           <Text style={styles.stock}>
             Stock: {product.stock}
           </Text>
@@ -60,7 +60,7 @@ export default function CartItemCard({ item }: CartItemCardProps) {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.totalPrice}>${totalPrice.toFixed(2)}</Text>
+          <Text style={styles.totalPrice}>{totalPrice.toLocaleString()} FCFA</Text>
         </View>
       </View>
 
