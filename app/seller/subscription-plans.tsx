@@ -177,7 +177,7 @@ export default function SubscriptionPlansScreen() {
             {
               text: 'Confirmer',
               style: 'destructive',
-              onPress: () => downgradeTtoFree(),
+              onPress: () => downgradeToFree(),
             },
           ]
         );
@@ -225,7 +225,7 @@ export default function SubscriptionPlansScreen() {
     setPaymentStep('method');
   };
 
-  const downgradeTtoFree = async () => {
+  const downgradeToFree = async () => {
     try {
       setSubscribing(true);
 
