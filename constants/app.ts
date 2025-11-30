@@ -119,7 +119,7 @@ export const SUPPORT = {
 
 // Currency
 export const CURRENCY = {
-  code: 'XOF',
+  code: 'FCFA',
   symbol: 'FCFA',
   name: 'Franc CFA',
   decimals: 0,

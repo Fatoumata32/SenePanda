@@ -121,7 +121,7 @@ export default function CategoryScreen() {
                     {product.title}
                   </Text>
                   <Text style={styles.productPrice}>
-                    {product.price} {product.currency || 'XOF'}
+                    {product.price} {product.currency || 'FCFA'}
                   </Text>
                 </View>
               </TouchableOpacity>

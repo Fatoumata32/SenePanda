@@ -150,10 +150,10 @@ export default function FlashDeals() {
           <View style={styles.priceRow}>
             <View style={styles.priceContainer}>
               <Text style={styles.originalPrice}>
-                {item.original_price.toLocaleString()} XOF
+                {item.original_price.toLocaleString()} FCFA
               </Text>
               <Text style={styles.dealPrice}>
-                {item.deal_price.toLocaleString()} XOF
+                {item.deal_price.toLocaleString()} FCFA
               </Text>
             </View>
           </View>

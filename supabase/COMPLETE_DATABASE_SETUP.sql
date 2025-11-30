@@ -1,8 +1,55 @@
 -- ============================================
 -- SENEPANDA - Configuration Complete de la Base de Donnees
 -- Date: 2024-11-22
+-- Mis à jour: 2025-11-29 (Politique des codes PIN 4 chiffres)
 -- Description: Fichier unique pour configurer toute la base de donnees
 -- Instructions: Executez ce fichier dans le SQL Editor de Supabase Dashboard
+-- ============================================
+
+-- ============================================
+-- 📌 IMPORTANT - POLITIQUE DES CODES PIN
+-- ============================================
+/*
+✅ NOUVELLE POLITIQUE - CODE PIN 4 CHIFFRES:
+
+L'application SenePanda utilise des codes PIN de 4 chiffres pour l'authentification.
+
+📱 CONFIGURATION REQUISE DANS DASHBOARD:
+
+1. Aller dans: Dashboard > Authentication > Settings
+2. Chercher: "Password Settings" ou "Minimum Password Length"
+3. Si l'option existe, définir: Minimum = 4 caractères
+4. Sauvegarder
+
+⚠️ SI L'OPTION N'EXISTE PAS:
+
+Supabase impose par défaut un minimum de 6 caractères.
+Dans ce cas, les mots de passe doivent être définis manuellement:
+
+Pour chaque nouvel utilisateur:
+1. L'utilisateur s'inscrit dans l'app avec un PIN de 4 chiffres
+2. Si erreur "Password too short", l'admin doit:
+   - Dashboard > Authentication > Users
+   - Trouver l'utilisateur (par email)
+   - Reset Password > Taper le code PIN (ex: 1234)
+   - Save
+
+Alternative: Utiliser le script de réinitialisation
+   node scripts/reset-all-to-1234.js
+
+✅ CODE PIN VALIDE:
+   - Exactement 4 chiffres
+   - Numérique uniquement (0-9)
+   - Exemples: 1234, 5678, 9012
+
+❌ CODE PIN INVALIDE:
+   - Moins de 4 chiffres (123)
+   - Plus de 4 chiffres (12345)
+   - Non numérique (abcd)
+
+Pour plus d'infos, voir: CODE_PIN_POLICY_V2.md
+*/
+
 -- ============================================
 
 -- =============================================

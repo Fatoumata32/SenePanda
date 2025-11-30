@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Animated,
-  Image,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +14,7 @@ import { ShoppingBag, Store } from 'lucide-react-native';
 import * as Speech from 'expo-speech';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
+import PandaLogo from '@/components/PandaLogo';
 
 export default function RoleSelectionScreen() {
   const router = useRouter();
@@ -138,11 +138,7 @@ export default function RoleSelectionScreen() {
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
         {/* Logo */}
         <View style={styles.logoHeader}>
-          <Image
-            source={require('@/assets/images/logo20.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
+          <PandaLogo size="large" showText={true} />
         </View>
 
         {/* Question */}
@@ -247,10 +243,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
     marginBottom: 40,
-  },
-  logo: {
-    width: 100,
-    height: 100,
   },
   questionContainer: {
     alignItems: 'center',

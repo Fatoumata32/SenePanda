@@ -51,7 +51,7 @@ export default function ProductCard({ product, onPress }: ProductCardProps) {
   };
 
   const formatPrice = (price: number, currency: string) => {
-    if (currency === 'XOF') {
+    if (currency === 'FCFA') {
       return `${price.toLocaleString()} FCFA`;
     }
     return `${price.toLocaleString()} ${currency}`;
@@ -84,7 +84,7 @@ export default function ProductCard({ product, onPress }: ProductCardProps) {
     e.stopPropagation();
     e.preventDefault();
 
-    const priceText = product.currency === 'XOF'
+    const priceText = product.currency === 'FCFA'
       ? `${product.price.toLocaleString()} francs CFA`
       : `${product.price.toLocaleString()} ${product.currency}`;
 

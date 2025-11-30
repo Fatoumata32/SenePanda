@@ -317,7 +317,7 @@ export default function ExploreScreen() {
                       {product.title}
                     </Text>
                     <Text style={styles.productPrice}>
-                      {product.price} {product.currency || 'XOF'}
+                      {product.price} {product.currency || 'FCFA'}
                     </Text>
                     {product.average_rating > 0 && (
                       <View style={styles.ratingContainer}>

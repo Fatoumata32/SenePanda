@@ -43,7 +43,7 @@ export default function PandaLogo({ size = 'medium', showText = true }: PandaLog
       </View>
       {showText && (
         <Text style={[styles.brandText, { fontSize: currentSize.textSize }]}>
-          Sene<Text style={styles.brandHighlight}>Panda</Text>
+          sene<Text style={styles.brandHighlight}>panda</Text>
         </Text>
       )}
     </View>

@@ -12,10 +12,12 @@ import {
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { Category } from '@/types/database';
-import { ArrowLeft, Camera, X, Plus, Package } from 'lucide-react-native';
+import { ArrowLeft, Camera, X, Plus, Package, Video, Play } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { pickImageFromGallery, takePhoto as capturePhoto, uploadProductImages } from '@/lib/image-upload';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
+import { Video as ExpoVideo } from 'expo-av';
 
 export default function AddProductScreen() {
   const router = useRouter();
@@ -28,9 +30,13 @@ export default function AddProductScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [imageUris, setImageUris] = useState<string[]>([]);
   const [imageUrlInput, setImageUrlInput] = useState('');
+  const [videoUri, setVideoUri] = useState<string | null>(null);
+  const [videoUrlInput, setVideoUrlInput] = useState('');
+  const [userPlan, setUserPlan] = useState<string>('free');
 
   useEffect(() => {
     loadCategories();
+    loadUserPlan();
   }, []);
 
   const loadCategories = async () => {
@@ -44,6 +50,25 @@ export default function AddProductScreen() {
       setCategories(data || []);
     } catch (error: any) {
       Alert.alert('Erreur', error.message);
+    }
+  };
+
+  const loadUserPlan = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('subscription_plan')
+        .eq('id', user.id)
+        .single();
+
+      if (profile) {
+        setUserPlan(profile.subscription_plan || 'free');
+      }
+    } catch (error) {
+      console.error('Error loading user plan:', error);
     }
   };
 
@@ -131,6 +156,70 @@ export default function AddProductScreen() {
     );
   };
 
+  const pickVideo = async () => {
+    // Vérifier le plan
+    if (userPlan !== 'pro' && userPlan !== 'premium') {
+      Alert.alert(
+        'Fonctionnalité Premium',
+        'Les vidéos sont disponibles uniquement pour les plans Pro et Premium. Passez à un plan supérieur pour débloquer cette fonctionnalité.',
+        [
+          { text: 'Plus tard', style: 'cancel' },
+          { text: 'Voir les plans', onPress: () => router.push('/seller/subscription-plans') }
+        ]
+      );
+      return;
+    }
+
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission requise', 'Nous avons besoin de votre permission pour accéder à la galerie');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: true,
+        quality: 1,
+        videoMaxDuration: 30, // Limite à 30 secondes
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setVideoUri(result.assets[0].uri);
+      }
+    } catch (error: any) {
+      Alert.alert('Erreur', error.message);
+    }
+  };
+
+  const addVideoFromUrlInput = () => {
+    if (!videoUrlInput.trim()) {
+      Alert.alert('Erreur', 'Veuillez entrer une URL de vidéo');
+      return;
+    }
+
+    // Vérifier le plan
+    if (userPlan !== 'pro' && userPlan !== 'premium') {
+      Alert.alert(
+        'Fonctionnalité Premium',
+        'Les vidéos sont disponibles uniquement pour les plans Pro et Premium.'
+      );
+      return;
+    }
+
+    if (!videoUrlInput.startsWith('http://') && !videoUrlInput.startsWith('https://')) {
+      Alert.alert('Erreur', 'L\'URL doit commencer par http:// ou https://');
+      return;
+    }
+
+    setVideoUri(videoUrlInput.trim());
+    setVideoUrlInput('');
+  };
+
+  const removeVideo = () => {
+    setVideoUri(null);
+  };
+
   const showImageOptions = () => {
     Alert.alert(
       'Ajouter une photo',
@@ -210,11 +299,12 @@ export default function AddProductScreen() {
         title: title.trim(),
         description: description.trim() || null,
         price: priceNum,
-        currency: 'XOF',
+        currency: 'FCFA',
         stock: stockNum,
         category_id: selectedCategory,
         image_url: allImageUrls[0], // Primary image
         images: allImageUrls, // All images array
+        video_url: videoUri, // Video URL
         is_active: true,
       }).select().single();
 
@@ -297,6 +387,89 @@ export default function AddProductScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+          )}
+        </View>
+
+        {/* Video Section */}
+        <View style={styles.section}>
+          <View style={styles.videoHeader}>
+            <Text style={styles.sectionTitle}>Vidéo du produit</Text>
+            {(userPlan === 'pro' || userPlan === 'premium') && (
+              <LinearGradient
+                colors={['#8B5CF6', '#6B21A8']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.premiumBadge}>
+                <Text style={styles.premiumBadgeText}>PRO/PREMIUM</Text>
+              </LinearGradient>
+            )}
+          </View>
+          <Text style={styles.sectionSubtitle}>
+            {(userPlan === 'pro' || userPlan === 'premium')
+              ? 'Ajoutez une vidéo de 30 secondes maximum pour mieux présenter votre produit'
+              : 'Passez à Pro ou Premium pour ajouter des vidéos'}
+          </Text>
+
+          {videoUri ? (
+            <View style={styles.videoPreviewContainer}>
+              <ExpoVideo
+                source={{ uri: videoUri }}
+                style={styles.videoPreview}
+                useNativeControls
+                resizeMode="contain"
+                isLooping
+              />
+              <TouchableOpacity
+                style={styles.removeVideoButton}
+                onPress={removeVideo}>
+                <X size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={[
+                  styles.addVideoButton,
+                  (userPlan !== 'pro' && userPlan !== 'premium') && styles.addVideoButtonDisabled
+                ]}
+                onPress={pickVideo}>
+                <Video size={32} color={(userPlan === 'pro' || userPlan === 'premium') ? '#8B5CF6' : '#9CA3AF'} />
+                <Text style={[
+                  styles.addVideoText,
+                  (userPlan !== 'pro' && userPlan !== 'premium') && styles.addVideoTextDisabled
+                ]}>
+                  {(userPlan === 'pro' || userPlan === 'premium')
+                    ? 'Ajouter une vidéo'
+                    : 'Vidéo (Pro/Premium uniquement)'}
+                </Text>
+                {(userPlan === 'pro' || userPlan === 'premium') && (
+                  <Text style={styles.videoHint}>Max 30 secondes</Text>
+                )}
+              </TouchableOpacity>
+
+              {/* Ou ajouter par URL */}
+              {(userPlan === 'pro' || userPlan === 'premium') && (
+                <View style={styles.urlInputSection}>
+                  <Text style={styles.urlInputLabel}>Ou ajouter par lien URL :</Text>
+                  <View style={styles.urlInputRow}>
+                    <TextInput
+                      style={styles.urlInput}
+                      value={videoUrlInput}
+                      onChangeText={setVideoUrlInput}
+                      placeholder="https://exemple.com/video.mp4"
+                      placeholderTextColor="#9CA3AF"
+                      keyboardType="url"
+                      autoCapitalize="none"
+                    />
+                    <TouchableOpacity
+                      style={[styles.urlAddButton, { backgroundColor: '#8B5CF6' }]}
+                      onPress={addVideoFromUrlInput}>
+                      <Plus size={20} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </>
           )}
         </View>
 
@@ -602,5 +775,75 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  videoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  premiumBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  premiumBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  videoPreviewContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    backgroundColor: '#000',
+    overflow: 'hidden',
+  },
+  videoPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  removeVideoButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: '#EF4444',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addVideoButton: {
+    width: '100%',
+    height: 120,
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 2,
+    borderColor: '#8B5CF6',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addVideoButtonDisabled: {
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F3F4F6',
+    opacity: 0.6,
+  },
+  addVideoText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8B5CF6',
+    marginTop: 8,
+  },
+  addVideoTextDisabled: {
+    color: '#9CA3AF',
+  },
+  videoHint: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 4,
   },
 });

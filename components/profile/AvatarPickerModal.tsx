@@ -7,11 +7,13 @@ import {
   TouchableOpacity,
   Animated,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Camera, Image as ImageIcon } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
 import * as Speech from 'expo-speech';
+import { uploadProfileAvatar } from '@/lib/image-upload';
 
 const DesignTokens = {
   spacing: { xs: 8, sm: 12, md: 16, lg: 20, xl: 24, xxl: 32 },
@@ -60,6 +62,7 @@ export default function AvatarPickerModal({
   themeColors,
 }: AvatarPickerModalProps) {
   const [modalAnim] = React.useState(new Animated.Value(0));
+  const [uploading, setUploading] = React.useState(false);
 
   React.useEffect(() => {
     if (visible) {
@@ -74,12 +77,15 @@ export default function AvatarPickerModal({
 
   const handlePickImage = async (fromCamera: boolean = false) => {
     try {
+      setUploading(true);
+
       const permissionResult = fromCamera
         ? await ImagePicker.requestCameraPermissionsAsync()
         : await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permissionResult.granted) {
         Alert.alert('Permission requise', "Veuillez autoriser l'accès");
+        setUploading(false);
         return;
       }
 
@@ -99,17 +105,32 @@ export default function AvatarPickerModal({
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
 
-        await supabase
+        // Upload l'image vers Supabase Storage
+        const uploadResult = await uploadProfileAvatar(uri, userId);
+
+        if (!uploadResult.success || !uploadResult.url) {
+          throw new Error(uploadResult.error || "Erreur lors de l'upload de l'image");
+        }
+
+        // Mettre à jour le profil avec l'URL publique
+        const { error: updateError } = await supabase
           .from('profiles')
-          .update({ avatar_url: uri })
+          .update({ avatar_url: uploadResult.url })
           .eq('id', userId);
 
+        if (updateError) {
+          throw updateError;
+        }
+
         Speech.speak('Photo de profil mise à jour', { language: 'fr-FR' });
-        onSuccess(uri);
+        onSuccess(uploadResult.url);
         onClose();
       }
     } catch (error: any) {
-      Alert.alert('Erreur', error.message);
+      console.error('Error uploading avatar:', error);
+      Alert.alert('Erreur', error.message || "Impossible de mettre à jour la photo de profil");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -135,29 +156,39 @@ export default function AvatarPickerModal({
             }
           ]}>
           <Text style={[styles.modalTitle, { color: themeColors.text }]}>Changer la photo</Text>
-          <View style={styles.avatarOptions}>
-            <TouchableOpacity
-              style={styles.avatarOption}
-              onPress={() => handlePickImage(true)}>
-              <View style={[styles.avatarOptionIcon, { backgroundColor: DesignTokens.colors.pastel.pink.bg }]}>
-                <Camera size={28} color={DesignTokens.colors.pastel.pink.icon} />
+
+          {uploading ? (
+            <View style={styles.uploadingContainer}>
+              <ActivityIndicator size="large" color="#F97316" />
+              <Text style={[styles.uploadingText, { color: themeColors.textSecondary }]}>Upload en cours...</Text>
+            </View>
+          ) : (
+            <>
+              <View style={styles.avatarOptions}>
+                <TouchableOpacity
+                  style={styles.avatarOption}
+                  onPress={() => handlePickImage(true)}>
+                  <View style={[styles.avatarOptionIcon, { backgroundColor: DesignTokens.colors.pastel.pink.bg }]}>
+                    <Camera size={28} color={DesignTokens.colors.pastel.pink.icon} />
+                  </View>
+                  <Text style={[styles.avatarOptionText, { color: themeColors.text }]}>Prendre une photo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.avatarOption}
+                  onPress={() => handlePickImage(false)}>
+                  <View style={[styles.avatarOptionIcon, { backgroundColor: DesignTokens.colors.pastel.blue.bg }]}>
+                    <ImageIcon size={28} color={DesignTokens.colors.pastel.blue.icon} />
+                  </View>
+                  <Text style={[styles.avatarOptionText, { color: themeColors.text }]}>Galerie</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={[styles.avatarOptionText, { color: themeColors.text }]}>Prendre une photo</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.avatarOption}
-              onPress={() => handlePickImage(false)}>
-              <View style={[styles.avatarOptionIcon, { backgroundColor: DesignTokens.colors.pastel.blue.bg }]}>
-                <ImageIcon size={28} color={DesignTokens.colors.pastel.blue.icon} />
-              </View>
-              <Text style={[styles.avatarOptionText, { color: themeColors.text }]}>Galerie</Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity
-            style={styles.modalCancelButton}
-            onPress={onClose}>
-            <Text style={[styles.modalCancelText, { color: themeColors.textSecondary }]}>Annuler</Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={onClose}>
+                <Text style={[styles.modalCancelText, { color: themeColors.textSecondary }]}>Annuler</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </Animated.View>
       </View>
     </Modal>
@@ -208,6 +239,16 @@ const styles = StyleSheet.create({
   },
   modalCancelText: {
     ...DesignTokens.typography.h3,
+    color: DesignTokens.colors.text.secondary,
+  },
+  uploadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: DesignTokens.spacing.xxl * 2,
+    gap: DesignTokens.spacing.md,
+  },
+  uploadingText: {
+    ...DesignTokens.typography.caption,
     color: DesignTokens.colors.text.secondary,
   },
 });

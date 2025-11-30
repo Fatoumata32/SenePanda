@@ -205,7 +205,7 @@ export default function RewardsShopScreen() {
           {item.value && (
             <View style={styles.valueContainer}>
               <Text style={styles.valueText}>
-                {`${String(item.value.toLocaleString())} XOF`}
+                {`${String(item.value.toLocaleString())} FCFA`}
               </Text>
             </View>
           )}

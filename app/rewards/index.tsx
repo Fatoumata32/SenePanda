@@ -69,7 +69,7 @@ const EARNING_METHODS = [
   {
     icon: ShoppingBag,
     title: 'Achat de produit',
-    points: '1 point par 1000 XOF',
+    points: '1 point par 1000 FCFA',
     color: '#F59E0B',
   },
   {

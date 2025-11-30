@@ -108,7 +108,7 @@ const EARNING_METHODS = [
   {
     icon: ShoppingBag,
     title: 'Acheter des produits',
-    points: '+1 point par 1000 XOF',
+    points: '+1 point par 1000 FCFA',
     color: '#F59E0B',
     action: 'shop',
   },
@@ -151,7 +151,7 @@ const DAILY_TIPS = [
     icon: Users,
     color: '#10B981',
     title: 'Parrainage = Argent',
-    description: 'Invitez 5 amis et gagnez 1000 points (équivalent à 10 000 XOF de réductions)!',
+    description: 'Invitez 5 amis et gagnez 1000 points (équivalent à 10 000 FCFA de réductions)!',
     action: 'Parrainer maintenant',
     route: '/referral',
   },
@@ -169,7 +169,7 @@ const DAILY_TIPS = [
     icon: ShoppingBag,
     color: '#3B82F6',
     title: 'Achetez malin',
-    description: 'Chaque 1000 XOF dépensé = 1 point gagné. Groupez vos achats pour plus de points!',
+    description: 'Chaque 1000 FCFA dépensé = 1 point gagné. Groupez vos achats pour plus de points!',
     action: 'Découvrir',
     route: '/(tabs)',
   },
@@ -196,7 +196,7 @@ const DAILY_TIPS = [
     icon: TrendingUp,
     color: '#10B981',
     title: 'Meilleur ROI',
-    description: 'Les récompenses de 2500 XOF offrent le meilleur rapport points/valeur (ratio 1:12.5)!',
+    description: 'Les récompenses de 2500 FCFA offrent le meilleur rapport points/valeur (ratio 1:12.5)!',
     action: 'Voir les offres',
     route: '/rewards/shop',
   },
@@ -574,7 +574,7 @@ export default function MyBenefitsScreen() {
                   )}
                   {reward.rewards.reward_value && (
                     <Text style={styles.rewardValue}>
-                      Valeur: {reward.rewards.reward_value.toLocaleString()} XOF
+                      Valeur: {reward.rewards.reward_value.toLocaleString()} FCFA
                     </Text>
                   )}
                   {reward.expires_at && (

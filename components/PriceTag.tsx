@@ -14,7 +14,7 @@ type PriceTagProps = {
 
 export default function PriceTag({
   price,
-  currency = 'XOF',
+  currency = 'FCFA',
   originalPrice,
   discount,
   size = 'medium',
@@ -26,7 +26,7 @@ export default function PriceTag({
     const formatted = amount.toLocaleString('fr-FR');
     if (!showCurrency) return formatted;
 
-    if (currency === 'XOF') {
+    if (currency === 'FCFA') {
       return `${formatted} FCFA`;
     }
     return `${formatted} ${currency}`;

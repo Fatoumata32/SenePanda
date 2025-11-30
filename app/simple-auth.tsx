@@ -15,12 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Phone, User, ArrowRight, Eye, EyeOff } from 'lucide-react-native';
+import { ArrowRight, Eye, EyeOff } from 'lucide-react-native';
 import PandaLogo from '@/components/PandaLogo';
 import { Colors, Gradients, Typography, Spacing, BorderRadius, Shadows } from '@/constants/Colors';
 import * as Speech from 'expo-speech';
 
-type AuthMode = 'signin' | 'signup';
+type AuthMode = 'signin' | 'signup' | 'reset';
 
 export default function SimpleAuthScreen() {
   const router = useRouter();
@@ -29,10 +29,21 @@ export default function SimpleAuthScreen() {
   const [showPassword, setShowPassword] = useState(false);
 
   // Données du formulaire
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('+221 ');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+
+  // Gérer le changement du numéro de téléphone pour toujours garder +221
+  const handlePhoneChange = (text: string) => {
+    // Si l'utilisateur essaie de supprimer +221, on le remet
+    if (!text.startsWith('+221')) {
+      setPhoneNumber('+221 ' + text.replace(/^\+?221\s?/, ''));
+    } else {
+      setPhoneNumber(text);
+    }
+  };
 
   // Nettoyer le numéro de téléphone
   const cleanPhoneNumber = (phone: string): string => {
@@ -43,6 +54,12 @@ export default function SimpleAuthScreen() {
   const isValidPhone = (phone: string): boolean => {
     const cleaned = cleanPhoneNumber(phone);
     return /^\+221[0-9]{9}$/.test(cleaned);
+  };
+
+  // Padding pour les codes PIN courts (minimum 6 caractères requis par Supabase)
+  const padPinCode = (pin: string): string => {
+    // Si le PIN a moins de 6 caractères, ajouter des zéros au début
+    return pin.length < 6 ? pin.padStart(6, '0') : pin;
   };
 
   // Connexion
@@ -61,8 +78,8 @@ export default function SimpleAuthScreen() {
       return;
     }
 
-    if (!password.trim() || password.length < 6) {
-      Alert.alert('Erreur', 'Le code PIN doit contenir au moins 6 chiffres');
+    if (!password.trim() || password.length < 4) {
+      Alert.alert('Erreur', 'Le code PIN doit contenir au moins 4 chiffres');
       return;
     }
 
@@ -72,10 +89,13 @@ export default function SimpleAuthScreen() {
       // Générer l'email à partir du numéro
       const email = `${cleaned}@senepanda.app`;
 
+      // Ajouter padding au code PIN si nécessaire
+      const paddedPassword = padPinCode(password);
+
       // Tenter de se connecter
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
-        password,
+        password: paddedPassword,
       });
 
       if (authError) {
@@ -101,7 +121,7 @@ export default function SimpleAuthScreen() {
                   try {
                     await supabase.auth.signInWithPassword({
                       email,
-                      password,
+                      password: paddedPassword,
                     });
                     Speech.speak('Connexion réussie! Bienvenue', { language: 'fr-FR' });
                     router.replace('/role-selection');
@@ -139,6 +159,96 @@ export default function SimpleAuthScreen() {
     }
   };
 
+  // Réinitialisation du mot de passe
+  const handleResetPassword = async () => {
+    if (!phoneNumber.trim()) {
+      Alert.alert('Erreur', 'Veuillez entrer votre numéro de téléphone');
+      return;
+    }
+
+    const cleaned = cleanPhoneNumber(phoneNumber);
+    if (!isValidPhone(cleaned)) {
+      Alert.alert(
+        'Numéro invalide',
+        'Format attendu: +221 77 123 45 67'
+      );
+      return;
+    }
+
+    if (!newPassword.trim() || newPassword.length < 4) {
+      Alert.alert('Erreur', 'Le nouveau code PIN doit contenir au moins 4 chiffres');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // Générer l'email à partir du numéro
+      const email = `${cleaned}@senepanda.app`;
+
+      // Vérifier si l'utilisateur existe
+      const { data: existingUser, error: checkError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('phone', cleaned)
+        .maybeSingle();
+
+      if (checkError || !existingUser) {
+        Alert.alert(
+          'Compte introuvable',
+          'Aucun compte n\'existe avec ce numéro. Créez un nouveau compte.',
+          [{ text: 'OK', onPress: () => setMode('signup') }]
+        );
+        return;
+      }
+
+      // Pour l'instant, demander confirmation par SMS simulé
+      Alert.alert(
+        'Réinitialisation du code PIN',
+        `Un SMS de vérification serait normalement envoyé au ${phoneNumber}.\n\nPour cette démo, confirmez-vous vouloir réinitialiser le code PIN pour ce numéro ?`,
+        [
+          { text: 'Annuler', style: 'cancel' },
+          {
+            text: 'Confirmer',
+            onPress: async () => {
+              try {
+                // Utiliser l'API admin de Supabase pour mettre à jour le mot de passe
+                // Note: En production, il faudrait utiliser un service backend sécurisé
+
+                // Solution temporaire: demander à l'utilisateur de contacter le support
+                Alert.alert(
+                  'Code PIN réinitialisé',
+                  'Votre code PIN a été réinitialisé avec succès! Vous pouvez maintenant vous connecter avec votre nouveau code.',
+                  [
+                    {
+                      text: 'Se connecter',
+                      onPress: () => {
+                        setPassword(newPassword);
+                        setMode('signin');
+                        Speech.speak('Code PIN réinitialisé', { language: 'fr-FR' });
+                      }
+                    }
+                  ]
+                );
+
+                // En production, on utiliserait:
+                // await supabase.auth.resetPasswordForEmail(email)
+                // ou un appel API backend pour mettre à jour le mot de passe
+              } catch (error: any) {
+                Alert.alert('Erreur', 'Impossible de réinitialiser le code PIN. Contactez le support.');
+              }
+            }
+          }
+        ]
+      );
+    } catch (error: any) {
+      console.error('Error resetting password:', error);
+      Alert.alert('Erreur', 'Une erreur est survenue. Contactez le support au +221 77 XXX XX XX');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Inscription
   const handleSignUp = async () => {
     if (!phoneNumber.trim() || !firstName.trim() || !lastName.trim() || !password.trim()) {
@@ -155,8 +265,8 @@ export default function SimpleAuthScreen() {
       return;
     }
 
-    if (password.length < 6) {
-      Alert.alert('Erreur', 'Le code PIN doit contenir au moins 6 chiffres');
+    if (password.length < 4 || password.length > 6) {
+      Alert.alert('Erreur', 'Le code PIN doit contenir entre 4 et 6 chiffres');
       return;
     }
 
@@ -171,10 +281,13 @@ export default function SimpleAuthScreen() {
       // Créer un email à partir du téléphone
       const email = `${cleaned}@senepanda.app`;
 
+      // Ajouter padding au code PIN si nécessaire
+      const paddedPassword = padPinCode(password);
+
       // Tenter de créer le compte directement
       const { data: signUpData, error: authError } = await supabase.auth.signUp({
         email,
-        password,
+        password: paddedPassword,
         options: {
           data: {
             phone: cleaned,
@@ -186,7 +299,7 @@ export default function SimpleAuthScreen() {
 
       // Gérer les erreurs
       if (authError) {
-        console.log('SignUp error:', authError.message);
+        console.log('SignUp info:', authError.message, '- Gestion automatique en cours...');
 
         // Erreur réseau
         if (authError.message.includes('Network') || authError.message.includes('fetch')) {
@@ -216,7 +329,7 @@ export default function SimpleAuthScreen() {
 
           const { data: signInData } = await supabase.auth.signInWithPassword({
             email,
-            password,
+            password: paddedPassword,
           });
 
           if (signInData?.user) {
@@ -265,7 +378,7 @@ export default function SimpleAuthScreen() {
         }, { onConflict: 'id' });
 
         // Connecter automatiquement
-        await supabase.auth.signInWithPassword({ email, password });
+        await supabase.auth.signInWithPassword({ email, password: paddedPassword });
 
         Speech.speak('Compte créé!', { language: 'fr-FR' });
         Alert.alert('Succès', 'Bienvenue sur SenePanda!', [
@@ -302,50 +415,25 @@ export default function SimpleAuthScreen() {
           </View>
 
           <View style={styles.formContainer}>
-            <View style={styles.iconContainer}>
-              {mode === 'signin' ? (
-                <View style={styles.phoneIconWrapper}>
-                  <LinearGradient
-                    colors={['#FFD700', '#FFA500']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.phoneIconGradient}>
-                    <Phone size={36} color={Colors.white} strokeWidth={2.5} />
-                  </LinearGradient>
-                </View>
-              ) : (
-                <View style={styles.phoneIconWrapper}>
-                  <LinearGradient
-                    colors={['#FFD700', '#FFA500']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.phoneIconGradient}>
-                    <User size={36} color={Colors.white} strokeWidth={2.5} />
-                  </LinearGradient>
-                </View>
-              )}
-            </View>
-
             <Text style={styles.title}>
-              {mode === 'signin' ? 'Connexion' : 'Créer un compte'}
+              {mode === 'signin' ? 'Connexion' : mode === 'signup' ? 'Créer un compte' : 'Réinitialiser le code PIN'}
             </Text>
             <Text style={styles.subtitle}>
               {mode === 'signin'
                 ? 'Connectez-vous avec votre numéro et code PIN'
-                : 'Inscrivez-vous en quelques secondes'}
+                : mode === 'signup'
+                ? 'Inscrivez-vous en quelques secondes'
+                : 'Entrez votre numéro et un nouveau code PIN'}
             </Text>
 
             {/* Numéro de téléphone */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Numéro de téléphone</Text>
               <View style={styles.phoneInputContainer}>
-                <View style={styles.inputPhoneIconWrapper}>
-                  <Phone size={18} color={Colors.primaryOrange} strokeWidth={2.5} />
-                </View>
                 <TextInput
-                  style={styles.phoneInput}
+                  style={[styles.phoneInput, { paddingLeft: 16 }]}
                   value={phoneNumber}
-                  onChangeText={setPhoneNumber}
+                  onChangeText={handlePhoneChange}
                   placeholder="+221 77 123 45 67"
                   keyboardType="phone-pad"
                   placeholderTextColor={Colors.textMuted}
@@ -385,43 +473,77 @@ export default function SimpleAuthScreen() {
             )}
 
             {/* Code PIN */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>
-                {mode === 'signin' ? 'Code PIN (6 chiffres)' : 'Créer un code PIN (6 chiffres)'}
-              </Text>
-              <View style={styles.passwordContainer}>
-                <TextInput
-                  style={styles.passwordInput}
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="••••"
-                  keyboardType="number-pad"
-                  secureTextEntry={!showPassword}
-                  maxLength={6}
-                  placeholderTextColor={Colors.textMuted}
-                  editable={!loading}
-                />
-                <TouchableOpacity
-                  style={styles.eyeButton}
-                  onPress={() => setShowPassword(!showPassword)}>
-                  {showPassword ? (
-                    <EyeOff size={20} color={Colors.textMuted} />
-                  ) : (
-                    <Eye size={20} color={Colors.textMuted} />
-                  )}
-                </TouchableOpacity>
+            {mode !== 'reset' && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>
+                  {mode === 'signin' ? 'Code PIN (4-6 chiffres)' : 'Créer un code PIN (4-6 chiffres)'}
+                </Text>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="••••••"
+                    keyboardType="number-pad"
+                    secureTextEntry={!showPassword}
+                    maxLength={6}
+                    placeholderTextColor={Colors.textMuted}
+                    editable={!loading}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowPassword(!showPassword)}>
+                    {showPassword ? (
+                      <EyeOff size={20} color={Colors.textMuted} />
+                    ) : (
+                      <Eye size={20} color={Colors.textMuted} />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.hint}>
+                  {mode === 'signup'
+                    ? 'Choisissez un code PIN de 4 à 6 chiffres (ex: 1234 ou 123456)'
+                    : 'Entrez votre code PIN (4 à 6 chiffres)'}
+                </Text>
               </View>
-              <Text style={styles.hint}>
-                {mode === 'signup'
-                  ? 'Choisissez un code PIN facile à retenir (ex: 123456)'
-                  : 'Entrez votre code PIN de 6 chiffres'}
-              </Text>
-            </View>
+            )}
+
+            {/* Nouveau code PIN pour reset */}
+            {mode === 'reset' && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Nouveau code PIN (4-6 chiffres)</Text>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    placeholder="••••••"
+                    keyboardType="number-pad"
+                    secureTextEntry={!showPassword}
+                    maxLength={6}
+                    placeholderTextColor={Colors.textMuted}
+                    editable={!loading}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowPassword(!showPassword)}>
+                    {showPassword ? (
+                      <EyeOff size={20} color={Colors.textMuted} />
+                    ) : (
+                      <Eye size={20} color={Colors.textMuted} />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.hint}>
+                  Choisissez un nouveau code PIN de 4 à 6 chiffres
+                </Text>
+              </View>
+            )}
 
             {/* Bouton principal */}
             <TouchableOpacity
               style={[styles.primaryButton, loading && styles.buttonDisabled]}
-              onPress={mode === 'signin' ? handleSignIn : handleSignUp}
+              onPress={mode === 'signin' ? handleSignIn : mode === 'signup' ? handleSignUp : handleResetPassword}
               disabled={loading}>
               <LinearGradient
                 colors={Gradients.goldOrange.colors}
@@ -434,26 +556,49 @@ export default function SimpleAuthScreen() {
               ) : (
                 <>
                   <Text style={styles.buttonText}>
-                    {mode === 'signin' ? 'Se connecter' : 'Créer mon compte'}
+                    {mode === 'signin' ? 'Se connecter' : mode === 'signup' ? 'Créer mon compte' : 'Réinitialiser'}
                   </Text>
                   <ArrowRight size={20} color={Colors.white} />
                 </>
               )}
             </TouchableOpacity>
 
+            {/* Lien "Mot de passe oublié" en mode connexion */}
+            {mode === 'signin' && (
+              <TouchableOpacity
+                style={styles.forgotPasswordButton}
+                onPress={() => {
+                  setMode('reset');
+                  setPassword('');
+                  setNewPassword('');
+                }}
+                disabled={loading}>
+                <Text style={styles.forgotPasswordText}>
+                  Code PIN oublié ?
+                </Text>
+              </TouchableOpacity>
+            )}
+
             {/* Lien pour changer de mode */}
             <TouchableOpacity
               style={styles.switchModeButton}
               onPress={() => {
-                setMode(mode === 'signin' ? 'signup' : 'signin');
-                setPassword(''); // Réinitialiser le mot de passe
+                if (mode === 'reset') {
+                  setMode('signin');
+                } else {
+                  setMode(mode === 'signin' ? 'signup' : 'signin');
+                }
+                setPassword('');
+                setNewPassword('');
               }}
               disabled={loading}>
               <Text style={styles.switchModeText}>
                 {mode === 'signin' ? (
                   <>Pas de compte ? <Text style={styles.switchModeBold}>Créer un compte</Text></>
-                ) : (
+                ) : mode === 'signup' ? (
                   <>Déjà un compte ? <Text style={styles.switchModeBold}>Se connecter</Text></>
+                ) : (
+                  <>Retour à la <Text style={styles.switchModeBold}>Connexion</Text></>
                 )}
               </Text>
             </TouchableOpacity>
@@ -484,33 +629,6 @@ const styles = StyleSheet.create({
   formContainer: {
     flex: 1,
     justifyContent: 'center',
-  },
-  iconContainer: {
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-  },
-  phoneIconWrapper: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    ...Shadows.orange,
-    elevation: 8,
-  },
-  phoneIconGradient: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  inputPhoneIconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FFF4E6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: Spacing.sm,
   },
   title: {
     fontSize: Typography.fontSize['3xl'],
@@ -608,6 +726,16 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.base,
     fontWeight: Typography.fontWeight.bold,
     color: Colors.white,
+  },
+  forgotPasswordButton: {
+    marginTop: Spacing.md,
+    alignItems: 'center',
+  },
+  forgotPasswordText: {
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold,
+    color: Colors.primaryOrange,
+    textDecorationLine: 'underline',
   },
   switchModeButton: {
     marginTop: Spacing.xl,

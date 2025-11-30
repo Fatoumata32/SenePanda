@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Store, ShoppingBag, Search } from 'lucide-react-native';
+import { Store, ShoppingBag, Search, Bell, ShoppingCart } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { Product, Category } from '@/types/database';
 import CategoryChip from '@/components/CategoryChip';
@@ -19,14 +19,18 @@ import FlashDeals from '@/components/FlashDeals';
 import SimpleProductGrid from '@/components/SimpleProductGrid';
 import PCCarousel from '@/components/PCCarousel';
 import WaveDivider from '@/components/WaveDivider';
+import PandaLogo from '@/components/PandaLogo';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Gradients, Shadows, Typography, Spacing, BorderRadius } from '@/constants/Colors';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useCart } from '@/contexts/CartContext';
+import * as Haptics from 'expo-haptics';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { isDark } = useTheme();
+  const { cartItems } = useCart();
 
   // Theme colors
   const themeColors = {
@@ -47,12 +51,99 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [userShop, setUserShop] = useState<any>(null);
+  const [totalNotifications, setTotalNotifications] = useState(0);
+
+  const cartItemCount = useMemo(() => {
+    return cartItems?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0;
+  }, [cartItems]);
 
   useEffect(() => {
     fetchCategories();
     fetchProducts();
     checkUserProfile();
+    fetchTotalNotifications();
   }, [selectedCategory]);
+
+  // Listener temps réel pour les notifications
+  useEffect(() => {
+    const setupNotificationListener = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Écouter les changements sur les deux tables possibles
+      const channel = supabase
+        .channel('notifications-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            fetchTotalNotifications();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'deal_notifications',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            fetchTotalNotifications();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    setupNotificationListener();
+  }, []);
+
+  const fetchTotalNotifications = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log('🔍 Fetching notifications for user:', user?.id);
+
+      if (user) {
+        // Essayer avec deal_notifications
+        const { count, error, data } = await supabase
+          .from('deal_notifications')
+          .select('*', { count: 'exact', head: false })
+          .eq('user_id', user.id);
+
+        console.log('📊 deal_notifications result:', { count, error, dataLength: data?.length });
+
+        if (error) {
+          console.error('❌ Supabase error:', error.message, error.code);
+
+          // Essayer avec notifications comme fallback
+          const fallback = await supabase
+            .from('notifications')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', user.id);
+
+          console.log('📊 notifications fallback:', { count: fallback.count, error: fallback.error });
+          setTotalNotifications(fallback.count || 0);
+        } else {
+          console.log('✅ Total notifications count:', count);
+          setTotalNotifications(count || 0);
+        }
+      } else {
+        console.log('⚠️ No user found');
+      }
+    } catch (error) {
+      console.error('💥 Error fetching total notifications:', error);
+      setTotalNotifications(0);
+    }
+  };
 
   const checkUserProfile = async () => {
     try {
@@ -136,6 +227,7 @@ export default function HomeScreen() {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchProducts();
+    fetchTotalNotifications();
   }, [fetchProducts]);
 
   const filteredProducts = useMemo(() =>
@@ -147,6 +239,16 @@ export default function HomeScreen() {
   const handleCategorySelect = useCallback((categoryId: string | null) => {
     setSelectedCategory(categoryId);
   }, []);
+
+  const navigateToCart = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push('/cart');
+  }, [router]);
+
+  const navigateToNotifications = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push('/notifications');
+  }, [router]);
 
   const handleBuyPress = useCallback(() => {
     // Scroll vers la section des produits ou explorer
@@ -164,16 +266,47 @@ export default function HomeScreen() {
           style={styles.heroSection}>
 
           <View style={styles.heroContent}>
-            {/* Logo + Brand inline pour gagner de la place */}
-            <View style={styles.heroBrand}>
-              <Image
-                source={require('@/assets/images/logo30.png')}
-                style={styles.heroLogoCompact}
-                resizeMode="contain"
-              />
-              <View style={styles.brandTextContainer}>
-                <Text style={[styles.brandName, isDark && { color: '#F59E0B' }]}>senepanda</Text>
-                <Text style={[styles.brandTagline, { color: themeColors.textSecondary }]}>Marketplace Multi-Vendeurs</Text>
+            {/* Logo + Brand inline + Actions */}
+            <View style={styles.heroBrandRow}>
+              <View style={styles.heroBrand}>
+                <PandaLogo size="small" showText={false} />
+                <View style={styles.brandTextContainer}>
+                  <Text style={[styles.brandName, isDark && { color: '#F59E0B' }]}>senepanda</Text>
+                  <Text style={[styles.brandTagline, { color: themeColors.textSecondary }]}>Marketplace Multi-Vendeurs</Text>
+                </View>
+              </View>
+
+              {/* Icônes Notifications et Panier */}
+              <View style={styles.headerActions}>
+                <TouchableOpacity
+                  onPress={navigateToNotifications}
+                  style={[styles.iconButton, { backgroundColor: '#D1FAE5' }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Notifications - ${totalNotifications} au total`}
+                >
+                  <Bell size={20} color="#059669" />
+                  {totalNotifications > 0 && (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>
+                        {totalNotifications > 99 ? '99+' : totalNotifications}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={navigateToCart}
+                  style={[styles.iconButton, { backgroundColor: '#D1FAE5' }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Panier avec ${cartItemCount} articles`}
+                >
+                  <ShoppingCart size={20} color="#059669" />
+                  {cartItemCount > 0 && (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>{cartItemCount}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -342,11 +475,54 @@ const styles = StyleSheet.create({
   heroContent: {
     width: '100%',
   },
+  heroBrandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
   heroBrand: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    marginBottom: Spacing.md,
+    flex: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
   heroLogoCompact: {
     width: 64,

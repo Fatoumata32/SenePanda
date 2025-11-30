@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,192 +7,127 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  TextInput,
-  Modal,
   Image,
-  Animated,
-  Dimensions,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, Link } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { signInWithUsernameOrEmail } from '@/lib/auth-helpers';
 import {
-  validateUsername,
-  validatePhoneNumber,
-  validateAddress,
-} from '@/lib/validation';
-import { Profile } from '@/types/database';
-import {
-  LogIn,
   LogOut,
   ShoppingBag,
   Settings,
-  Edit3,
-  X,
-  Gift,
-  Crown,
-  CreditCard,
-  Users,
-  Phone,
-  MapPin,
-  Mail,
-  Copy,
-  ChevronRight,
-  Camera,
-  Image as ImageIcon,
   Award,
-  TrendingUp,
-  ShoppingCart,
-  Heart,
-  Star,
-  Package,
-  Store,
-  RefreshCw,
-  Moon,
+  CreditCard,
+  Info,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Camera,
+  X,
   Sun,
+  Moon,
   Shield,
   FileText,
   Trash2,
-  Bell,
-  AlertTriangle,
+  Crown,
+  Gift,
+  Star,
+  Heart,
+  Phone,
+  Mail,
+  MapPin,
+  Copy,
+  Edit3,
+  Package,
+  TrendingUp,
+  Sparkles,
+  Check,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import PandaLogo from '@/components/PandaLogo';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Speech from 'expo-speech';
 import * as ImagePicker from 'expo-image-picker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ClipboardLib from 'expo-clipboard';
 import { Colors } from '@/constants/Colors';
-import { useBonusSystem } from '@/hooks/useBonusSystem';
-import SubscriptionModal from '@/components/SubscriptionModal';
+import { Profile } from '@/types/database';
+import {
+  validateUsername,
+  validatePhoneNumber,
+} from '@/lib/validation';
+import TeardropAvatar from '@/components/TeardropAvatar';
 
-const { width } = Dimensions.get('window');
-
-// 🎨 DESIGN SYSTEM
-const DesignTokens = {
-  colors: {
-    background: '#FAFAFA',
-    cardWhite: '#FFFFFF',
-    pastel: {
-      purple: { bg: '#F3E8FF', icon: '#9333EA' },
-      green: { bg: '#D1FAE5', icon: '#059669' },
-      amber: { bg: '#FEF3C7', icon: '#D97706' },
-      pink: { bg: '#FCE7F3', icon: '#DB2777' },
-      blue: { bg: '#DBEAFE', icon: '#2563EB' },
-      teal: { bg: '#CCFBF1', icon: '#0D9488' },
-      indigo: { bg: '#E0E7FF', icon: '#4F46E5' },
-    },
-    gradient: {
-      beige: ['#FAF5EF', '#FFF9ED'] as const,
-      gold: ['#FFD700', '#FFA500'] as const,
-    },
-    text: {
-      primary: '#1F2937',
-      secondary: '#6B7280',
-      muted: '#9CA3AF',
-    },
-  },
-  spacing: {
-    xs: 8,
-    sm: 12,
-    md: 16,
-    lg: 20,
-    xl: 24,
-    xxl: 32,
-  },
-  radius: {
-    sm: 12,
-    md: 16,
-    lg: 20,
-    xl: 24,
-    full: 9999,
-  },
-  shadows: {
-    sm: {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.06,
-      shadowRadius: 8,
-      elevation: 2,
-    },
-    md: {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.1,
-      shadowRadius: 12,
-      elevation: 4,
-    },
-  },
-  typography: {
-    h1: { fontSize: 28, fontWeight: '800' as const, lineHeight: 36 },
-    h2: { fontSize: 20, fontWeight: '700' as const, lineHeight: 28 },
-    h3: { fontSize: 16, fontWeight: '600' as const, lineHeight: 24 },
-    body: { fontSize: 15, fontWeight: '400' as const, lineHeight: 22 },
-    caption: { fontSize: 13, fontWeight: '500' as const, lineHeight: 18 },
-  },
+// Fonction pour générer un avatar unique par utilisateur
+const getDefaultAvatar = (userId: string) => {
+  return `https://api.dicebear.com/7.x/avataaars/png?seed=${userId}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
 };
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { isDark, toggleTheme, themeMode, setThemeMode } = useTheme();
+  const { isDark, setThemeMode, themeMode } = useTheme();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
-  // Auth states
-  const [usernameOrEmail, setUsernameOrEmail] = useState('');
-  const [password, setPassword] = useState('');
+  // Stats dynamiques
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [totalSales, setTotalSales] = useState(0); // Commandes reçues (ventes)
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [totalReviews, setTotalReviews] = useState(0);
+
+  // Menu déroulant pour les commandes (vendeur)
+  const [ordersMenuExpanded, setOrdersMenuExpanded] = useState(false);
 
   // Modals
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [avatarModalVisible, setAvatarModalVisible] = useState(false);
-  const [rewardsModalVisible, setRewardsModalVisible] = useState(false);
+  const [achievementsModalVisible, setAchievementsModalVisible] = useState(false);
+  const [paymentsModalVisible, setPaymentsModalVisible] = useState(false);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
-  const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
-  const [termsModalVisible, setTermsModalVisible] = useState(false);
-  const [deleteAccountModalVisible, setDeleteAccountModalVisible] = useState(false);
-  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [informationModalVisible, setInformationModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
   const [subscriptionModalVisible, setSubscriptionModalVisible] = useState(false);
+  const [pointsModalVisible, setPointsModalVisible] = useState(false);
 
+  // Edit form
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
   const [editPhone, setEditPhone] = useState('');
-  const [editCountry, setEditCountry] = useState('');
-  const [editCity, setEditCity] = useState('');
-
-  // Dynamic data
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
-  const [isPremium, setIsPremium] = useState(false);
-
-  // Bonus system
-  const { userPoints } = useBonusSystem();
-
-  // Animation
-  const [modalAnim] = useState(new Animated.Value(0));
-
-  // Memoized values
-  const totalPoints = useMemo(() =>
-    userPoints?.points || profile?.panda_coins || 0,
-    [userPoints?.points, profile?.panda_coins]
-  );
-
-  const referralPoints = useMemo(() =>
-    (profile?.total_referrals || 0) * 50,
-    [profile?.total_referrals]
-  );
 
   const themeColors = useMemo(() => ({
-    background: isDark ? '#111827' : '#FAFAFA',
+    background: isDark ? '#111827' : '#F0F9FF',
     card: isDark ? '#1F2937' : '#FFFFFF',
     text: isDark ? '#F9FAFB' : '#1F2937',
     textSecondary: isDark ? '#D1D5DB' : '#6B7280',
     border: isDark ? '#374151' : '#E5E7EB',
-    headerGradient: isDark
-      ? ['#1F2937', '#374151'] as const
-      : ['#FAF5EF', '#FFF9ED'] as const,
+    statBadge: {
+      blue: isDark ? '#1E3A8A' : '#DBEAFE',
+      yellow: isDark ? '#78350F' : '#FEF3C7',
+      green: isDark ? '#064E3B' : '#D1FAE5',
+      red: isDark ? '#7F1D1D' : '#FEE2E2',
+      purple: isDark ? '#581C87' : '#F3E8FF',
+    },
+    menuIcon: {
+      text: isDark ? '#F9FAFB' : '#1F2937',
+      bg: {
+        yellow: isDark ? '#78350F' : '#FEF3C7',
+        blue: isDark ? '#1E3A8A' : '#DBEAFE',
+        lightBlue: isDark ? '#0C4A6E' : '#E0F2FE',
+        green: isDark ? '#064E3B' : '#D1FAE5',
+        red: isDark ? '#7F1D1D' : '#FEE2E2',
+      }
+    },
+    planBadge: {
+      blue: isDark ? '#1E3A8A' : '#DBEAFE',
+      yellow: isDark ? '#78350F' : '#FEF3C7',
+      purple: isDark ? '#581C87' : '#F3E8FF',
+    },
+    infoBadge: {
+      blue: isDark ? '#1E3A8A' : '#DBEAFE',
+      purple: isDark ? '#581C87' : '#F3E8FF',
+      teal: isDark ? '#134E4A' : '#CCFBF1',
+    },
   }), [isDark]);
 
   const userInitials = useMemo(() => {
@@ -211,13 +146,13 @@ export default function ProfileScreen() {
         setUser(session?.user ?? null);
         if (session?.user) {
           fetchProfile(session.user.id);
+          fetchStats(session.user.id);
         }
       }
     );
     return () => subscription.unsubscribe();
   }, []);
 
-  // Rediriger vers simple-auth si non connecté (après le chargement)
   useEffect(() => {
     if (!loading && user === null) {
       router.replace('/simple-auth');
@@ -230,6 +165,7 @@ export default function ProfileScreen() {
       setUser(user);
       if (user) {
         await fetchProfile(user.id);
+        await fetchStats(user.id);
       }
     } catch (error) {
       console.error('Error checking user:', error);
@@ -249,56 +185,64 @@ export default function ProfileScreen() {
       if (error && error.code !== 'PGRST116') throw error;
       setProfile(data);
       if (data) {
-        setAvatarUri(data.avatar_url || null);
-        setIsPremium(data.is_premium || false);
+        setAvatarUri(data.avatar_url || getDefaultAvatar(userId));
+      } else {
+        setAvatarUri(getDefaultAvatar(userId));
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
     }
   };
 
-  const animateModal = (show: boolean) => {
-    Animated.spring(modalAnim, {
-      toValue: show ? 1 : 0,
-      useNativeDriver: true,
-      tension: 50,
-      friction: 8,
-    }).start();
-  };
-
-  const openModal = (modalSetter: (visible: boolean) => void) => {
-    modalSetter(true);
-    animateModal(true);
-  };
-
-  const closeModal = (modalSetter: (visible: boolean) => void) => {
-    animateModal(false);
-    setTimeout(() => modalSetter(false), 200);
-  };
-
-  const handlePickImage = async (fromCamera: boolean = false) => {
+  const fetchStats = async (userId: string) => {
     try {
-      const permissionResult = fromCamera
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      // Récupérer le nombre de commandes passées (achats)
+      const { count: ordersCount } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
 
+      // Récupérer le nombre de commandes reçues (ventes) - pour les vendeurs
+      const { count: salesCount } = await supabase
+        .from('order_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('seller_id', userId);
+
+      // Récupérer le nombre de produits vendus (si vendeur)
+      const { count: productsCount } = await supabase
+        .from('products')
+        .select('*', { count: 'exact', head: true })
+        .eq('seller_id', userId);
+
+      // Récupérer le nombre d'avis laissés
+      const { count: reviewsCount } = await supabase
+        .from('reviews')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+      setTotalOrders(ordersCount || 0);
+      setTotalSales(salesCount || 0);
+      setTotalProducts(productsCount || 0);
+      setTotalReviews(reviewsCount || 0);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
+  const handlePickImage = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
         Alert.alert('Permission requise', 'Veuillez autoriser l\'accès');
         return;
       }
 
-      const result = fromCamera
-        ? await ImagePicker.launchCameraAsync({
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-          })
-        : await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-          });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
 
       if (!result.canceled && result.assets[0]) {
         const uri = result.assets[0].uri;
@@ -309,9 +253,7 @@ export default function ProfileScreen() {
             .from('profiles')
             .update({ avatar_url: uri })
             .eq('id', user.id);
-
           Speech.speak('Photo de profil mise à jour', { language: 'fr-FR' });
-          closeModal(setAvatarModalVisible);
         }
       }
     } catch (error: any) {
@@ -319,45 +261,56 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleAuth = async () => {
+  const openEditModal = () => {
+    setEditFirstName(profile?.first_name || '');
+    setEditLastName(profile?.last_name || '');
+    setEditPhone(profile?.phone || '');
+    setEditModalVisible(true);
+  };
+
+  const saveEdit = async () => {
+    if (!user) return;
+
     try {
-      // Validation des champs
-      if (!usernameOrEmail || usernameOrEmail.trim() === '') {
-        Alert.alert('Attention', 'Veuillez entrer votre email ou nom d\'utilisateur');
-        return;
-      }
-
-      if (!password || password.trim() === '') {
-        Alert.alert('Attention', 'Veuillez entrer votre mot de passe');
-        return;
-      }
-
-      if (password.length < 6) {
-        Alert.alert('Attention', 'Le mot de passe doit contenir au moins 6 caractères');
-        return;
-      }
-
       setSaving(true);
-      const { data, error } = await signInWithUsernameOrEmail(usernameOrEmail, password);
-      if (error) throw error;
-      if (!data?.session) throw new Error('Échec de la connexion');
 
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('is_seller')
-        .eq('id', data.user.id)
-        .maybeSingle();
-
-      if (profileData) {
-        const role = profileData.is_seller ? 'seller' : 'buyer';
-        await AsyncStorage.setItem('user_preferred_role', role);
+      // Validation
+      const firstNameValidation = validateUsername(editFirstName);
+      if (!firstNameValidation.isValid) {
+        Alert.alert('Erreur', firstNameValidation.errors.join(', '));
+        return;
       }
 
-      setUsernameOrEmail('');
-      setPassword('');
+      const lastNameValidation = validateUsername(editLastName);
+      if (!lastNameValidation.isValid) {
+        Alert.alert('Erreur', lastNameValidation.errors.join(', '));
+        return;
+      }
+
+      const phoneValidation = validatePhoneNumber(editPhone);
+      if (!phoneValidation.isValid) {
+        Alert.alert('Erreur', phoneValidation.errors.join(', '));
+        return;
+      }
+
+      const updates: any = {
+        id: user.id,
+        first_name: editFirstName,
+        last_name: editLastName,
+        full_name: `${editFirstName} ${editLastName}`,
+        phone: editPhone,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase.from('profiles').upsert(updates);
+      if (error) throw error;
+
+      setEditModalVisible(false);
+      await fetchProfile(user.id);
+      Alert.alert('Succès', 'Profil mis à jour avec succès');
+      Speech.speak('Profil mis à jour', { language: 'fr-FR' });
     } catch (error: any) {
-      Alert.alert('Erreur', error.message || 'Une erreur est survenue lors de la connexion');
-      Speech.speak(error.message || 'Erreur de connexion', { language: 'fr-FR' });
+      Alert.alert('Erreur', error.message);
     } finally {
       setSaving(false);
     }
@@ -382,98 +335,17 @@ export default function ProfileScreen() {
     );
   };
 
-  const openEditModal = () => {
-    setEditFirstName(profile?.first_name || '');
-    setEditLastName(profile?.last_name || '');
-    setEditPhone(profile?.phone || '');
-    setEditCountry(profile?.country || '');
-    setEditCity(profile?.city || '');
-    openModal(setEditModalVisible);
-  };
-
-  const saveEdit = async () => {
-    if (!user) return;
-
-    try {
-      setSaving(true);
-
-      // Validation du prénom
-      const firstNameValidation = validateUsername(editFirstName);
-      if (!firstNameValidation.isValid) {
-        Alert.alert('Erreur', firstNameValidation.errors.join(', '));
-        setSaving(false);
-        return;
-      }
-
-      // Validation du nom
-      const lastNameValidation = validateUsername(editLastName);
-      if (!lastNameValidation.isValid) {
-        Alert.alert('Erreur', lastNameValidation.errors.join(', '));
-        setSaving(false);
-        return;
-      }
-
-      // Validation du téléphone
-      const phoneValidation = validatePhoneNumber(editPhone);
-      if (!phoneValidation.isValid) {
-        Alert.alert('Erreur', phoneValidation.errors.join(', '));
-        setSaving(false);
-        return;
-      }
-
-      // Validation du pays
-      const countryValidation = validateAddress(editCountry);
-      if (!countryValidation.isValid) {
-        Alert.alert('Erreur', countryValidation.errors.join(', '));
-        setSaving(false);
-        return;
-      }
-
-      const updates: any = {
-        id: user.id,
-        first_name: editFirstName,
-        last_name: editLastName,
-        full_name: `${editFirstName} ${editLastName}`,
-        phone: editPhone,
-        country: editCountry,
-        city: editCity || null,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase.from('profiles').upsert(updates);
-      if (error) throw error;
-
-      closeModal(setEditModalVisible);
-      await fetchProfile(user.id);
-      Alert.alert('Succès', 'Profil mis à jour avec succès');
-      Speech.speak('Profil mis à jour avec succès', { language: 'fr-FR' });
-    } catch (error: any) {
-      Alert.alert('Erreur', error.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const copyReferralCode = useCallback(async () => {
+  const copyReferralCode = async () => {
     if (profile?.referral_code) {
       await ClipboardLib.setStringAsync(profile.referral_code);
       Speech.speak('Code copié', { language: 'fr-FR' });
       Alert.alert('✓ Copié!', 'Code de parrainage copié');
     }
-  }, [profile?.referral_code]);
+  };
 
-  if (loading) {
+  if (loading || !user) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={DesignTokens.colors.pastel.purple.icon} />
-      </View>
-    );
-  }
-
-  // Afficher un loader pendant la redirection
-  if (!user) {
-    return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primaryOrange} />
         </View>
@@ -481,372 +353,409 @@ export default function ProfileScreen() {
     );
   }
 
-  // PROFILE SCREEN (Logged in) - REDESIGNED
-  // Already memoized above
+  const totalPoints = profile?.panda_coins || 0;
+  const referralPoints = (profile?.total_referrals || 0) * 50;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]}>
       <ScrollView
-        contentContainerStyle={styles.profileContainer}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-        {/* ✨ HEADER - Gradient Beige Soft */}
-        <LinearGradient
-          colors={themeColors.headerGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.header}>
-          <View style={styles.headerContent}>
-            <TouchableOpacity
-              onPress={() => openModal(setAvatarModalVisible)}
-              style={styles.avatarContainer}>
-              {avatarUri ? (
-                <Image source={{ uri: avatarUri }} style={styles.avatar} />
-              ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <Text style={styles.avatarText}>{userInitials}</Text>
-                </View>
-              )}
-              <View style={styles.cameraButton}>
-                <Camera size={14} color={DesignTokens.colors.cardWhite} />
-              </View>
-              {isPremium && (
-                <View style={styles.premiumBadge}>
-                  <Crown size={12} color={Colors.primaryGold} fill={Colors.primaryGold} />
-                </View>
-              )}
-            </TouchableOpacity>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={[styles.headerTitle, { color: themeColors.text }]}>Mon Profil</Text>
+        </View>
 
-            <View style={styles.headerInfo}>
-              <Text style={[styles.headerName, { color: themeColors.text }]}>{profile?.full_name || 'Utilisateur'}</Text>
-              <Text style={[styles.headerUsername, { color: themeColors.textSecondary }]}>@{profile?.username || 'username'}</Text>
-            </View>
-
-            <TouchableOpacity onPress={handleSignOut} style={styles.logoutButton}>
-              <LogOut size={20} color={themeColors.text} />
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
-
-        {/* 🎁 CHOOSE YOUR GIFT - Card Blanche */}
-        <TouchableOpacity
-          style={[styles.giftCard, { backgroundColor: themeColors.card }]}
-          onPress={() => openModal(setRewardsModalVisible)}
-          activeOpacity={0.7}>
-          <Gift size={24} color={DesignTokens.colors.pastel.purple.icon} />
-          <Text style={[styles.giftCardText, { color: themeColors.text }]}>Choose Your Gift</Text>
-          <ChevronRight size={20} color={themeColors.textSecondary} />
-        </TouchableOpacity>
-
-        {/* 🔄 SWITCH VENDEUR/ACHETEUR - Visible si vendeur avec boutique */}
-        {profile?.is_seller && profile?.shop_name && (
-          <View style={[styles.switchContainer, { backgroundColor: themeColors.card }]}>
-            <TouchableOpacity
-              style={[styles.switchButton, { backgroundColor: themeColors.background }]}
-              onPress={() => router.push(`/user/${profile.id}`)}
-              activeOpacity={0.7}>
-              <View style={styles.switchIconContainer}>
-                <Store size={20} color="#FFFFFF" />
-              </View>
-              <View style={styles.switchTextContainer}>
-                <Text style={[styles.switchTitle, { color: themeColors.text }]}>Ma Boutique</Text>
-                <Text style={[styles.switchSubtitle, { color: themeColors.textSecondary }]}>{profile.shop_name}</Text>
-              </View>
-              <ChevronRight size={20} color={themeColors.textSecondary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.switchButton, { backgroundColor: themeColors.background }]}
-              onPress={() => router.push('/seller/orders')}
-              activeOpacity={0.7}>
-              <View style={[styles.switchIconContainer, { backgroundColor: DesignTokens.colors.pastel.amber.icon }]}>
-                <Package size={20} color="#FFFFFF" />
-              </View>
-              <View style={styles.switchTextContainer}>
-                <Text style={[styles.switchTitle, { color: themeColors.text }]}>Commandes reçues</Text>
-                <Text style={[styles.switchSubtitle, { color: themeColors.textSecondary }]}>Gérer les commandes clients</Text>
-              </View>
-              <ChevronRight size={20} color={themeColors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* 🚀 QUICK ACTIONS - Pastels Uniformes */}
-        <View style={styles.actionsGrid}>
+        {/* Avatar et Info */}
+        <View style={styles.profileSection}>
           <TouchableOpacity
-            style={styles.actionItem}
-            onPress={() => router.push('/orders')}>
-            <View style={[styles.actionIcon, { backgroundColor: DesignTokens.colors.pastel.blue.bg }]}>
-              <Package size={24} color={DesignTokens.colors.pastel.blue.icon} />
+            onPress={handlePickImage}
+            style={styles.avatarContainer}>
+            <TeardropAvatar
+              imageUri={avatarUri}
+              size={140}
+              shape="squircle"
+              glowColor={['#93C5FD', '#60A5FA']}
+              borderWidth={4}
+              borderColor={isDark ? '#374151' : '#FFFFFF'}
+            >
+              <Text style={styles.avatarText}>{userInitials}</Text>
+            </TeardropAvatar>
+            <View style={styles.cameraButton}>
+              <Camera size={16} color="#FFFFFF" />
             </View>
-            <Text style={[styles.actionLabel, { color: themeColors.text }]}>Commandes</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.actionItem}
-            onPress={() => {
-              if (profile?.is_seller) {
-                router.push('/seller/products');
-              } else {
-                router.push('/seller/setup');
-              }
-            }}>
-            <View style={[styles.actionIcon, { backgroundColor: DesignTokens.colors.pastel.green.bg }]}>
-              <ShoppingBag size={24} color={DesignTokens.colors.pastel.green.icon} />
-            </View>
-            <Text style={[styles.actionLabel, { color: themeColors.text }]}>Vendre</Text>
-          </TouchableOpacity>
+          <Text style={[styles.userName, { color: themeColors.text }]}>
+            {profile?.full_name || 'Utilisateur'}
+          </Text>
+          <Text style={[styles.userHandle, { color: themeColors.textSecondary }]}>
+            @{profile?.username || 'username'}
+          </Text>
 
+          {/* Bouton Modifier */}
           <TouchableOpacity
-            style={styles.actionItem}
-            onPress={() => openModal(setSettingsModalVisible)}>
-            <View style={[styles.actionIcon, { backgroundColor: DesignTokens.colors.pastel.amber.bg }]}>
-              <Settings size={24} color={DesignTokens.colors.pastel.amber.icon} />
-            </View>
-            <Text style={[styles.actionLabel, { color: themeColors.text }]}>Paramètres</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionItem}
+            style={[styles.editProfileButton, { backgroundColor: themeColors.card }]}
             onPress={openEditModal}>
-            <View style={[styles.actionIcon, { backgroundColor: DesignTokens.colors.pastel.pink.bg }]}>
-              <Edit3 size={24} color={DesignTokens.colors.pastel.pink.icon} />
-            </View>
-            <Text style={[styles.actionLabel, { color: themeColors.text }]}>Modifier</Text>
+            <Edit3 size={16} color={Colors.primaryOrange} />
+            <Text style={[styles.editProfileText, { color: Colors.primaryOrange }]}>
+              Modifier le profil
+            </Text>
           </TouchableOpacity>
         </View>
 
-        {/* 📋 INFORMATIONS PERSONNELLES - Modern Card */}
-        <View style={[styles.infoCard, { backgroundColor: themeColors.card }]}>
-          <Text style={[styles.cardTitle, { color: themeColors.text }]}>Informations personnelles</Text>
+        {/* Stats */}
+        <View style={styles.statsContainer}>
+          <TouchableOpacity
+            style={styles.statItem}
+            onPress={() => router.push('/orders')}>
+            <Text style={[styles.statNumber, { color: themeColors.text }]}>{totalOrders}</Text>
+            <View style={[styles.statBadge, { backgroundColor: themeColors.statBadge.blue }]}>
+              <Text style={[styles.statLabel, { color: themeColors.text }]}>Commandes</Text>
+            </View>
+          </TouchableOpacity>
 
-          <View style={styles.infoItem}>
-            <View style={[styles.infoIconCircle, { backgroundColor: DesignTokens.colors.pastel.blue.bg }]}>
-              <Phone size={20} color={DesignTokens.colors.pastel.blue.icon} />
+          <TouchableOpacity
+            style={styles.statItem}
+            onPress={() => setPointsModalVisible(true)}>
+            <Text style={[styles.statNumber, { color: themeColors.text }]}>{totalPoints}</Text>
+            <View style={[styles.statBadge, { backgroundColor: themeColors.statBadge.yellow }]}>
+              <Text style={[styles.statLabel, { color: themeColors.text }]}>Points</Text>
             </View>
-            <View style={styles.infoContent}>
-              <Text style={[styles.infoLabel, { color: themeColors.textSecondary }]}>Téléphone</Text>
-              <Text style={[styles.infoValue, { color: themeColors.text }]}>{profile?.phone || 'Non renseigné'}</Text>
-            </View>
-          </View>
+          </TouchableOpacity>
 
-          <View style={styles.infoItem}>
-            <View style={[styles.infoIconCircle, { backgroundColor: DesignTokens.colors.pastel.teal.bg }]}>
-              <MapPin size={20} color={DesignTokens.colors.pastel.teal.icon} />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={[styles.infoLabel, { color: themeColors.textSecondary }]}>Localisation</Text>
-              <Text style={[styles.infoValue, { color: themeColors.text }]}>
-                {profile?.city || profile?.country || 'Non renseigné'}
+          <TouchableOpacity
+            style={styles.statItem}
+            onPress={copyReferralCode}>
+            <View style={styles.referralCodeContainer}>
+              <Text style={[styles.statNumber, { color: themeColors.text, fontSize: 16 }]}>
+                {profile?.referral_code || '---'}
               </Text>
+              <Copy size={14} color="#10B981" />
             </View>
-          </View>
-
-          <View style={styles.infoItem}>
-            <View style={[styles.infoIconCircle, { backgroundColor: DesignTokens.colors.pastel.indigo.bg }]}>
-              <Mail size={20} color={DesignTokens.colors.pastel.indigo.icon} />
+            <View style={[styles.statBadge, { backgroundColor: themeColors.statBadge.green }]}>
+              <Text style={[styles.statLabel, { color: themeColors.text }]}>Code de parrainage</Text>
             </View>
-            <View style={styles.infoContent}>
-              <Text style={[styles.infoLabel, { color: themeColors.textSecondary }]}>Email</Text>
-              <Text style={[styles.infoValue, { color: themeColors.text }]}>{user?.email || 'Non renseigné'}</Text>
-            </View>
-          </View>
+          </TouchableOpacity>
         </View>
 
-        {/* 🎯 PARRAINAGE - Compact Modern */}
-        {profile?.referral_code && (
-          <View style={[styles.referralCard, { backgroundColor: themeColors.card }]}>
-            <View style={styles.referralHeader}>
-              <View style={[styles.infoIconCircle, { backgroundColor: DesignTokens.colors.pastel.purple.bg }]}>
-                <Gift size={20} color={DesignTokens.colors.pastel.purple.icon} />
-              </View>
-              <View style={styles.referralHeaderText}>
-                <Text style={[styles.cardTitle, { color: themeColors.text }]}>Parrainage</Text>
-                <Text style={[styles.referralStats, { color: themeColors.textSecondary }]}>
-                  {profile?.total_referrals || 0} parrainages • {referralPoints} pts
-                </Text>
-              </View>
-            </View>
-
-            <View style={[styles.referralCodeBox, { backgroundColor: themeColors.background }]}>
-              <Text style={[styles.referralCode, { color: themeColors.text }]}>{profile.referral_code}</Text>
-              <TouchableOpacity
-                style={[styles.copyButton, { backgroundColor: themeColors.card }]}
-                onPress={copyReferralCode}>
-                <Copy size={18} color={themeColors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.referralHint}>
-              Partagez ce code • +50 points par inscription
-            </Text>
-          </View>
-        )}
-
-        {/* 👑 PREMIUM - Gold Gradient (kept) */}
-        {!isPremium && (
-          <TouchableOpacity
-            style={styles.premiumCard}
+        {/* Menu Items */}
+        <View style={[styles.menuContainer, { backgroundColor: themeColors.card }]}>
+          <MenuItem
+            icon={<Crown size={24} color={themeColors.menuIcon.text} />}
+            label="Abonnement"
             onPress={() => setSubscriptionModalVisible(true)}
-            activeOpacity={0.8}>
+            backgroundColor={themeColors.menuIcon.bg.yellow}
+            themeColors={themeColors}
+          />
+
+          {/* Menu Commandes - avec sous-menu pour vendeurs */}
+          {profile?.is_seller ? (
+            <View>
+              <MenuItem
+                icon={<Package size={24} color={themeColors.menuIcon.text} />}
+                label="Commandes"
+                onPress={() => setOrdersMenuExpanded(!ordersMenuExpanded)}
+                backgroundColor={themeColors.menuIcon.bg.blue}
+                themeColors={themeColors}
+                rightIcon={ordersMenuExpanded ?
+                  <ChevronUp size={20} color={themeColors.textSecondary} /> :
+                  <ChevronDown size={20} color={themeColors.textSecondary} />
+                }
+              />
+
+              {ordersMenuExpanded && (
+                <View style={[styles.subMenuContainer, { backgroundColor: themeColors.background }]}>
+                  <TouchableOpacity
+                    style={[styles.subMenuItem, { backgroundColor: themeColors.card }]}
+                    onPress={() => {
+                      setOrdersMenuExpanded(false);
+                      router.push('/seller/orders');
+                    }}>
+                    <View style={[styles.subMenuIconWrapper, { backgroundColor: '#D1FAE5' }]}>
+                      <TrendingUp size={20} color="#10B981" />
+                    </View>
+                    <View style={styles.subMenuContent}>
+                      <Text style={[styles.subMenuLabel, { color: themeColors.text }]}>
+                        Mes Ventes
+                      </Text>
+                      <Text style={[styles.subMenuDescription, { color: themeColors.textSecondary }]}>
+                        {totalSales} commande{totalSales > 1 ? 's' : ''} reçue{totalSales > 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                    <ChevronRight size={18} color={themeColors.textSecondary} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.subMenuItem, { backgroundColor: themeColors.card }]}
+                    onPress={() => {
+                      setOrdersMenuExpanded(false);
+                      router.push('/orders');
+                    }}>
+                    <View style={[styles.subMenuIconWrapper, { backgroundColor: '#DBEAFE' }]}>
+                      <ShoppingBag size={20} color="#2563EB" />
+                    </View>
+                    <View style={styles.subMenuContent}>
+                      <Text style={[styles.subMenuLabel, { color: themeColors.text }]}>
+                        Mes Achats
+                      </Text>
+                      <Text style={[styles.subMenuDescription, { color: themeColors.textSecondary }]}>
+                        {totalOrders} commande{totalOrders > 1 ? 's' : ''} passée{totalOrders > 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                    <ChevronRight size={18} color={themeColors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          ) : (
+            <MenuItem
+              icon={<Package size={24} color={themeColors.menuIcon.text} />}
+              label="Mes Commandes"
+              onPress={() => router.push('/orders')}
+              backgroundColor={themeColors.menuIcon.bg.blue}
+              themeColors={themeColors}
+            />
+          )}
+
+          <MenuItem
+            icon={<Settings size={24} color={themeColors.menuIcon.text} />}
+            label="Paramètres"
+            onPress={() => setSettingsModalVisible(true)}
+            backgroundColor={themeColors.menuIcon.bg.lightBlue}
+            themeColors={themeColors}
+          />
+
+          <MenuItem
+            icon={<Info size={24} color={themeColors.menuIcon.text} />}
+            label="Informations"
+            onPress={() => setInformationModalVisible(true)}
+            backgroundColor={themeColors.menuIcon.bg.green}
+            themeColors={themeColors}
+          />
+
+          <MenuItem
+            icon={<LogOut size={24} color={themeColors.menuIcon.text} />}
+            label="Déconnexion"
+            onPress={handleSignOut}
+            backgroundColor={themeColors.menuIcon.bg.red}
+            themeColors={themeColors}
+            isLast
+          />
+        </View>
+
+        {/* Vendeur Section */}
+        {profile?.is_seller && (
+          <TouchableOpacity
+            style={[styles.sellerCard, { backgroundColor: themeColors.card }]}
+            onPress={() => router.push('/seller/products')}>
             <LinearGradient
-              colors={DesignTokens.colors.gradient.gold}
+              colors={['#F59E0B', '#D97706']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.premiumGradient}>
-              <Crown size={32} color={Colors.white} />
-              <View style={styles.premiumContent}>
-                <Text style={styles.premiumTitle}>Passez à Premium</Text>
-                <Text style={styles.premiumText}>
-                  Débloquez toutes les fonctionnalités exclusives
+              style={styles.sellerGradient}>
+              <ShoppingBag size={24} color="#FFFFFF" />
+              <View style={styles.sellerContent}>
+                <Text style={styles.sellerTitle}>Espace Vendeur</Text>
+                <Text style={styles.sellerText}>
+                  {totalProducts} produit{totalProducts > 1 ? 's' : ''} en vente
                 </Text>
               </View>
-              <ChevronRight size={24} color={Colors.white} />
+              <ChevronRight size={20} color="#FFFFFF" />
             </LinearGradient>
           </TouchableOpacity>
         )}
 
-        <View style={{ height: DesignTokens.spacing.xxl }} />
+        {!profile?.is_seller && (
+          <TouchableOpacity
+            style={[styles.sellerCard, { backgroundColor: themeColors.card }]}
+            onPress={() => router.push('/seller/setup')}>
+            <LinearGradient
+              colors={['#10B981', '#059669']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.sellerGradient}>
+              <TrendingUp size={24} color="#FFFFFF" />
+              <View style={styles.sellerContent}>
+                <Text style={styles.sellerTitle}>Devenir Vendeur</Text>
+                <Text style={styles.sellerText}>Commencez à vendre vos produits</Text>
+              </View>
+              <ChevronRight size={20} color="#FFFFFF" />
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+
+        <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* 📸 MODALS - Avatar, Rewards, Settings, Edit */}
-
-      {/* Avatar Modal */}
+      {/* Points Modal (avec Récompenses intégrées) */}
       <Modal
-        visible={avatarModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => closeModal(setAvatarModalVisible)}>
-        <View style={styles.modalOverlay}>
-          <Animated.View
-            style={[
-              styles.avatarModalContent,
-              {
-                backgroundColor: themeColors.card,
-                transform: [{
-                  scale: modalAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.9, 1],
-                  })
-                }],
-                opacity: modalAnim,
-              }
-            ]}>
-            <Text style={[styles.modalTitle, { color: themeColors.text }]}>Changer la photo</Text>
-            <View style={styles.avatarOptions}>
-              <TouchableOpacity
-                style={styles.avatarOption}
-                onPress={() => handlePickImage(true)}>
-                <View style={[styles.avatarOptionIcon, { backgroundColor: DesignTokens.colors.pastel.pink.bg }]}>
-                  <Camera size={28} color={DesignTokens.colors.pastel.pink.icon} />
-                </View>
-                <Text style={[styles.avatarOptionText, { color: themeColors.text }]}>Prendre une photo</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.avatarOption}
-                onPress={() => handlePickImage(false)}>
-                <View style={[styles.avatarOptionIcon, { backgroundColor: DesignTokens.colors.pastel.blue.bg }]}>
-                  <ImageIcon size={28} color={DesignTokens.colors.pastel.blue.icon} />
-                </View>
-                <Text style={[styles.avatarOptionText, { color: themeColors.text }]}>Galerie</Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity
-              style={styles.modalCancelButton}
-              onPress={() => closeModal(setAvatarModalVisible)}>
-              <Text style={[styles.modalCancelText, { color: themeColors.textSecondary }]}>Annuler</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-      </Modal>
-
-      {/* Rewards Modal */}
-      <Modal
-        visible={rewardsModalVisible}
+        visible={pointsModalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => closeModal(setRewardsModalVisible)}>
+        onRequestClose={() => setPointsModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.rewardsModalContent, { backgroundColor: themeColors.card }]}>
+          <View style={[styles.modalContent, { backgroundColor: themeColors.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: themeColors.border }]}>
-              <Text style={[styles.modalTitle, { color: themeColors.text }]}>Récompenses Disponibles</Text>
-              <TouchableOpacity onPress={() => closeModal(setRewardsModalVisible)}>
+              <Text style={[styles.modalTitle, { color: themeColors.text }]}>Mes Points & Récompenses</Text>
+              <TouchableOpacity onPress={() => setPointsModalVisible(false)}>
                 <X size={24} color={themeColors.textSecondary} />
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={[styles.rewardsHeader, { backgroundColor: themeColors.background }]}>
-                <Gift size={40} color={DesignTokens.colors.pastel.purple.icon} />
-                <Text style={[styles.rewardsTotalPoints, { color: themeColors.text }]}>{totalPoints}</Text>
-                <Text style={[styles.rewardsTotalLabel, { color: themeColors.textSecondary }]}>Panda Coins disponibles</Text>
+              <View style={[styles.pointsHeader, { backgroundColor: themeColors.background }]}>
+                <Sparkles size={40} color="#F59E0B" />
+                <Text style={[styles.pointsTotal, { color: themeColors.text }]}>{totalPoints}</Text>
+                <Text style={[styles.pointsLabel, { color: themeColors.textSecondary }]}>Panda Coins disponibles</Text>
               </View>
+
+              <Text style={[styles.sectionTitle, { color: themeColors.text, marginTop: 20, marginBottom: 12 }]}>
+                Récompenses disponibles
+              </Text>
 
               <View style={styles.rewardsList}>
-                <TouchableOpacity style={[styles.rewardItem, { backgroundColor: themeColors.background }]}>
-                  <View style={[styles.rewardIcon, { backgroundColor: DesignTokens.colors.pastel.purple.bg }]}>
-                    <Gift size={24} color={DesignTokens.colors.pastel.purple.icon} />
+                <RewardItem
+                  icon={<Gift size={24} color={isDark ? '#C084FC' : '#8B5CF6'} />}
+                  name="Bon d'achat 5000 FCFA"
+                  description="Valable sur tous les produits"
+                  cost="500 pts"
+                  bgColor={themeColors.statBadge.purple}
+                  themeColors={themeColors}
+                />
+                <RewardItem
+                  icon={<Star size={24} color={isDark ? '#34D399' : '#059669'} />}
+                  name="Livraison gratuite"
+                  description="1 mois de livraison offerte"
+                  cost="300 pts"
+                  bgColor={themeColors.statBadge.green}
+                  themeColors={themeColors}
+                />
+                <RewardItem
+                  icon={<Crown size={24} color={isDark ? '#FBBF24' : '#D97706'} />}
+                  name="Badge Premium"
+                  description="Accès premium 3 mois"
+                  cost="1000 pts"
+                  bgColor={themeColors.statBadge.yellow}
+                  themeColors={themeColors}
+                />
+                <RewardItem
+                  icon={<Heart size={24} color={isDark ? '#60A5FA' : '#2563EB'} />}
+                  name="Don à une association"
+                  description="Conversion en don caritatif"
+                  cost="100 pts"
+                  bgColor={themeColors.statBadge.blue}
+                  themeColors={themeColors}
+                />
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Subscription Modal */}
+      <Modal
+        visible={subscriptionModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSubscriptionModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: themeColors.card }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: themeColors.border }]}>
+              <Text style={[styles.modalTitle, { color: themeColors.text }]}>Abonnement Premium</Text>
+              <TouchableOpacity onPress={() => setSubscriptionModalVisible(false)}>
+                <X size={24} color={themeColors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={[styles.subscriptionIntro, { color: themeColors.textSecondary }]}>
+                Choisissez votre plan et profitez d'avantages exclusifs
+              </Text>
+
+              <View style={styles.subscriptionPlans}>
+                {/* Plan Starter - 3000F */}
+                <TouchableOpacity style={[styles.planCard, { backgroundColor: themeColors.background }]}>
+                  <View style={[styles.planBadge, { backgroundColor: themeColors.planBadge.blue }]}>
+                    <Star size={18} color={isDark ? '#60A5FA' : '#3B82F6'} />
+                    <Text style={[styles.planBadgeText, { color: themeColors.text }]}>Starter</Text>
                   </View>
-                  <View style={styles.rewardInfo}>
-                    <Text style={[styles.rewardName, { color: themeColors.text }]}>Bon d'achat 5000 FCFA</Text>
-                    <Text style={[styles.rewardDescription, { color: themeColors.textSecondary }]}>Valable sur tous les produits</Text>
+                  <Text style={[styles.planPrice, { color: themeColors.text }]}>3000 FCFA</Text>
+                  <Text style={[styles.planPeriod, { color: themeColors.textSecondary }]}>par mois</Text>
+                  <View style={styles.planFeatures}>
+                    <PlanFeature text="20 produits maximum" themeColors={themeColors} />
+                    <PlanFeature text="5 photos par produit" themeColors={themeColors} />
+                    <PlanFeature text="Commission 12%" themeColors={themeColors} />
+                    <PlanFeature text="Support par email" themeColors={themeColors} />
                   </View>
-                  <Text style={[styles.rewardCost, { color: themeColors.text }]}>500 pts</Text>
+                  <TouchableOpacity style={styles.selectPlanButton}>
+                    <LinearGradient
+                      colors={['#3B82F6', '#2563EB']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.selectPlanGradient}>
+                      <Text style={styles.selectPlanText}>Choisir</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={[styles.rewardItem, { backgroundColor: themeColors.background }]}>
-                  <View style={[styles.rewardIcon, { backgroundColor: DesignTokens.colors.pastel.green.bg }]}>
-                    <Star size={24} color={DesignTokens.colors.pastel.green.icon} />
+                {/* Plan Pro - 5000F */}
+                <TouchableOpacity style={[styles.planCard, styles.planCardPopular, { backgroundColor: themeColors.background }]}>
+                  <View style={styles.popularBadge}>
+                    <Text style={styles.popularBadgeText}>POPULAIRE</Text>
                   </View>
-                  <View style={styles.rewardInfo}>
-                    <Text style={[styles.rewardName, { color: themeColors.text }]}>Livraison gratuite</Text>
-                    <Text style={[styles.rewardDescription, { color: themeColors.textSecondary }]}>1 mois de livraison offerte</Text>
+                  <View style={[styles.planBadge, { backgroundColor: themeColors.planBadge.yellow }]}>
+                    <Crown size={18} color={isDark ? '#FBBF24' : '#F59E0B'} />
+                    <Text style={[styles.planBadgeText, { color: themeColors.text }]}>Pro</Text>
                   </View>
-                  <Text style={[styles.rewardCost, { color: themeColors.text }]}>300 pts</Text>
+                  <Text style={[styles.planPrice, { color: themeColors.text }]}>5000 FCFA</Text>
+                  <Text style={[styles.planPeriod, { color: themeColors.textSecondary }]}>par mois</Text>
+                  <View style={styles.planFeatures}>
+                    <PlanFeature text="100 produits maximum" themeColors={themeColors} />
+                    <PlanFeature text="10 photos par produit" themeColors={themeColors} />
+                    <PlanFeature text="Commission 8%" themeColors={themeColors} />
+                    <PlanFeature text="Support prioritaire" themeColors={themeColors} />
+                    <PlanFeature text="Badge Pro" themeColors={themeColors} />
+                  </View>
+                  <TouchableOpacity style={styles.selectPlanButton}>
+                    <LinearGradient
+                      colors={['#F59E0B', '#D97706']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.selectPlanGradient}>
+                      <Text style={styles.selectPlanText}>Choisir</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={[styles.rewardItem, { backgroundColor: themeColors.background }]}>
-                  <View style={[styles.rewardIcon, { backgroundColor: DesignTokens.colors.pastel.amber.bg }]}>
-                    <Crown size={24} color={DesignTokens.colors.pastel.amber.icon} />
+                {/* Plan Premium - 15000F */}
+                <TouchableOpacity style={[styles.planCard, { backgroundColor: themeColors.background }]}>
+                  <View style={[styles.planBadge, { backgroundColor: themeColors.planBadge.purple }]}>
+                    <Sparkles size={18} color={isDark ? '#C084FC' : '#8B5CF6'} />
+                    <Text style={[styles.planBadgeText, { color: themeColors.text }]}>Premium</Text>
                   </View>
-                  <View style={styles.rewardInfo}>
-                    <Text style={[styles.rewardName, { color: themeColors.text }]}>Badge Premium</Text>
-                    <Text style={[styles.rewardDescription, { color: themeColors.textSecondary }]}>Accès premium 3 mois</Text>
+                  <Text style={[styles.planPrice, { color: themeColors.text }]}>15000 FCFA</Text>
+                  <Text style={[styles.planPeriod, { color: themeColors.textSecondary }]}>par mois</Text>
+                  <View style={styles.planFeatures}>
+                    <PlanFeature text="Produits illimités" themeColors={themeColors} />
+                    <PlanFeature text="20 photos par produit" themeColors={themeColors} />
+                    <PlanFeature text="Commission 5%" themeColors={themeColors} />
+                    <PlanFeature text="Support dédié 24/7" themeColors={themeColors} />
+                    <PlanFeature text="Badge Premium" themeColors={themeColors} />
+                    <PlanFeature text="Analytics avancés" themeColors={themeColors} />
                   </View>
-                  <Text style={[styles.rewardCost, { color: themeColors.text }]}>1000 pts</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.rewardItem, { backgroundColor: themeColors.background }]}>
-                  <View style={[styles.rewardIcon, { backgroundColor: DesignTokens.colors.pastel.pink.bg }]}>
-                    <ShoppingBag size={24} color={DesignTokens.colors.pastel.pink.icon} />
-                  </View>
-                  <View style={styles.rewardInfo}>
-                    <Text style={[styles.rewardName, { color: themeColors.text }]}>T-shirt Senepanda</Text>
-                    <Text style={[styles.rewardDescription, { color: themeColors.textSecondary }]}>Édition limitée collector</Text>
-                  </View>
-                  <Text style={[styles.rewardCost, { color: themeColors.text }]}>800 pts</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.rewardItem, { backgroundColor: themeColors.background }]}>
-                  <View style={[styles.rewardIcon, { backgroundColor: DesignTokens.colors.pastel.blue.bg }]}>
-                    <Heart size={24} color={DesignTokens.colors.pastel.blue.icon} />
-                  </View>
-                  <View style={styles.rewardInfo}>
-                    <Text style={[styles.rewardName, { color: themeColors.text }]}>Don à une association</Text>
-                    <Text style={[styles.rewardDescription, { color: themeColors.textSecondary }]}>Conversion en don caritatif</Text>
-                  </View>
-                  <Text style={[styles.rewardCost, { color: themeColors.text }]}>100 pts</Text>
+                  <TouchableOpacity style={styles.selectPlanButton}>
+                    <LinearGradient
+                      colors={['#8B5CF6', '#7C3AED']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.selectPlanGradient}>
+                      <Text style={styles.selectPlanText}>Choisir</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
                 </TouchableOpacity>
               </View>
-
-              <TouchableOpacity
-                style={[styles.rewardsDetailButton, { backgroundColor: themeColors.background }]}
-                onPress={() => {
-                  closeModal(setRewardsModalVisible);
-                  router.push('/rewards' as any);
-                }}>
-                <Text style={[styles.rewardsDetailButtonText, { color: themeColors.text }]}>Voir tous les cadeaux</Text>
-                <ChevronRight size={20} color={themeColors.text} />
-              </TouchableOpacity>
             </ScrollView>
           </View>
         </View>
@@ -857,46 +766,17 @@ export default function ProfileScreen() {
         visible={settingsModalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => closeModal(setSettingsModalVisible)}>
+        onRequestClose={() => setSettingsModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.settingsModalContent, { backgroundColor: themeColors.card }]}>
+          <View style={[styles.modalContent, { backgroundColor: themeColors.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: themeColors.border }]}>
               <Text style={[styles.modalTitle, { color: themeColors.text }]}>Paramètres</Text>
-              <TouchableOpacity onPress={() => closeModal(setSettingsModalVisible)}>
+              <TouchableOpacity onPress={() => setSettingsModalVisible(false)}>
                 <X size={24} color={themeColors.textSecondary} />
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Premium & Parrainage */}
-              <View style={styles.settingsSection}>
-                <Text style={[styles.settingsSectionTitle, { color: themeColors.textSecondary }]}>Premium & Récompenses</Text>
-
-                <TouchableOpacity
-                  style={[styles.settingsItem, { backgroundColor: themeColors.background }]}
-                  onPress={() => {
-                    closeModal(setSettingsModalVisible);
-                    setSubscriptionModalVisible(true);
-                  }}>
-                  <Crown size={20} color="#F59E0B" />
-                  <Text style={[styles.settingsText, { color: themeColors.text }]}>
-                    {isPremium ? 'Gérer mon abonnement' : 'Passer à Premium'}
-                  </Text>
-                  <ChevronRight size={18} color={themeColors.textSecondary} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.settingsItem, { backgroundColor: themeColors.background }]}
-                  onPress={() => {
-                    closeModal(setSettingsModalVisible);
-                    router.push('/referral');
-                  }}>
-                  <Users size={20} color="#8B5CF6" />
-                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Parrainage</Text>
-                  <ChevronRight size={18} color={themeColors.textSecondary} />
-                </TouchableOpacity>
-              </View>
-
               <View style={styles.settingsSection}>
                 <Text style={[styles.settingsSectionTitle, { color: themeColors.textSecondary }]}>Apparence</Text>
 
@@ -908,11 +788,7 @@ export default function ProfileScreen() {
                   ]}
                   onPress={() => setThemeMode('light')}>
                   <Sun size={20} color={themeMode === 'light' ? '#D97706' : themeColors.textSecondary} />
-                  <Text style={[
-                    styles.settingsText,
-                    { color: themeColors.text },
-                    themeMode === 'light' && styles.settingsTextSelected
-                  ]}>Mode clair</Text>
+                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Mode clair</Text>
                   {themeMode === 'light' && (
                     <View style={styles.checkIcon}>
                       <Text style={styles.checkText}>✓</Text>
@@ -928,11 +804,7 @@ export default function ProfileScreen() {
                   ]}
                   onPress={() => setThemeMode('dark')}>
                   <Moon size={20} color={themeMode === 'dark' ? '#D97706' : themeColors.textSecondary} />
-                  <Text style={[
-                    styles.settingsText,
-                    { color: themeColors.text },
-                    themeMode === 'dark' && styles.settingsTextSelected
-                  ]}>Mode sombre</Text>
+                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Mode sombre</Text>
                   {themeMode === 'dark' && (
                     <View style={styles.checkIcon}>
                       <Text style={styles.checkText}>✓</Text>
@@ -948,11 +820,7 @@ export default function ProfileScreen() {
                   ]}
                   onPress={() => setThemeMode('system')}>
                   <Settings size={20} color={themeMode === 'system' ? '#D97706' : themeColors.textSecondary} />
-                  <Text style={[
-                    styles.settingsText,
-                    { color: themeColors.text },
-                    themeMode === 'system' && styles.settingsTextSelected
-                  ]}>Automatique (système)</Text>
+                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Automatique</Text>
                   {themeMode === 'system' && (
                     <View style={styles.checkIcon}>
                       <Text style={styles.checkText}>✓</Text>
@@ -967,8 +835,8 @@ export default function ProfileScreen() {
                 <TouchableOpacity
                   style={[styles.settingsItem, { backgroundColor: themeColors.background }]}
                   onPress={() => {
-                    closeModal(setSettingsModalVisible);
-                    openModal(setPrivacyModalVisible);
+                    setSettingsModalVisible(false);
+                    router.push('/settings/privacy');
                   }}>
                   <Shield size={20} color="#8B5CF6" />
                   <Text style={[styles.settingsText, { color: themeColors.text }]}>Confidentialité</Text>
@@ -978,281 +846,69 @@ export default function ProfileScreen() {
                 <TouchableOpacity
                   style={[styles.settingsItem, { backgroundColor: themeColors.background }]}
                   onPress={() => {
-                    closeModal(setSettingsModalVisible);
-                    openModal(setTermsModalVisible);
+                    setSettingsModalVisible(false);
+                    router.push('/settings/terms');
                   }}>
                   <FileText size={20} color="#3B82F6" />
                   <Text style={[styles.settingsText, { color: themeColors.text }]}>Conditions d'utilisation</Text>
                   <ChevronRight size={18} color={themeColors.textSecondary} />
                 </TouchableOpacity>
-              </View>
-
-              <View style={styles.settingsSection}>
-                <Text style={[styles.settingsSectionTitle, { color: themeColors.textSecondary }]}>Compte</Text>
 
                 <TouchableOpacity
                   style={[styles.settingsItem, { backgroundColor: themeColors.background }]}
                   onPress={() => {
-                    closeModal(setSettingsModalVisible);
-                    openModal(setDeleteAccountModalVisible);
+                    setSettingsModalVisible(false);
+                    router.push('/settings/delete-account');
                   }}>
                   <Trash2 size={20} color="#EF4444" />
                   <Text style={[styles.settingsText, { color: '#EF4444' }]}>Supprimer mon compte</Text>
                   <ChevronRight size={18} color={themeColors.textSecondary} />
                 </TouchableOpacity>
               </View>
-
-              <TouchableOpacity
-                style={styles.settingsLogout}
-                onPress={() => {
-                  closeModal(setSettingsModalVisible);
-                  handleSignOut();
-                }}>
-                <LogOut size={20} color="#EF4444" />
-                <Text style={styles.settingsLogoutText}>Déconnexion</Text>
-              </TouchableOpacity>
             </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* Privacy Modal */}
+      {/* Information Modal */}
       <Modal
-        visible={privacyModalVisible}
+        visible={informationModalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => closeModal(setPrivacyModalVisible)}>
+        onRequestClose={() => setInformationModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.fullModalContent, { backgroundColor: themeColors.card }]}>
+          <View style={[styles.modalContent, { backgroundColor: themeColors.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: themeColors.border }]}>
-              <Text style={[styles.modalTitle, { color: themeColors.text }]}>Politique de confidentialité</Text>
-              <TouchableOpacity onPress={() => closeModal(setPrivacyModalVisible)}>
+              <Text style={[styles.modalTitle, { color: themeColors.text }]}>Informations</Text>
+              <TouchableOpacity onPress={() => setInformationModalVisible(false)}>
                 <X size={24} color={themeColors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.privacyIconContainer}>
-                <Shield size={40} color={Colors.primary} />
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.infoSection}>
+                <InfoItem
+                  icon={<Phone size={20} color={isDark ? '#60A5FA' : '#3B82F6'} />}
+                  label="Téléphone"
+                  value={profile?.phone || 'Non renseigné'}
+                  bgColor={themeColors.infoBadge.blue}
+                  themeColors={themeColors}
+                />
+                <InfoItem
+                  icon={<Mail size={20} color={isDark ? '#C084FC' : '#8B5CF6'} />}
+                  label="Email"
+                  value={user?.email || 'Non renseigné'}
+                  bgColor={themeColors.infoBadge.purple}
+                  themeColors={themeColors}
+                />
+                <InfoItem
+                  icon={<MapPin size={20} color={isDark ? '#2DD4BF' : '#0D9488'} />}
+                  label="Localisation"
+                  value={profile?.city || profile?.country || 'Non renseigné'}
+                  bgColor={themeColors.infoBadge.teal}
+                  themeColors={themeColors}
+                />
               </View>
-
-              <Text style={[styles.privacyLastUpdate, { color: themeColors.textSecondary }]}>
-                Dernière mise à jour : 23 novembre 2025
-              </Text>
-
-              <Text style={[styles.privacySectionTitle, { color: themeColors.text }]}>1. Introduction</Text>
-              <Text style={[styles.privacyText, { color: themeColors.textSecondary }]}>
-                Bienvenue sur SenePanda. Nous nous engageons à protéger votre vie privée et vos données personnelles.
-              </Text>
-
-              <Text style={[styles.privacySectionTitle, { color: themeColors.text }]}>2. Données Collectées</Text>
-              <Text style={[styles.privacyText, { color: themeColors.textSecondary }]}>
-                • Informations de compte : nom, email, téléphone{'\n'}
-                • Informations de profil : photo, adresse{'\n'}
-                • Données de transaction : historique des achats{'\n'}
-                • Données techniques : type d'appareil, OS
-              </Text>
-
-              <Text style={[styles.privacySectionTitle, { color: themeColors.text }]}>3. Utilisation des Données</Text>
-              <Text style={[styles.privacyText, { color: themeColors.textSecondary }]}>
-                • Gérer votre compte{'\n'}
-                • Traiter vos commandes{'\n'}
-                • Personnaliser votre expérience{'\n'}
-                • Améliorer nos services
-              </Text>
-
-              <Text style={[styles.privacySectionTitle, { color: themeColors.text }]}>4. Vos Droits</Text>
-              <Text style={[styles.privacyText, { color: themeColors.textSecondary }]}>
-                • Accès à vos données{'\n'}
-                • Rectification des informations{'\n'}
-                • Suppression du compte{'\n'}
-                • Portabilité des données
-              </Text>
-
-              <Text style={[styles.privacySectionTitle, { color: themeColors.text }]}>5. Contact</Text>
-              <Text style={[styles.privacyText, { color: themeColors.textSecondary }]}>
-                Email : privacy@senepanda.com{'\n'}
-                Adresse : Dakar, Sénégal
-              </Text>
-
-              <View style={{ height: 40 }} />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Terms Modal */}
-      <Modal
-        visible={termsModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => closeModal(setTermsModalVisible)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.fullModalContent, { backgroundColor: themeColors.card }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: themeColors.border }]}>
-              <Text style={[styles.modalTitle, { color: themeColors.text }]}>Conditions d'utilisation</Text>
-              <TouchableOpacity onPress={() => closeModal(setTermsModalVisible)}>
-                <X size={24} color={themeColors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.privacyIconContainer}>
-                <FileText size={40} color={Colors.primary} />
-              </View>
-
-              <Text style={[styles.privacyLastUpdate, { color: themeColors.textSecondary }]}>
-                Dernière mise à jour : 23 novembre 2025
-              </Text>
-
-              <Text style={[styles.privacySectionTitle, { color: themeColors.text }]}>1. Acceptation</Text>
-              <Text style={[styles.privacyText, { color: themeColors.textSecondary }]}>
-                En utilisant SenePanda, vous acceptez ces conditions. Si vous n'acceptez pas, veuillez ne pas utiliser l'application.
-              </Text>
-
-              <Text style={[styles.privacySectionTitle, { color: themeColors.text }]}>2. Inscription</Text>
-              <Text style={[styles.privacyText, { color: themeColors.textSecondary }]}>
-                • Avoir au moins 18 ans{'\n'}
-                • Fournir des informations exactes{'\n'}
-                • Maintenir la confidentialité de vos identifiants
-              </Text>
-
-              <Text style={[styles.privacySectionTitle, { color: themeColors.text }]}>3. Produits Interdits</Text>
-              <Text style={[styles.privacyText, { color: themeColors.textSecondary }]}>
-                • Produits contrefaits{'\n'}
-                • Armes et explosifs{'\n'}
-                • Drogues et substances illicites{'\n'}
-                • Tout produit illégal
-              </Text>
-
-              <Text style={[styles.privacySectionTitle, { color: themeColors.text }]}>4. Transactions</Text>
-              <Text style={[styles.privacyText, { color: themeColors.textSecondary }]}>
-                Les prix sont en Francs CFA. Les paiements sont sécurisés. Les remboursements sont évalués au cas par cas.
-              </Text>
-
-              <Text style={[styles.privacySectionTitle, { color: themeColors.text }]}>5. Responsabilité</Text>
-              <Text style={[styles.privacyText, { color: themeColors.textSecondary }]}>
-                SenePanda agit en tant qu'intermédiaire et n'est pas responsable des litiges entre utilisateurs.
-              </Text>
-
-              <Text style={[styles.privacySectionTitle, { color: themeColors.text }]}>6. Contact</Text>
-              <Text style={[styles.privacyText, { color: themeColors.textSecondary }]}>
-                Email : legal@senepanda.com{'\n'}
-                Adresse : Dakar, Sénégal
-              </Text>
-
-              <View style={{ height: 40 }} />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Delete Account Modal */}
-      <Modal
-        visible={deleteAccountModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => {
-          closeModal(setDeleteAccountModalVisible);
-          setDeleteConfirmation('');
-        }}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.fullModalContent, { backgroundColor: themeColors.card }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: themeColors.border }]}>
-              <Text style={[styles.modalTitle, { color: '#EF4444' }]}>Supprimer le compte</Text>
-              <TouchableOpacity onPress={() => {
-                closeModal(setDeleteAccountModalVisible);
-                setDeleteConfirmation('');
-              }}>
-                <X size={24} color={themeColors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.deleteWarningCard}>
-                <AlertTriangle size={40} color="#EF4444" />
-                <Text style={styles.deleteWarningTitle}>Attention</Text>
-                <Text style={styles.deleteWarningText}>
-                  Cette action est irréversible. Toutes vos données seront supprimées.
-                </Text>
-              </View>
-
-              <Text style={[styles.privacySectionTitle, { color: themeColors.text }]}>Ce qui sera supprimé :</Text>
-              <Text style={[styles.privacyText, { color: themeColors.textSecondary }]}>
-                • Votre profil et informations personnelles{'\n'}
-                • Tous vos messages et conversations{'\n'}
-                • Votre historique de commandes{'\n'}
-                • Vos favoris et avis{'\n'}
-                • Votre boutique et produits (si vendeur){'\n'}
-                • Vos points de fidélité
-              </Text>
-
-              <Text style={[styles.privacySectionTitle, { color: themeColors.text, marginTop: 20 }]}>Confirmation</Text>
-              <Text style={[styles.privacyText, { color: themeColors.textSecondary }]}>
-                Tapez <Text style={{ fontWeight: 'bold', color: '#EF4444' }}>SUPPRIMER</Text> pour confirmer :
-              </Text>
-
-              <TextInput
-                style={[styles.deleteConfirmInput, {
-                  backgroundColor: themeColors.background,
-                  color: themeColors.text,
-                  borderColor: deleteConfirmation === 'SUPPRIMER' ? '#EF4444' : themeColors.border
-                }]}
-                value={deleteConfirmation}
-                onChangeText={setDeleteConfirmation}
-                placeholder="Tapez SUPPRIMER"
-                placeholderTextColor={themeColors.textSecondary}
-                autoCapitalize="characters"
-              />
-
-              <TouchableOpacity
-                style={[
-                  styles.deleteAccountButton,
-                  deleteConfirmation !== 'SUPPRIMER' && styles.deleteAccountButtonDisabled
-                ]}
-                disabled={deleteConfirmation !== 'SUPPRIMER'}
-                onPress={async () => {
-                  Alert.alert(
-                    'Confirmation finale',
-                    'Êtes-vous absolument sûr de vouloir supprimer votre compte ?',
-                    [
-                      { text: 'Annuler', style: 'cancel' },
-                      {
-                        text: 'Supprimer',
-                        style: 'destructive',
-                        onPress: async () => {
-                          try {
-                            const { data: { user } } = await supabase.auth.getUser();
-                            if (user) {
-                              // Delete user data
-                              await supabase.from('messages').delete().eq('sender_id', user.id);
-                              await supabase.from('favorites').delete().eq('user_id', user.id);
-                              await supabase.from('reviews').delete().eq('user_id', user.id);
-                              await supabase.from('products').delete().eq('seller_id', user.id);
-                              await supabase.from('shops').delete().eq('owner_id', user.id);
-                              await supabase.from('profiles').delete().eq('id', user.id);
-
-                              await AsyncStorage.clear();
-                              await supabase.auth.signOut();
-
-                              closeModal(setDeleteAccountModalVisible);
-                              setDeleteConfirmation('');
-
-                              Alert.alert('Compte supprimé', 'Votre compte a été supprimé avec succès.');
-                            }
-                          } catch (error) {
-                            Alert.alert('Erreur', 'Une erreur est survenue.');
-                          }
-                        }
-                      }
-                    ]
-                  );
-                }}>
-                <Trash2 size={20} color="#FFFFFF" />
-                <Text style={styles.deleteAccountButtonText}>Supprimer définitivement</Text>
-              </TouchableOpacity>
-
-              <View style={{ height: 40 }} />
             </ScrollView>
           </View>
         </View>
@@ -1263,579 +919,394 @@ export default function ProfileScreen() {
         visible={editModalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => closeModal(setEditModalVisible)}>
+        onRequestClose={() => setEditModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.editModalContent, { backgroundColor: themeColors.card }]}>
+          <View style={[styles.modalContent, { backgroundColor: themeColors.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: themeColors.border }]}>
               <Text style={[styles.modalTitle, { color: themeColors.text }]}>Modifier le profil</Text>
-              <TouchableOpacity onPress={() => closeModal(setEditModalVisible)}>
+              <TouchableOpacity onPress={() => setEditModalVisible(false)}>
                 <X size={24} color={themeColors.textSecondary} />
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: themeColors.textSecondary }]}>Prénom *</Text>
+                <Text style={[styles.label, { color: themeColors.textSecondary }]}>Prénom</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: themeColors.background, color: themeColors.text, borderColor: themeColors.border }]}
                   value={editFirstName}
                   onChangeText={setEditFirstName}
                   placeholder="Jean"
-                  placeholderTextColor={isDark ? '#6B7280' : DesignTokens.colors.text.muted}
+                  placeholderTextColor={themeColors.textSecondary}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: themeColors.textSecondary }]}>Nom *</Text>
+                <Text style={[styles.label, { color: themeColors.textSecondary }]}>Nom</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: themeColors.background, color: themeColors.text, borderColor: themeColors.border }]}
                   value={editLastName}
                   onChangeText={setEditLastName}
                   placeholder="Dupont"
-                  placeholderTextColor={isDark ? '#6B7280' : DesignTokens.colors.text.muted}
+                  placeholderTextColor={themeColors.textSecondary}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: themeColors.textSecondary }]}>Téléphone *</Text>
+                <Text style={[styles.label, { color: themeColors.textSecondary }]}>Téléphone</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: themeColors.background, color: themeColors.text, borderColor: themeColors.border }]}
                   value={editPhone}
                   onChangeText={setEditPhone}
                   placeholder="+221 77 123 45 67"
                   keyboardType="phone-pad"
-                  placeholderTextColor={isDark ? '#6B7280' : DesignTokens.colors.text.muted}
+                  placeholderTextColor={themeColors.textSecondary}
                 />
               </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: themeColors.textSecondary }]}>Pays *</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: themeColors.background, color: themeColors.text, borderColor: themeColors.border }]}
-                  value={editCountry}
-                  onChangeText={setEditCountry}
-                  placeholder="Sénégal"
-                  placeholderTextColor={isDark ? '#6B7280' : DesignTokens.colors.text.muted}
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: themeColors.textSecondary }]}>Ville</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: themeColors.background, color: themeColors.text, borderColor: themeColors.border }]}
-                  value={editCity}
-                  onChangeText={setEditCity}
-                  placeholder="Dakar"
-                  placeholderTextColor={isDark ? '#6B7280' : DesignTokens.colors.text.muted}
-                />
-              </View>
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButtonCancel, { backgroundColor: themeColors.background }]}
-                onPress={() => closeModal(setEditModalVisible)}>
-                <Text style={[styles.modalButtonTextCancel, { color: themeColors.textSecondary }]}>Annuler</Text>
-              </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.modalButtonSave}
+                style={styles.saveButton}
                 onPress={saveEdit}
                 disabled={saving}>
-                {saving ? (
-                  <ActivityIndicator color={DesignTokens.colors.cardWhite} />
-                ) : (
-                  <Text style={styles.modalButtonTextSave}>Enregistrer</Text>
-                )}
+                <LinearGradient
+                  colors={['#F59E0B', '#D97706']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.saveButtonGradient}>
+                  {saving ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Enregistrer</Text>
+                  )}
+                </LinearGradient>
               </TouchableOpacity>
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
-
-      {/* Subscription Modal */}
-      <SubscriptionModal
-        visible={subscriptionModalVisible}
-        onClose={() => setSubscriptionModalVisible(false)}
-        onSuccess={() => {
-          fetchProfile(user.id);
-        }}
-      />
     </SafeAreaView>
+  );
+}
+
+// Composants
+function MenuItem({
+  icon,
+  label,
+  onPress,
+  backgroundColor,
+  isLast = false,
+  themeColors,
+  rightIcon,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void;
+  backgroundColor: string;
+  isLast?: boolean;
+  themeColors: any;
+  rightIcon?: React.ReactNode;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.menuItem, isLast && styles.menuItemLast]}
+      onPress={onPress}
+      activeOpacity={0.7}>
+      <View style={[styles.menuIcon, { backgroundColor }]}>
+        {icon}
+      </View>
+      <Text style={[styles.menuLabel, { color: themeColors.text }]}>{label}</Text>
+      {rightIcon || <ChevronRight size={20} color={themeColors.textSecondary} />}
+    </TouchableOpacity>
+  );
+}
+
+function RewardItem({
+  icon,
+  name,
+  description,
+  cost,
+  bgColor,
+  themeColors,
+}: any) {
+  return (
+    <TouchableOpacity style={[styles.rewardItem, { backgroundColor: themeColors.background }]}>
+      <View style={[styles.rewardIcon, { backgroundColor: bgColor }]}>
+        {icon}
+      </View>
+      <View style={styles.rewardInfo}>
+        <Text style={[styles.rewardName, { color: themeColors.text }]}>{name}</Text>
+        <Text style={[styles.rewardDescription, { color: themeColors.textSecondary }]}>{description}</Text>
+      </View>
+      <Text style={[styles.rewardCost, { color: themeColors.text }]}>{cost}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function InfoItem({
+  icon,
+  label,
+  value,
+  bgColor,
+  themeColors,
+}: any) {
+  return (
+    <View style={styles.infoItem}>
+      <View style={[styles.infoIconCircle, { backgroundColor: bgColor }]}>
+        {icon}
+      </View>
+      <View style={styles.infoContent}>
+        <Text style={[styles.infoLabel, { color: themeColors.textSecondary }]}>{label}</Text>
+        <Text style={[styles.infoValue, { color: themeColors.text }]}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+function PlanFeature({ text, themeColors }: { text: string; themeColors: any }) {
+  return (
+    <View style={styles.planFeatureItem}>
+      <Check size={16} color="#10B981" />
+      <Text style={[styles.planFeatureText, { color: themeColors.textSecondary }]}>{text}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: DesignTokens.colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: DesignTokens.colors.background,
   },
-
-  // Auth Screen
-  authContainer: {
-    padding: DesignTokens.spacing.xl,
+  scrollContent: {
+    paddingBottom: 32,
   },
-  authHeader: {
-    alignItems: 'center',
-    marginBottom: DesignTokens.spacing.xxl,
-  },
-  authTitle: {
-    ...DesignTokens.typography.h1,
-    color: DesignTokens.colors.text.primary,
-    marginTop: DesignTokens.spacing.md,
-    marginBottom: DesignTokens.spacing.xs,
-  },
-  authSubtitle: {
-    ...DesignTokens.typography.body,
-    color: DesignTokens.colors.text.secondary,
-  },
-  authForm: {
-    gap: DesignTokens.spacing.md,
-  },
-  inputGroup: {
-    marginBottom: DesignTokens.spacing.sm,
-  },
-  label: {
-    ...DesignTokens.typography.caption,
-    color: DesignTokens.colors.text.secondary,
-    marginBottom: DesignTokens.spacing.xs,
-  },
-  input: {
-    backgroundColor: DesignTokens.colors.cardWhite,
-    borderRadius: DesignTokens.radius.sm,
-    paddingHorizontal: DesignTokens.spacing.md,
-    paddingVertical: DesignTokens.spacing.sm,
-    ...DesignTokens.typography.body,
-    color: DesignTokens.colors.text.primary,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  primaryButton: {
-    borderRadius: DesignTokens.radius.sm,
-    marginTop: DesignTokens.spacing.xs,
-    ...DesignTokens.shadows.sm,
-    overflow: 'hidden',
-  },
-  primaryButtonInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: DesignTokens.spacing.xs,
-    paddingVertical: DesignTokens.spacing.md,
-  },
-  primaryButtonText: {
-    ...DesignTokens.typography.h3,
-    color: DesignTokens.colors.text.primary,
-  },
-  linkButton: {
-    marginTop: DesignTokens.spacing.xs,
-    alignItems: 'center',
-  },
-  linkText: {
-    ...DesignTokens.typography.body,
-    color: DesignTokens.colors.text.secondary,
-  },
-  linkTextBold: {
-    color: DesignTokens.colors.text.primary,
-    fontWeight: '700',
-  },
-
-  // ✨ REDESIGNED PROFILE SCREEN
-  profileContainer: {
-    paddingBottom: DesignTokens.spacing.xxl,
-  },
-
-  // Header
   header: {
-    paddingHorizontal: DesignTokens.spacing.lg,
-    paddingTop: DesignTokens.spacing.lg,
-    paddingBottom: DesignTokens.spacing.xxl,
-    borderBottomLeftRadius: DesignTokens.radius.xl,
-    borderBottomRightRadius: DesignTokens.radius.xl,
-  },
-  headerContent: {
-    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
     alignItems: 'center',
-    gap: DesignTokens.spacing.md,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  profileSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
   },
   avatarContainer: {
     position: 'relative',
+    marginBottom: 16,
   },
   avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: DesignTokens.radius.full,
-    borderWidth: 3,
-    borderColor: DesignTokens.colors.cardWhite,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 4,
+    borderColor: '#FFFFFF',
   },
   avatarPlaceholder: {
-    width: 72,
-    height: 72,
-    borderRadius: DesignTokens.radius.full,
-    backgroundColor: DesignTokens.colors.cardWhite,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#E5E7EB',
+    borderWidth: 4,
+    borderColor: '#FFFFFF',
   },
   avatarText: {
-    fontSize: 28,
+    fontSize: 40,
     fontWeight: '800',
-    color: DesignTokens.colors.text.primary,
+    color: '#FFFFFF',
   },
   cameraButton: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: DesignTokens.radius.full,
-    backgroundColor: DesignTokens.colors.pastel.purple.icon,
+    bottom: 4,
+    right: 4,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#3B82F6',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: DesignTokens.colors.cardWhite,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
   },
-  premiumBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 24,
-    height: 24,
-    borderRadius: DesignTokens.radius.full,
-    backgroundColor: DesignTokens.colors.cardWhite,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: DesignTokens.colors.cardWhite,
-  },
-  headerInfo: {
-    flex: 1,
-  },
-  headerName: {
-    ...DesignTokens.typography.h2,
-    color: DesignTokens.colors.text.primary,
-  },
-  headerUsername: {
-    ...DesignTokens.typography.caption,
-    color: DesignTokens.colors.text.secondary,
-    marginTop: 2,
-  },
-  logoutButton: {
-    width: 40,
-    height: 40,
-    borderRadius: DesignTokens.radius.full,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Gift Card
-  giftCard: {
-    marginHorizontal: DesignTokens.spacing.lg,
-    marginTop: -DesignTokens.spacing.xxl,
-    backgroundColor: DesignTokens.colors.cardWhite,
-    borderRadius: DesignTokens.radius.lg,
-    padding: DesignTokens.spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: DesignTokens.spacing.sm,
-    ...DesignTokens.shadows.md,
-  },
-
-  // Switch Vendeur/Acheteur
-  switchContainer: {
-    marginHorizontal: DesignTokens.spacing.lg,
-    marginTop: DesignTokens.spacing.md,
-    backgroundColor: DesignTokens.colors.cardWhite,
-    borderRadius: DesignTokens.radius.lg,
-    padding: DesignTokens.spacing.sm,
-    gap: DesignTokens.spacing.xs,
-    ...DesignTokens.shadows.sm,
-  },
-  switchButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: DesignTokens.spacing.sm,
-    borderRadius: DesignTokens.radius.md,
-    backgroundColor: DesignTokens.colors.background,
-  },
-  switchIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: DesignTokens.radius.sm,
-    backgroundColor: DesignTokens.colors.pastel.green.icon,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  switchTextContainer: {
-    flex: 1,
-    marginLeft: DesignTokens.spacing.sm,
-  },
-  switchTitle: {
-    ...DesignTokens.typography.h3,
-    color: DesignTokens.colors.text.primary,
-  },
-  switchSubtitle: {
-    ...DesignTokens.typography.caption,
-    color: DesignTokens.colors.text.secondary,
-    marginTop: 2,
-  },
-  giftCardText: {
-    ...DesignTokens.typography.h3,
-    color: DesignTokens.colors.text.primary,
-    flex: 1,
-  },
-
-  // Actions Grid
-  actionsGrid: {
-    flexDirection: 'row',
-    marginHorizontal: DesignTokens.spacing.lg,
-    marginTop: DesignTokens.spacing.xl,
-    gap: DesignTokens.spacing.sm,
-  },
-  actionItem: {
-    flex: 1,
-    alignItems: 'center',
-    gap: DesignTokens.spacing.xs,
-  },
-  actionIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: DesignTokens.radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...DesignTokens.shadows.sm,
-  },
-  actionLabel: {
-    ...DesignTokens.typography.caption,
-    color: DesignTokens.colors.text.primary,
-    textAlign: 'center',
-  },
-
-  // Info Card
-  infoCard: {
-    marginHorizontal: DesignTokens.spacing.lg,
-    marginTop: DesignTokens.spacing.xl,
-    backgroundColor: DesignTokens.colors.cardWhite,
-    borderRadius: DesignTokens.radius.lg,
-    padding: DesignTokens.spacing.lg,
-    gap: DesignTokens.spacing.md,
-    ...DesignTokens.shadows.md,
-  },
-  cardTitle: {
-    ...DesignTokens.typography.h3,
-    color: DesignTokens.colors.text.primary,
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: DesignTokens.spacing.md,
-  },
-  infoIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: DesignTokens.radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoContent: {
-    flex: 1,
-  },
-  infoLabel: {
-    ...DesignTokens.typography.caption,
-    color: DesignTokens.colors.text.secondary,
-    marginBottom: 2,
-  },
-  infoValue: {
-    ...DesignTokens.typography.body,
-    color: DesignTokens.colors.text.primary,
-    fontWeight: '600',
-  },
-
-  // Referral Card
-  referralCard: {
-    marginHorizontal: DesignTokens.spacing.lg,
-    marginTop: DesignTokens.spacing.xl,
-    backgroundColor: DesignTokens.colors.cardWhite,
-    borderRadius: DesignTokens.radius.lg,
-    padding: DesignTokens.spacing.lg,
-    gap: DesignTokens.spacing.md,
-    ...DesignTokens.shadows.md,
-  },
-  referralHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: DesignTokens.spacing.sm,
-  },
-  referralHeaderText: {
-    flex: 1,
-  },
-  referralStats: {
-    ...DesignTokens.typography.caption,
-    color: DesignTokens.colors.text.secondary,
-    marginTop: 2,
-  },
-  referralCodeBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: DesignTokens.colors.background,
-    borderRadius: DesignTokens.radius.sm,
-    padding: DesignTokens.spacing.md,
-  },
-  referralCode: {
-    ...DesignTokens.typography.h2,
-    color: DesignTokens.colors.text.primary,
-    letterSpacing: 2,
-  },
-  copyButton: {
-    width: 40,
-    height: 40,
-    borderRadius: DesignTokens.radius.full,
-    backgroundColor: DesignTokens.colors.cardWhite,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  referralHint: {
-    ...DesignTokens.typography.caption,
-    color: DesignTokens.colors.text.muted,
-    textAlign: 'center',
-  },
-
-  // Premium Card
-  premiumCard: {
-    marginHorizontal: DesignTokens.spacing.lg,
-    marginTop: DesignTokens.spacing.xl,
-    borderRadius: DesignTokens.radius.lg,
-    overflow: 'hidden',
-    ...DesignTokens.shadows.md,
-  },
-  premiumGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: DesignTokens.spacing.lg,
-    gap: DesignTokens.spacing.md,
-  },
-  premiumContent: {
-    flex: 1,
-  },
-  premiumTitle: {
-    ...DesignTokens.typography.h2,
-    color: Colors.white,
+  userName: {
+    fontSize: 24,
+    fontWeight: '700',
     marginBottom: 4,
   },
-  premiumText: {
-    ...DesignTokens.typography.caption,
-    color: 'rgba(255, 255, 255, 0.95)',
+  userHandle: {
+    fontSize: 14,
+    marginBottom: 16,
   },
-
-  // Modals
+  editProfileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  editProfileText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 32,
+    paddingHorizontal: 20,
+    marginBottom: 32,
+  },
+  statItem: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  statNumber: {
+    fontSize: 28,
+    fontWeight: '700',
+  },
+  referralCodeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 36,
+  },
+  statBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  menuContainer: {
+    marginHorizontal: 20,
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    gap: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  menuItemLast: {
+    borderBottomWidth: 0,
+  },
+  menuIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  sellerCard: {
+    marginHorizontal: 20,
+    marginTop: 20,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  sellerGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    gap: 16,
+  },
+  sellerContent: {
+    flex: 1,
+  },
+  sellerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  sellerText: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '85%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: DesignTokens.spacing.xl,
-    paddingBottom: DesignTokens.spacing.md,
+    marginBottom: 24,
+    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
   },
   modalTitle: {
-    ...DesignTokens.typography.h2,
-    color: DesignTokens.colors.text.primary,
+    fontSize: 20,
+    fontWeight: '700',
   },
-
-  // Avatar Modal
-  avatarModalContent: {
-    backgroundColor: DesignTokens.colors.cardWhite,
-    borderTopLeftRadius: DesignTokens.radius.xl,
-    borderTopRightRadius: DesignTokens.radius.xl,
-    padding: DesignTokens.spacing.xxl,
+  pointsHeader: {
     alignItems: 'center',
+    padding: 24,
+    borderRadius: 16,
+    marginBottom: 24,
   },
-  avatarOptions: {
-    flexDirection: 'row',
-    gap: DesignTokens.spacing.xl,
-    marginVertical: DesignTokens.spacing.xl,
-  },
-  avatarOption: {
-    alignItems: 'center',
-    gap: DesignTokens.spacing.sm,
-  },
-  avatarOptionIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: DesignTokens.radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...DesignTokens.shadows.sm,
-  },
-  avatarOptionText: {
-    ...DesignTokens.typography.caption,
-    color: DesignTokens.colors.text.primary,
-  },
-  modalCancelButton: {
-    paddingVertical: DesignTokens.spacing.md,
-    paddingHorizontal: DesignTokens.spacing.xxl,
-  },
-  modalCancelText: {
-    ...DesignTokens.typography.h3,
-    color: DesignTokens.colors.text.secondary,
-  },
-
-  // Rewards Modal
-  rewardsModalContent: {
-    backgroundColor: DesignTokens.colors.cardWhite,
-    borderTopLeftRadius: DesignTokens.radius.xl,
-    borderTopRightRadius: DesignTokens.radius.xl,
-    padding: DesignTokens.spacing.xl,
-    maxHeight: '85%',
-  },
-  rewardsHeader: {
-    alignItems: 'center',
-    padding: DesignTokens.spacing.xxl,
-    backgroundColor: DesignTokens.colors.background,
-    borderRadius: DesignTokens.radius.lg,
-    marginBottom: DesignTokens.spacing.xl,
-  },
-  rewardsTotalPoints: {
+  pointsTotal: {
     fontSize: 48,
     fontWeight: '900',
-    color: DesignTokens.colors.text.primary,
-    marginTop: DesignTokens.spacing.md,
+    marginTop: 12,
   },
-  rewardsTotalLabel: {
-    ...DesignTokens.typography.body,
-    color: DesignTokens.colors.text.secondary,
-    marginTop: DesignTokens.spacing.xs,
+  pointsLabel: {
+    fontSize: 15,
+    marginTop: 8,
   },
   rewardsList: {
-    gap: DesignTokens.spacing.sm,
-    marginBottom: DesignTokens.spacing.xl,
+    gap: 12,
   },
   rewardItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: DesignTokens.spacing.md,
-    backgroundColor: DesignTokens.colors.background,
-    padding: DesignTokens.spacing.md,
-    borderRadius: DesignTokens.radius.md,
+    gap: 16,
+    padding: 16,
+    borderRadius: 12,
   },
   rewardIcon: {
     width: 48,
     height: 48,
-    borderRadius: DesignTokens.radius.sm,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1843,75 +1314,92 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   rewardName: {
-    ...DesignTokens.typography.h3,
-    color: DesignTokens.colors.text.primary,
+    fontSize: 16,
+    fontWeight: '600',
     marginBottom: 2,
   },
   rewardDescription: {
-    ...DesignTokens.typography.caption,
-    color: DesignTokens.colors.text.secondary,
+    fontSize: 13,
   },
   rewardCost: {
-    ...DesignTokens.typography.h3,
-    color: DesignTokens.colors.text.primary,
+    fontSize: 16,
+    fontWeight: '700',
   },
-  rewardsDetailButton: {
+  paymentSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  walletCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 16,
+    padding: 20,
+    borderRadius: 16,
+  },
+  walletTitle: {
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  walletAmount: {
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  referralCodeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 12,
+  },
+  referralCode: {
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: 2,
+  },
+  copyButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: DesignTokens.spacing.xs,
-    backgroundColor: DesignTokens.colors.background,
-    padding: DesignTokens.spacing.lg,
-    borderRadius: DesignTokens.radius.md,
   },
-  rewardsDetailButtonText: {
-    ...DesignTokens.typography.h3,
-    color: DesignTokens.colors.text.primary,
-  },
-
-  // Settings Modal
-  settingsModalContent: {
-    backgroundColor: DesignTokens.colors.cardWhite,
-    borderTopLeftRadius: DesignTokens.radius.xl,
-    borderTopRightRadius: DesignTokens.radius.xl,
-    padding: DesignTokens.spacing.xl,
-    maxHeight: '80%',
+  referralHint: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 8,
   },
   settingsSection: {
-    marginBottom: DesignTokens.spacing.xl,
+    marginBottom: 24,
   },
   settingsSectionTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: DesignTokens.colors.text.muted,
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginBottom: DesignTokens.spacing.sm,
+    marginBottom: 12,
   },
   settingsItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: DesignTokens.spacing.md,
-    paddingVertical: DesignTokens.spacing.md,
-    paddingHorizontal: DesignTokens.spacing.md,
-    backgroundColor: DesignTokens.colors.background,
-    borderRadius: DesignTokens.radius.sm,
-    marginBottom: DesignTokens.spacing.xs,
+    gap: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 8,
   },
   settingsText: {
     flex: 1,
-    ...DesignTokens.typography.body,
-    color: DesignTokens.colors.text.primary,
+    fontSize: 15,
     fontWeight: '600',
   },
   settingsItemSelected: {
     backgroundColor: '#FEF3C7',
     borderWidth: 1,
     borderColor: '#D97706',
-  },
-  settingsTextSelected: {
-    color: '#D97706',
-    fontWeight: '700',
   },
   checkIcon: {
     width: 24,
@@ -1926,138 +1414,184 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-  settingsLogout: {
+  infoSection: {
+    gap: 16,
+    marginBottom: 24,
+  },
+  infoItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: DesignTokens.spacing.sm,
-    padding: DesignTokens.spacing.lg,
-    backgroundColor: '#FEE2E2',
-    borderRadius: DesignTokens.radius.md,
-    marginTop: DesignTokens.spacing.xl,
+    gap: 16,
   },
-  settingsLogoutText: {
-    ...DesignTokens.typography.h3,
-    color: '#EF4444',
-  },
-
-  // Full Modal (Privacy, Terms, Delete)
-  fullModalContent: {
-    backgroundColor: DesignTokens.colors.cardWhite,
-    borderTopLeftRadius: DesignTokens.radius.xl,
-    borderTopRightRadius: DesignTokens.radius.xl,
-    maxHeight: '85%',
-  },
-  modalScrollContent: {
-    padding: DesignTokens.spacing.xl,
-  },
-  privacyIconContainer: {
-    alignItems: 'center',
-    marginBottom: DesignTokens.spacing.lg,
-    paddingTop: DesignTokens.spacing.md,
-  },
-  privacyLastUpdate: {
-    fontSize: 12,
-    textAlign: 'center',
-    fontStyle: 'italic',
-    marginBottom: DesignTokens.spacing.xl,
-  },
-  privacySectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: DesignTokens.spacing.lg,
-    marginBottom: DesignTokens.spacing.sm,
-  },
-  privacyText: {
-    fontSize: 14,
-    lineHeight: 22,
-    marginBottom: DesignTokens.spacing.sm,
-  },
-  deleteWarningCard: {
-    backgroundColor: '#FEF2F2',
-    borderRadius: DesignTokens.radius.md,
-    padding: DesignTokens.spacing.xl,
-    alignItems: 'center',
-    marginBottom: DesignTokens.spacing.xl,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-  },
-  deleteWarningTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#DC2626',
-    marginTop: DesignTokens.spacing.sm,
-    marginBottom: DesignTokens.spacing.xs,
-  },
-  deleteWarningText: {
-    fontSize: 14,
-    color: '#991B1B',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  deleteConfirmInput: {
-    borderWidth: 2,
-    borderRadius: DesignTokens.radius.sm,
-    paddingHorizontal: DesignTokens.spacing.md,
-    paddingVertical: DesignTokens.spacing.md,
-    fontSize: 16,
-    textAlign: 'center',
-    letterSpacing: 2,
-    marginTop: DesignTokens.spacing.sm,
-    marginBottom: DesignTokens.spacing.lg,
-  },
-  deleteAccountButton: {
-    backgroundColor: '#EF4444',
-    flexDirection: 'row',
+  infoIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: DesignTokens.spacing.md,
-    borderRadius: DesignTokens.radius.md,
-    gap: DesignTokens.spacing.sm,
   },
-  deleteAccountButtonDisabled: {
-    backgroundColor: '#9CA3AF',
+  infoContent: {
+    flex: 1,
   },
-  deleteAccountButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  infoLabel: {
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  infoValue: {
+    fontSize: 15,
     fontWeight: '600',
   },
-
-  // Edit Modal
-  editModalContent: {
-    backgroundColor: DesignTokens.colors.cardWhite,
-    borderTopLeftRadius: DesignTokens.radius.xl,
-    borderTopRightRadius: DesignTokens.radius.xl,
-    padding: DesignTokens.spacing.xl,
-    maxHeight: '90%',
+  inputGroup: {
+    marginBottom: 16,
   },
-  modalActions: {
+  label: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  input: {
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 15,
+    borderWidth: 1,
+  },
+  saveButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  saveButtonGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  subscriptionIntro: {
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  subscriptionPlans: {
+    gap: 20,
+    marginBottom: 24,
+  },
+  planCard: {
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  planCardPopular: {
+    borderColor: '#F59E0B',
+    position: 'relative',
+  },
+  popularBadge: {
+    position: 'absolute',
+    top: -12,
+    right: 20,
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  popularBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  planBadge: {
     flexDirection: 'row',
-    gap: DesignTokens.spacing.sm,
-    marginTop: DesignTokens.spacing.xl,
-  },
-  modalButtonCancel: {
-    flex: 1,
-    backgroundColor: DesignTokens.colors.background,
-    borderRadius: DesignTokens.radius.sm,
-    paddingVertical: DesignTokens.spacing.md,
     alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginBottom: 16,
   },
-  modalButtonSave: {
-    flex: 1,
-    backgroundColor: DesignTokens.colors.pastel.purple.icon,
-    borderRadius: DesignTokens.radius.sm,
-    paddingVertical: DesignTokens.spacing.md,
+  planBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  planPrice: {
+    fontSize: 32,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  planPeriod: {
+    fontSize: 14,
+    marginBottom: 20,
+  },
+  planFeatures: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  planFeatureItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    ...DesignTokens.shadows.sm,
+    gap: 10,
   },
-  modalButtonTextCancel: {
-    ...DesignTokens.typography.h3,
-    color: DesignTokens.colors.text.secondary,
+  planFeatureText: {
+    fontSize: 14,
+    flex: 1,
   },
-  modalButtonTextSave: {
-    ...DesignTokens.typography.h3,
-    color: DesignTokens.colors.cardWhite,
+  selectPlanButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  selectPlanGradient: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectPlanText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  // Sous-menu styles
+  subMenuContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 12,
+  },
+  subMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    gap: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  subMenuIconWrapper: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subMenuContent: {
+    flex: 1,
+    gap: 4,
+  },
+  subMenuLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  subMenuDescription: {
+    fontSize: 13,
+    fontWeight: '500',
   },
 });
