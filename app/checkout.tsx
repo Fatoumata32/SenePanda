@@ -12,10 +12,11 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, MapPin, CreditCard } from 'lucide-react-native';
+import { ArrowLeft, MapPin, CreditCard, Smartphone, CheckCircle } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCart } from '@/contexts/CartContext';
 import { Colors } from '@/constants/Colors';
+import WavePaymentButton from '@/components/payment/WavePaymentButton';
 
 export default function CheckoutScreen() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function CheckoutScreen() {
   const [country, setCountry] = useState('');
   const [phone, setPhone] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'wave' | 'cash_on_delivery'>('wave');
 
   useEffect(() => {
     loadUserInfo();
@@ -109,7 +111,7 @@ export default function CheckoutScreen() {
           p_shipping_postal_code: postalCode || null,
           p_shipping_country: country || 'Sénégal',
           p_order_notes: orderNotes || null,
-          p_payment_method: 'cash_on_delivery'
+          p_payment_method: paymentMethod
         });
 
       if (orderError) throw orderError;
@@ -119,7 +121,9 @@ export default function CheckoutScreen() {
 
       Alert.alert(
         'Commande réussie! 🎉',
-        'Votre commande a été passée avec succès. Vous recevrez une confirmation par email.',
+        paymentMethod === 'wave'
+          ? 'Votre commande a été créée. Procédez au paiement Wave pour la confirmer.'
+          : 'Votre commande a été passée avec succès. Vous recevrez une confirmation par email.',
         [
           {
             text: 'Voir mes commandes',
@@ -138,6 +142,23 @@ export default function CheckoutScreen() {
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleWavePaymentSuccess = (transactionId: string) => {
+    console.log('✅ Paiement Wave réussi:', transactionId);
+    setProcessing(false);
+    // La commande sera mise à jour par le webhook
+    Alert.alert(
+      'Paiement en cours',
+      'Votre paiement Wave est en cours de traitement. Vous recevrez une confirmation dès que le paiement sera validé.',
+      [{ text: 'OK', onPress: () => router.replace('/orders') }]
+    );
+  };
+
+  const handleWavePaymentError = (error: string) => {
+    console.error('❌ Erreur paiement Wave:', error);
+    setProcessing(false);
+    Alert.alert('Erreur de paiement', error);
   };
 
   if (loading) {
@@ -304,12 +325,63 @@ export default function CheckoutScreen() {
             <CreditCard size={20} color="#D97706" />
             <Text style={styles.sectionTitle}>Mode de paiement</Text>
           </View>
-          <View style={styles.paymentOption}>
-            <Text style={styles.paymentText}>Paiement à la livraison</Text>
-            <Text style={styles.paymentSubtext}>
-              Payez en espèces lors de la réception de votre commande
-            </Text>
-          </View>
+
+          {/* Option Wave */}
+          <TouchableOpacity
+            style={[
+              styles.paymentOption,
+              paymentMethod === 'wave' && styles.paymentOptionSelected
+            ]}
+            onPress={() => setPaymentMethod('wave')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.paymentOptionContent}>
+              <View style={styles.paymentIconContainer}>
+                <LinearGradient
+                  colors={['#FF6B00', '#FFA500']}
+                  style={styles.paymentIconGradient}
+                >
+                  <Smartphone size={20} color={Colors.white} />
+                </LinearGradient>
+              </View>
+              <View style={styles.paymentTextContainer}>
+                <Text style={styles.paymentText}>Wave Mobile Money</Text>
+                <Text style={styles.paymentSubtext}>
+                  Paiement sécurisé par Wave
+                </Text>
+              </View>
+              {paymentMethod === 'wave' && (
+                <CheckCircle size={24} color="#10B981" fill="#10B981" />
+              )}
+            </View>
+          </TouchableOpacity>
+
+          {/* Option Cash on Delivery */}
+          <TouchableOpacity
+            style={[
+              styles.paymentOption,
+              paymentMethod === 'cash_on_delivery' && styles.paymentOptionSelected
+            ]}
+            onPress={() => setPaymentMethod('cash_on_delivery')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.paymentOptionContent}>
+              <View style={styles.paymentIconContainer}>
+                <View style={[styles.paymentIconGradient, { backgroundColor: '#6B7280' }]}>
+                  <CreditCard size={20} color={Colors.white} />
+                </View>
+              </View>
+              <View style={styles.paymentTextContainer}>
+                <Text style={styles.paymentText}>Paiement à la livraison</Text>
+                <Text style={styles.paymentSubtext}>
+                  Payez en espèces lors de la réception
+                </Text>
+              </View>
+              {paymentMethod === 'cash_on_delivery' && (
+                <CheckCircle size={24} color="#10B981" fill="#10B981" />
+              )}
+            </View>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity
@@ -492,11 +564,35 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   paymentOption: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: Colors.white,
     borderRadius: 12,
     padding: 16,
+    marginBottom: 12,
     borderWidth: 2,
-    borderColor: '#D97706',
+    borderColor: '#E5E7EB',
+  },
+  paymentOptionSelected: {
+    borderColor: '#10B981',
+    backgroundColor: '#F0FDF4',
+  },
+  paymentOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  paymentIconContainer: {
+    width: 48,
+    height: 48,
+  },
+  paymentIconGradient: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paymentTextContainer: {
+    flex: 1,
   },
   paymentText: {
     fontSize: 16,
