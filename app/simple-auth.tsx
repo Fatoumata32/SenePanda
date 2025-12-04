@@ -10,15 +10,30 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowRight, Eye, EyeOff } from 'lucide-react-native';
+import { ArrowRight, Eye, EyeOff, Settings, X, Gift, CheckCircle, XCircle } from 'lucide-react-native';
 import PandaLogo from '@/components/PandaLogo';
 import { Colors, Gradients, Typography, Spacing, BorderRadius, Shadows } from '@/constants/Colors';
 import * as Speech from 'expo-speech';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Code admin fixe
+const ADMIN_CODE = '741852';
+
+// Fonction pour générer un code de parrainage unique
+const generateReferralCode = (): string => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Sans I, O, 0, 1 pour éviter confusion
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+};
 
 type AuthMode = 'signin' | 'signup' | 'reset';
 
@@ -34,6 +49,14 @@ export default function SimpleAuthScreen() {
   const [lastName, setLastName] = useState('');
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [referralCode, setReferralCode] = useState('');
+  const [referrerInfo, setReferrerInfo] = useState<{ id: string; name: string } | null>(null);
+  const [referralStatus, setReferralStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
+
+  // État pour le modal admin
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [adminCode, setAdminCode] = useState('');
+  const [adminLoading, setAdminLoading] = useState(false);
 
   // Gérer le changement du numéro de téléphone pour toujours garder +221
   const handlePhoneChange = (text: string) => {
@@ -60,6 +83,114 @@ export default function SimpleAuthScreen() {
   const padPinCode = (pin: string): string => {
     // Si le PIN a moins de 6 caractères, ajouter des zéros au début
     return pin.length < 6 ? pin.padStart(6, '0') : pin;
+  };
+
+  // Vérifier le code de parrainage
+  const checkReferralCode = async (code: string) => {
+    if (!code || code.length < 4) {
+      setReferralStatus('idle');
+      setReferrerInfo(null);
+      return;
+    }
+
+    setReferralStatus('checking');
+
+    try {
+      const { data: referrer, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, full_name')
+        .eq('referral_code', code.toUpperCase())
+        .maybeSingle();
+
+      if (error || !referrer) {
+        setReferralStatus('invalid');
+        setReferrerInfo(null);
+        return;
+      }
+
+      const referrerName = referrer.full_name || `${referrer.first_name || ''} ${referrer.last_name || ''}`.trim() || 'Utilisateur';
+      setReferrerInfo({ id: referrer.id, name: referrerName });
+      setReferralStatus('valid');
+    } catch (error) {
+      console.error('Error checking referral code:', error);
+      setReferralStatus('invalid');
+      setReferrerInfo(null);
+    }
+  };
+
+  // Gérer le changement du code de parrainage
+  const handleReferralCodeChange = (text: string) => {
+    const upperCode = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    setReferralCode(upperCode);
+
+    // Vérifier le code après un délai
+    if (upperCode.length >= 4) {
+      checkReferralCode(upperCode);
+    } else {
+      setReferralStatus('idle');
+      setReferrerInfo(null);
+    }
+  };
+
+  // Traiter le bonus de parrainage
+  const processReferralBonus = async (newUserId: string, referrerId: string) => {
+    const REFERRER_BONUS = 500; // 500 points pour le parrain
+    const REFERRED_BONUS = 200; // 200 points pour le filleul (inscription)
+
+    try {
+      console.log('🎁 Traitement du bonus de parrainage...');
+
+      // 1. Ajouter les points au parrain (500 points)
+      const { data: referrerProfile } = await supabase
+        .from('profiles')
+        .select('panda_coins')
+        .eq('id', referrerId)
+        .single();
+
+      const currentPoints = referrerProfile?.panda_coins || 0;
+      const newPoints = currentPoints + REFERRER_BONUS;
+
+      await supabase
+        .from('profiles')
+        .update({ panda_coins: newPoints })
+        .eq('id', referrerId);
+
+      console.log(`✅ Parrain: ${currentPoints} → ${newPoints} points (+${REFERRER_BONUS})`);
+
+      // 2. Créer l'entrée dans la table referrals
+      await supabase.from('referrals').insert({
+        referrer_id: referrerId,
+        referred_id: newUserId,
+        status: 'completed',
+        reward_amount: REFERRER_BONUS,
+        created_at: new Date().toISOString(),
+      });
+
+      // 3. Enregistrer les transactions de points
+      // Transaction pour le parrain (500 points)
+      await supabase.from('points_transactions').insert({
+        user_id: referrerId,
+        points: REFERRER_BONUS,
+        type: 'referral_bonus',
+        description: 'Bonus de parrainage - Nouveau filleul inscrit (+500)',
+        related_id: newUserId,
+      });
+
+      // Transaction pour le filleul (200 points)
+      await supabase.from('points_transactions').insert({
+        user_id: newUserId,
+        points: REFERRED_BONUS,
+        type: 'referral_bonus',
+        description: 'Bonus de bienvenue - Inscription avec code parrain (+200)',
+        related_id: referrerId,
+      });
+
+      console.log('✅ Bonus de parrainage traité avec succès!');
+      console.log(`   Parrain: +${REFERRER_BONUS} points | Filleul: +${REFERRED_BONUS} points`);
+    } catch (error) {
+      console.error('❌ Erreur traitement parrainage:', error);
+      // Ne pas bloquer l'inscription en cas d'erreur
+    }
   };
 
   // Connexion
@@ -124,7 +255,13 @@ export default function SimpleAuthScreen() {
                       password: paddedPassword,
                     });
                     Speech.speak('Connexion réussie! Bienvenue', { language: 'fr-FR' });
-                    router.replace('/role-selection');
+                    // Vérifier si l'utilisateur a déjà un rôle
+                    const savedRole = await AsyncStorage.getItem('user_preferred_role');
+                    if (savedRole) {
+                      router.replace('/(tabs)/home');
+                    } else {
+                      router.replace('/role-selection');
+                    }
                   } catch (e) {
                     console.error('Retry error:', e);
                   }
@@ -142,8 +279,38 @@ export default function SimpleAuthScreen() {
         throw new Error('Impossible de se connecter');
       }
 
+      // Vérifier et attribuer un code de parrainage si l'utilisateur n'en a pas
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('referral_code')
+          .eq('id', authData.user.id)
+          .single();
+
+        if (profile && !profile.referral_code) {
+          // Générer et attribuer un code de parrainage
+          const newCode = generateReferralCode();
+          await supabase
+            .from('profiles')
+            .update({ referral_code: newCode })
+            .eq('id', authData.user.id);
+          console.log('✅ Code de parrainage attribué:', newCode);
+        }
+      } catch (e) {
+        console.warn('Vérification code parrainage:', e);
+      }
+
       Speech.speak('Connexion réussie! Bienvenue', { language: 'fr-FR' });
-      router.replace('/role-selection');
+
+      // Vérifier si l'utilisateur a déjà un rôle enregistré
+      const savedRole = await AsyncStorage.getItem('user_preferred_role');
+      if (savedRole) {
+        // Rôle déjà choisi, aller directement à l'accueil
+        router.replace('/(tabs)/home');
+      } else {
+        // Nouveau utilisateur, demander de choisir un rôle
+        router.replace('/role-selection');
+      }
     } catch (error: any) {
       console.error('Error signing in:', error);
       Alert.alert(
@@ -175,21 +342,18 @@ export default function SimpleAuthScreen() {
       return;
     }
 
-    if (!newPassword.trim() || newPassword.length < 4) {
-      Alert.alert('Erreur', 'Le nouveau code PIN doit contenir au moins 4 chiffres');
+    if (!newPassword.trim() || newPassword.length < 4 || newPassword.length > 6) {
+      Alert.alert('Erreur', 'Le nouveau code PIN doit contenir entre 4 et 6 chiffres');
       return;
     }
 
     try {
       setLoading(true);
 
-      // Générer l'email à partir du numéro
-      const email = `${cleaned}@senepanda.app`;
-
       // Vérifier si l'utilisateur existe
       const { data: existingUser, error: checkError } = await supabase
         .from('profiles')
-        .select('id')
+        .select('id, first_name')
         .eq('phone', cleaned)
         .maybeSingle();
 
@@ -202,48 +366,49 @@ export default function SimpleAuthScreen() {
         return;
       }
 
-      // Pour l'instant, demander confirmation par SMS simulé
+      // Appeler l'Edge Function pour réinitialiser le PIN
+      const { data: response, error: resetError } = await supabase.functions.invoke('reset-pin', {
+        body: {
+          phoneNumber: cleaned,
+          newPin: newPassword
+        }
+      });
+
+      if (resetError) {
+        console.error('Reset PIN error:', resetError);
+        Alert.alert(
+          'Erreur',
+          'Impossible de réinitialiser le code PIN. Vérifiez votre connexion et réessayez.'
+        );
+        return;
+      }
+
+      if (response?.error) {
+        Alert.alert('Erreur', response.error);
+        return;
+      }
+
+      // Succès
+      Speech.speak('Code PIN réinitialisé avec succès', { language: 'fr-FR' });
       Alert.alert(
-        'Réinitialisation du code PIN',
-        `Un SMS de vérification serait normalement envoyé au ${phoneNumber}.\n\nPour cette démo, confirmez-vous vouloir réinitialiser le code PIN pour ce numéro ?`,
+        '✅ Code PIN réinitialisé',
+        `Votre code PIN a été réinitialisé avec succès!\n\nVous pouvez maintenant vous connecter avec votre nouveau code.`,
         [
-          { text: 'Annuler', style: 'cancel' },
           {
-            text: 'Confirmer',
-            onPress: async () => {
-              try {
-                // Utiliser l'API admin de Supabase pour mettre à jour le mot de passe
-                // Note: En production, il faudrait utiliser un service backend sécurisé
-
-                // Solution temporaire: demander à l'utilisateur de contacter le support
-                Alert.alert(
-                  'Code PIN réinitialisé',
-                  'Votre code PIN a été réinitialisé avec succès! Vous pouvez maintenant vous connecter avec votre nouveau code.',
-                  [
-                    {
-                      text: 'Se connecter',
-                      onPress: () => {
-                        setPassword(newPassword);
-                        setMode('signin');
-                        Speech.speak('Code PIN réinitialisé', { language: 'fr-FR' });
-                      }
-                    }
-                  ]
-                );
-
-                // En production, on utiliserait:
-                // await supabase.auth.resetPasswordForEmail(email)
-                // ou un appel API backend pour mettre à jour le mot de passe
-              } catch (error: any) {
-                Alert.alert('Erreur', 'Impossible de réinitialiser le code PIN. Contactez le support.');
-              }
+            text: 'Se connecter',
+            onPress: () => {
+              setPassword(newPassword);
+              setMode('signin');
             }
           }
         ]
       );
     } catch (error: any) {
       console.error('Error resetting password:', error);
-      Alert.alert('Erreur', 'Une erreur est survenue. Contactez le support au +221 77 XXX XX XX');
+      Alert.alert(
+        'Erreur',
+        'Une erreur est survenue lors de la réinitialisation. Réessayez dans quelques instants.'
+      );
     } finally {
       setLoading(false);
     }
@@ -322,43 +487,73 @@ export default function SimpleAuthScreen() {
           return;
         }
 
-        // Database error = le compte auth est créé mais le trigger a échoué
-        if (authError.message.includes('Database error')) {
-          // Attendre et essayer de se connecter
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        // Database error = le compte auth est créé mais le profil n'a pas pu être créé
+        if (authError.message.includes('Database error') || authError.message.includes('saving new user')) {
+          console.log('Compte auth créé, création du profil en cours...');
 
-          const { data: signInData } = await supabase.auth.signInWithPassword({
-            email,
-            password: paddedPassword,
-          });
+          // Attendre un peu pour que Supabase finalise
+          await new Promise(resolve => setTimeout(resolve, 2000));
 
-          if (signInData?.user) {
-            // Créer le profil
-            await supabase.from('profiles').upsert({
-              id: signInData.user.id,
-              first_name: firstName.trim(),
-              last_name: lastName.trim(),
-              full_name: `${firstName.trim()} ${lastName.trim()}`,
-              phone: cleaned,
-              username: `user_${signInData.user.id.substring(0, 8)}`,
-              email: email,
-              is_seller: false,
-            }, { onConflict: 'id' });
+          try {
+            // Essayer de se connecter avec le compte qui vient d'être créé
+            const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+              email,
+              password: paddedPassword,
+            });
 
-            Speech.speak('Compte créé!', { language: 'fr-FR' });
-            Alert.alert('Succès', 'Compte créé avec succès!', [
-              { text: 'OK', onPress: () => router.replace('/role-selection') }
-            ]);
+            if (signInError) {
+              console.error('SignIn après création échoué:', signInError);
+              // Le compte existe, demander de se connecter
+              Alert.alert(
+                'Compte créé',
+                'Votre compte a été créé. Veuillez vous connecter.',
+                [{ text: 'OK', onPress: () => setMode('signin') }]
+              );
+              return;
+            }
+
+            if (signInData?.user) {
+              console.log('Connexion réussie, création du profil...');
+
+              // Créer/mettre à jour le profil manuellement
+              const { error: profileError } = await supabase.from('profiles').upsert({
+                id: signInData.user.id,
+                first_name: firstName.trim(),
+                last_name: lastName.trim(),
+                full_name: `${firstName.trim()} ${lastName.trim()}`,
+                phone: cleaned,
+                username: `user_${signInData.user.id.substring(0, 8)}`,
+                email: email,
+                is_seller: false,
+                referral_code: generateReferralCode(), // Générer un code de parrainage unique
+                panda_coins: 0,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'id' });
+
+              if (profileError) {
+                console.error('Erreur création profil:', profileError);
+              } else {
+                console.log('Profil créé avec succès!');
+              }
+
+              Speech.speak('Compte créé avec succès!', { language: 'fr-FR' });
+              Alert.alert(
+                '✅ Succès',
+                'Bienvenue sur SenePanda!',
+                [{ text: 'Continuer', onPress: () => router.replace('/role-selection') }]
+              );
+              return;
+            }
+          } catch (retryError) {
+            console.error('Erreur lors de la reconnexion:', retryError);
+            Alert.alert(
+              'Compte créé',
+              'Votre compte a été créé. Veuillez vous connecter.',
+              [{ text: 'OK', onPress: () => setMode('signin') }]
+            );
             return;
           }
-
-          // Proposer de se connecter
-          Alert.alert(
-            'Compte créé',
-            'Essayez de vous connecter avec vos identifiants.',
-            [{ text: 'OK', onPress: () => setMode('signin') }]
-          );
-          return;
         }
 
         throw authError;
@@ -366,7 +561,10 @@ export default function SimpleAuthScreen() {
 
       // Succès - créer le profil
       if (signUpData?.user?.id) {
-        await supabase.from('profiles').upsert({
+        console.log('Création du profil pour:', signUpData.user.id);
+
+        // Préparer les données du profil avec le parrainage si valide
+        const profileData: any = {
           id: signUpData.user.id,
           first_name: firstName.trim(),
           last_name: lastName.trim(),
@@ -375,17 +573,62 @@ export default function SimpleAuthScreen() {
           username: `user_${signUpData.user.id.substring(0, 8)}`,
           email: email,
           is_seller: false,
-        }, { onConflict: 'id' });
+          panda_coins: 0,
+          referral_code: generateReferralCode(), // Générer un code de parrainage unique
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        // Si parrainage valide, ajouter l'ID du parrain
+        if (referralStatus === 'valid' && referrerInfo) {
+          profileData.referred_by = referrerInfo.id;
+          profileData.panda_coins = 200; // Bonus filleul (200 points)
+          console.log('✅ Parrainage valide, parrain:', referrerInfo.id, '- Filleul reçoit 200 points');
+        }
+
+        // Créer le profil
+        const { error: profileError } = await supabase.from('profiles').upsert(profileData, { onConflict: 'id' });
+
+        if (profileError) {
+          console.error('Erreur création profil:', profileError);
+          // Continuer quand même car le compte auth est créé
+        } else {
+          console.log('Profil créé avec succès!');
+
+          // Traiter le parrainage si valide
+          if (referralStatus === 'valid' && referrerInfo) {
+            await processReferralBonus(signUpData.user.id, referrerInfo.id);
+          }
+        }
 
         // Connecter automatiquement
-        await supabase.auth.signInWithPassword({ email, password: paddedPassword });
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password: paddedPassword
+        });
 
-        Speech.speak('Compte créé!', { language: 'fr-FR' });
-        Alert.alert('Succès', 'Bienvenue sur SenePanda!', [
+        if (signInError) {
+          console.error('Erreur connexion automatique:', signInError);
+          // Demander de se connecter manuellement
+          Alert.alert(
+            'Compte créé',
+            'Votre compte a été créé. Veuillez vous connecter.',
+            [{ text: 'OK', onPress: () => setMode('signin') }]
+          );
+          return;
+        }
+
+        // Message de succès avec info parrainage
+        const successMessage = referralStatus === 'valid' && referrerInfo
+          ? `Bienvenue sur SenePanda!\n\n🎁 Vous avez reçu 200 PandaCoins grâce au parrainage de ${referrerInfo.name}!`
+          : 'Bienvenue sur SenePanda!';
+
+        Speech.speak('Compte créé avec succès!', { language: 'fr-FR' });
+        Alert.alert('✅ Succès', successMessage, [
           { text: 'Continuer', onPress: () => router.replace('/role-selection') }
         ]);
       } else {
-        throw new Error('Erreur lors de la création');
+        throw new Error('Erreur lors de la création du compte');
       }
     } catch (error: any) {
       console.error('Error signing up:', error);
@@ -401,8 +644,85 @@ export default function SimpleAuthScreen() {
     }
   };
 
+  // Fonction pour vérifier le code admin
+  const handleAdminLogin = () => {
+    setAdminLoading(true);
+
+    // Vérifier le code admin
+    if (adminCode === ADMIN_CODE) {
+      setAdminLoading(false);
+      setShowAdminModal(false);
+      setAdminCode('');
+      Speech.speak('Accès administrateur accordé', { language: 'fr-FR' });
+      router.push('/admin/dashboard');
+    } else {
+      setAdminLoading(false);
+      Alert.alert('Erreur', 'Code administrateur invalide');
+      setAdminCode('');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
+      {/* Bouton Admin discret en haut à droite */}
+      <TouchableOpacity
+        style={styles.adminButton}
+        onPress={() => setShowAdminModal(true)}>
+        <Settings size={20} color={Colors.textMuted} />
+      </TouchableOpacity>
+
+      {/* Modal Admin */}
+      <Modal
+        visible={showAdminModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAdminModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => {
+                setShowAdminModal(false);
+                setAdminCode('');
+              }}>
+              <X size={24} color={Colors.textMuted} />
+            </TouchableOpacity>
+
+            <Settings size={48} color={Colors.primaryOrange} />
+            <Text style={styles.modalTitle}>Accès Administration</Text>
+            <Text style={styles.modalSubtitle}>Entrez le code administrateur</Text>
+
+            <TextInput
+              style={styles.adminCodeInput}
+              value={adminCode}
+              onChangeText={setAdminCode}
+              placeholder="••••••"
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={6}
+              placeholderTextColor={Colors.textMuted}
+              autoFocus
+            />
+
+            <TouchableOpacity
+              style={[styles.adminSubmitButton, adminLoading && styles.buttonDisabled]}
+              onPress={handleAdminLogin}
+              disabled={adminLoading || adminCode.length < 6}>
+              <LinearGradient
+                colors={['#4B5563', '#374151']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              {adminLoading ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <Text style={styles.adminSubmitText}>Accéder</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}>
@@ -468,6 +788,58 @@ export default function SimpleAuthScreen() {
                     placeholderTextColor={Colors.textMuted}
                     editable={!loading}
                   />
+                </View>
+
+                {/* Code de parrainage (optionnel) */}
+                <View style={styles.inputGroup}>
+                  <View style={styles.labelRow}>
+                    <Gift size={16} color={Colors.primaryOrange} />
+                    <Text style={styles.label}>Code de parrainage</Text>
+                    <Text style={styles.optionalLabel}>(optionnel)</Text>
+                  </View>
+                  <View style={[
+                    styles.referralInputContainer,
+                    referralStatus === 'valid' && styles.referralInputValid,
+                    referralStatus === 'invalid' && styles.referralInputInvalid,
+                  ]}>
+                    <TextInput
+                      style={styles.referralInput}
+                      value={referralCode}
+                      onChangeText={handleReferralCodeChange}
+                      placeholder="Ex: ABC12345"
+                      placeholderTextColor={Colors.textMuted}
+                      autoCapitalize="characters"
+                      maxLength={10}
+                      editable={!loading}
+                    />
+                    {referralStatus === 'checking' && (
+                      <ActivityIndicator size="small" color={Colors.primaryOrange} />
+                    )}
+                    {referralStatus === 'valid' && (
+                      <CheckCircle size={20} color="#10B981" />
+                    )}
+                    {referralStatus === 'invalid' && (
+                      <XCircle size={20} color="#EF4444" />
+                    )}
+                  </View>
+                  {referralStatus === 'valid' && referrerInfo && (
+                    <View style={styles.referrerInfoBox}>
+                      <CheckCircle size={14} color="#10B981" />
+                      <Text style={styles.referrerInfoText}>
+                        Parrainé par {referrerInfo.name} - Vous recevrez 500 FCFA !
+                      </Text>
+                    </View>
+                  )}
+                  {referralStatus === 'invalid' && (
+                    <Text style={styles.referralErrorText}>
+                      Code de parrainage invalide
+                    </Text>
+                  )}
+                  {referralStatus === 'idle' && (
+                    <Text style={styles.hint}>
+                      Entrez le code d'un ami pour recevoir 500 FCFA de bonus !
+                    </Text>
+                  )}
                 </View>
               </>
             )}
@@ -748,5 +1120,140 @@ const styles = StyleSheet.create({
   switchModeBold: {
     fontWeight: Typography.fontWeight.bold,
     color: Colors.primaryOrange,
+  },
+  // Styles Admin
+  adminButton: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.backgroundLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+    opacity: 0.6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  modalContent: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing['2xl'],
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    ...Shadows.large,
+  },
+  modalCloseButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    padding: 8,
+  },
+  modalTitle: {
+    fontSize: Typography.fontSize.xl,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.textPrimary,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.xs,
+  },
+  modalSubtitle: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xl,
+    textAlign: 'center',
+  },
+  adminCodeInput: {
+    backgroundColor: Colors.backgroundLight,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 2,
+    borderColor: Colors.borderLight,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+    fontSize: Typography.fontSize['2xl'],
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    letterSpacing: 8,
+    width: '100%',
+    marginBottom: Spacing.xl,
+  },
+  adminSubmitButton: {
+    width: '100%',
+    borderRadius: BorderRadius.lg,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  adminSubmitText: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.white,
+  },
+  // Styles pour le code de parrainage
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.sm,
+  },
+  optionalLabel: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+  },
+  referralInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 2,
+    borderColor: Colors.borderLight,
+    paddingHorizontal: Spacing.md,
+    ...Shadows.small,
+  },
+  referralInputValid: {
+    borderColor: '#10B981',
+    backgroundColor: '#F0FDF4',
+  },
+  referralInputInvalid: {
+    borderColor: '#EF4444',
+    backgroundColor: '#FEF2F2',
+  },
+  referralInput: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    fontSize: Typography.fontSize.lg,
+    color: Colors.textPrimary,
+    fontWeight: Typography.fontWeight.semibold,
+    letterSpacing: 2,
+  },
+  referrerInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  referrerInfoText: {
+    fontSize: Typography.fontSize.xs,
+    color: '#065F46',
+    fontWeight: Typography.fontWeight.medium,
+    flex: 1,
+  },
+  referralErrorText: {
+    fontSize: Typography.fontSize.xs,
+    color: '#DC2626',
+    marginTop: Spacing.xs,
   },
 });

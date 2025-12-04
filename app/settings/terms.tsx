@@ -139,7 +139,7 @@ export default function TermsScreen() {
 
           <Text style={styles.subTitle}>5.1 Prix et Frais</Text>
           <Text style={styles.paragraph}>
-            Les prix affichés sont en Francs CFA (XOF). Les vendeurs fixent leurs propres prix.
+            Les prix affichés sont en Francs CFA (FCFA). Les vendeurs fixent leurs propres prix.
             SenePanda peut prélever une commission sur les ventes. Les frais de livraison sont
             indiqués séparément.
           </Text>

@@ -45,7 +45,7 @@ export default function CheckoutScreen() {
       // Vérifier que le panier n'est pas vide
       if (cartItems.length === 0) {
         Alert.alert('Panier vide', 'Votre panier est vide', [
-          { text: 'OK', onPress: () => router.replace('/(tabs)/cart') }
+          { text: 'OK', onPress: () => router.replace('/cart') }
         ]);
         return;
       }

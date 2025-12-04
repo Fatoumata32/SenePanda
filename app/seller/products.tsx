@@ -11,18 +11,33 @@ import {
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { Product } from '@/types/database';
-import { Plus, Package, Edit, Trash2, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
+import { Plus, Package, Edit, Trash2, Eye, EyeOff, ArrowLeft, Store, Lock, Crown } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSubscriptionAccess } from '@/hooks/useSubscriptionAccess';
+import ActivateShopBanner from '@/components/ActivateShopBanner';
 
 export default function SellerProductsScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [user, setUser] = useState<any>(null);
+  const {
+    loading: subscriptionLoading,
+    hasAccess,
+    shopVisible,
+    limits,
+    checkAccess,
+    checkProductLimit,
+    redirectToPlans,
+    subscriptionStatus,
+  } = useSubscriptionAccess();
 
   useEffect(() => {
     loadProducts();
   }, []);
+
+  // L'accès est maintenant géré automatiquement via hasAccess
+  // Le plan FREE a accès avec des limites (5 produits max)
 
   const loadProducts = async () => {
     try {
@@ -63,6 +78,16 @@ export default function SellerProductsScreen() {
   };
 
   const deleteProduct = async (productId: string) => {
+    // Vérifier l'accès avant de permettre la suppression
+    if (!checkAccess()) {
+      return;
+    }
+
+    if (!limits?.canDeleteProducts) {
+      Alert.alert('Accès refusé', 'Votre plan ne permet pas de supprimer des produits');
+      return;
+    }
+
     Alert.alert(
       'Confirmer la suppression',
       'Êtes-vous sûr de vouloir supprimer ce produit?',
@@ -87,6 +112,34 @@ export default function SellerProductsScreen() {
         },
       ]
     );
+  };
+
+  const handleAddProduct = () => {
+    // Vérifier l'accès
+    if (!checkAccess()) {
+      return;
+    }
+
+    // Vérifier la limite de produits
+    if (!checkProductLimit(products.length)) {
+      return;
+    }
+
+    router.push('/seller/add-product');
+  };
+
+  const handleEditProduct = (productId: string) => {
+    // Vérifier l'accès
+    if (!checkAccess()) {
+      return;
+    }
+
+    if (!limits?.canEditProducts) {
+      Alert.alert('Accès refusé', 'Votre plan ne permet pas de modifier des produits');
+      return;
+    }
+
+    router.push(`/seller/edit-product/${productId}`);
   };
 
   const renderProduct = ({ item }: { item: Product }) => (
@@ -119,7 +172,7 @@ export default function SellerProductsScreen() {
         <View style={styles.productActions}>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => router.push(`/seller/edit-product/${item.id}`)}>
+            onPress={() => handleEditProduct(item.id)}>
             <Edit size={16} color="#D97706" />
             <Text style={styles.actionText}>Modifier</Text>
           </TouchableOpacity>
@@ -148,10 +201,11 @@ export default function SellerProductsScreen() {
     </View>
   );
 
-  if (loading) {
+  if (loading || subscriptionLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#D97706" />
+        <Text style={styles.loadingText}>Chargement...</Text>
       </View>
     );
   }
@@ -163,23 +217,57 @@ export default function SellerProductsScreen() {
           <ArrowLeft size={24} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.title}>Mes Produits</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => router.push('/seller/add-product')}>
-          <Plus size={24} color="#FFFFFF" />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.shopButton}
+            onPress={() => router.push('/seller/my-shop')}>
+            <Store size={20} color="#D97706" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={handleAddProduct}>
+            <Plus size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {products.length === 0 ? (
+      {!hasAccess ? (
+        <View style={styles.emptyState}>
+          <Lock size={64} color="#D97706" />
+          <Text style={styles.emptyTitle}>Abonnement requis</Text>
+          <Text style={styles.emptyText}>
+            {shopVisible
+              ? 'Votre abonnement a expiré. Renouvelez-le pour continuer à gérer vos produits.'
+              : 'Souscrivez à un abonnement pour commencer à vendre vos produits.'}
+          </Text>
+          <View style={styles.planInfo}>
+            <Crown size={20} color="#F59E0B" />
+            <Text style={styles.planInfoText}>
+              Plan actuel : {subscriptionStatus?.plan.toUpperCase() || 'FREE'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={redirectToPlans}>
+            <Crown size={20} color="#FFFFFF" />
+            <Text style={styles.buttonText}>Voir les abonnements</Text>
+          </TouchableOpacity>
+        </View>
+      ) : products.length === 0 ? (
         <View style={styles.emptyState}>
           <Package size={64} color="#D1D5DB" />
           <Text style={styles.emptyTitle}>Aucun produit</Text>
           <Text style={styles.emptyText}>
             Commencez par ajouter votre premier produit à votre boutique
           </Text>
+          {limits && (
+            <Text style={styles.limitText}>
+              Limite : {products.length}/{limits.maxProducts === 999999 ? '∞' : limits.maxProducts} produits
+            </Text>
+          )}
           <TouchableOpacity
             style={styles.primaryButton}
-            onPress={() => router.push('/seller/add-product')}>
+            onPress={handleAddProduct}>
             <Plus size={20} color="#FFFFFF" />
             <Text style={styles.buttonText}>Ajouter un produit</Text>
           </TouchableOpacity>
@@ -191,6 +279,12 @@ export default function SellerProductsScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
+          ListHeaderComponent={
+            <ActivateShopBanner
+              currentPlan={subscriptionStatus?.plan as any}
+              shopIsActive={subscriptionStatus?.isActive}
+            />
+          }
         />
       )}
     </SafeAreaView>
@@ -223,6 +317,21 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 8,
   },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  shopButton: {
+    backgroundColor: '#FEF3C7',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
   addButton: {
     backgroundColor: '#D97706',
     width: 44,
@@ -235,6 +344,32 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  planInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginBottom: 16,
+  },
+  planInfoText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#92400E',
+  },
+  limitText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 8,
+    marginBottom: 16,
   },
   listContainer: {
     padding: 16,

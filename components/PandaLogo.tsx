@@ -1,26 +1,23 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 
 type PandaLogoProps = {
   size?: 'small' | 'medium' | 'large';
   showText?: boolean;
 };
 
-export default function PandaLogo({ size = 'medium', showText = true }: PandaLogoProps) {
+export default function PandaLogo({ size = 'medium', showText = false }: PandaLogoProps) {
   const sizeStyles = {
     small: {
       container: 60,
-      fontSize: 32,
       textSize: 16,
     },
     medium: {
       container: 80,
-      fontSize: 42,
       textSize: 20,
     },
     large: {
       container: 120,
-      fontSize: 64,
       textSize: 28,
     },
   };
@@ -37,9 +34,15 @@ export default function PandaLogo({ size = 'medium', showText = true }: PandaLog
             height: currentSize.container,
           },
         ]}>
-        <Text style={[styles.panda, { fontSize: currentSize.fontSize }]}>
-          🐼
-        </Text>
+        <Image
+          source={require('@/assets/images/icon.png')}
+          style={{
+            width: currentSize.container,
+            height: currentSize.container,
+            borderRadius: currentSize.container / 2,
+          }}
+          resizeMode="cover"
+        />
       </View>
       {showText && (
         <Text style={[styles.brandText, { fontSize: currentSize.textSize }]}>
@@ -57,14 +60,14 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     borderRadius: 1000,
-    backgroundColor: '#FEF3C7',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#D97706',
-  },
-  panda: {
-    textAlign: 'center',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
   },
   brandText: {
     fontWeight: '700',

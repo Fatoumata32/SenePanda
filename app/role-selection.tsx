@@ -14,6 +14,7 @@ import { ShoppingBag, Store } from 'lucide-react-native';
 import * as Speech from 'expo-speech';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
+import { syncSubscriptionPlan } from '@/lib/subscriptionSync';
 import PandaLogo from '@/components/PandaLogo';
 
 export default function RoleSelectionScreen() {
@@ -73,12 +74,23 @@ export default function RoleSelectionScreen() {
       // Sauvegarder le rôle dans AsyncStorage
       await AsyncStorage.setItem('user_preferred_role', selectedRole);
 
-      // Mettre à jour le profil avec le rôle
+      // Mettre à jour le profil avec le rôle (essayer role puis is_seller pour compatibilité)
+      const roleValue = selectedRole;
       const isSeller = selectedRole === 'seller';
-      const { error: updateError } = await supabase
+
+      let { error: updateError } = await supabase
         .from('profiles')
-        .update({ is_seller: isSeller })
+        .update({ role: roleValue })
         .eq('id', user.id);
+
+      // Si la colonne 'role' n'existe pas, utiliser 'is_seller'
+      if (updateError?.code === 'PGRST204' || updateError?.message?.includes('role')) {
+        const result = await supabase
+          .from('profiles')
+          .update({ is_seller: isSeller })
+          .eq('id', user.id);
+        updateError = result.error;
+      }
 
       if (updateError) {
         console.error('Update error:', updateError);
@@ -92,25 +104,38 @@ export default function RoleSelectionScreen() {
         { language: 'fr-FR' }
       );
 
-      // Si c'est un vendeur, vérifier s'il a déjà une boutique
+      // Si c'est un vendeur, créer un abonnement FREE par défaut
       if (selectedRole === 'seller') {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('shop_name, is_seller')
-          .eq('id', user.id)
-          .maybeSingle();
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('shop_name, is_seller, subscription_plan')
+            .eq('id', user.id)
+            .maybeSingle();
 
-        if (!profile?.shop_name) {
-          // Pas de boutique → rediriger vers la création
-          router.replace('/seller/shop-wizard');
-        } else {
-          // Boutique existe déjà → aller à la page d'accueil
-          router.replace('/(tabs)/home');
+          // Si pas de plan d'abonnement défini, créer un plan FREE par défaut
+          if (!profile?.subscription_plan) {
+            const syncResult = await syncSubscriptionPlan(user.id, 'free');
+            if (syncResult.success) {
+              console.log('✅ Plan FREE créé pour nouveau vendeur');
+            } else {
+              console.error('❌ Erreur lors de la création du plan FREE:', syncResult.error);
+            }
+          }
+
+          // Si le vendeur n'a pas encore configuré sa boutique, rediriger vers my-shop
+          if (!profile?.shop_name) {
+            console.log('🏪 Nouveau vendeur: redirection vers configuration boutique');
+            router.replace('/seller/my-shop');
+            return;
+          }
+        } catch (error) {
+          console.error('Erreur lors de la configuration vendeur:', error);
         }
-      } else {
-        // Acheteur → aller directement à la page d'accueil
-        router.replace('/(tabs)/home');
       }
+
+      // Tous les utilisateurs → page d'accueil (sauf nouveaux vendeurs)
+      router.replace('/(tabs)/home');
     } catch (error: any) {
       console.error('Error saving role:', error);
       Alert.alert(

@@ -16,38 +16,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { SubscriptionPlan, SubscriptionPlanType, Profile } from '@/types/database';
-import {
-  Check,
-  Crown,
-  Zap,
-  TrendingUp,
-  Package,
-  Camera,
-  Video,
-  Eye,
-  Headphones,
-  BarChart3,
-  Sparkles,
-  Target,
-  ChevronRight,
-  X,
-  CreditCard,
-  Smartphone,
-  Building2,
-  Clock,
-  Shield,
-  ArrowLeft,
-  CheckCircle,
-  AlertCircle,
-} from 'lucide-react-native';
+import { Ionicons, MaterialIcons, FontAwesome5, Feather } from '@expo/vector-icons';
+import { useSubscriptionSync } from '@/hooks/useSubscriptionSync';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const planIcons: Record<SubscriptionPlanType, any> = {
-  free: Package,
-  starter: Zap,
-  pro: TrendingUp,
-  premium: Crown,
+// Mapping des icônes pour chaque plan
+const planIcons: Record<SubscriptionPlanType, { name: string; type: any }> = {
+  free: { name: 'cube-outline', type: Ionicons },
+  starter: { name: 'flash', type: Ionicons },
+  pro: { name: 'trending-up', type: Ionicons },
+  premium: { name: 'crown', type: FontAwesome5 },
 };
 
 const planColors: Record<SubscriptionPlanType, string> = {
@@ -59,11 +38,11 @@ const planColors: Record<SubscriptionPlanType, string> = {
 
 // Méthodes de paiement disponibles
 const paymentMethods = [
-  { id: 'orange_money', name: 'Orange Money', icon: Smartphone, color: '#FF6600' },
-  { id: 'wave', name: 'Wave', icon: Smartphone, color: '#1DC8FF' },
-  { id: 'free_money', name: 'Free Money', icon: Smartphone, color: '#CD1126' },
-  { id: 'card', name: 'Carte Bancaire', icon: CreditCard, color: '#1E40AF' },
-  { id: 'bank', name: 'Virement Bancaire', icon: Building2, color: '#059669' },
+  { id: 'orange_money', name: 'Orange Money', icon: 'phone-portrait-outline', iconType: Ionicons, color: '#FF6600' },
+  { id: 'wave', name: 'Wave', icon: 'phone-portrait-outline', iconType: Ionicons, color: '#1DC8FF' },
+  { id: 'free_money', name: 'Free Money', icon: 'phone-portrait-outline', iconType: Ionicons, color: '#CD1126' },
+  { id: 'card', name: 'Carte Bancaire', icon: 'card-outline', iconType: Ionicons, color: '#1E40AF' },
+  { id: 'bank', name: 'Virement Bancaire', icon: 'business-outline', iconType: Ionicons, color: '#059669' },
 ];
 
 export default function SubscriptionPlansScreen() {
@@ -76,12 +55,15 @@ export default function SubscriptionPlansScreen() {
   const [currentPlan, setCurrentPlan] = useState<SubscriptionPlanType>('free');
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
 
+  // Hook de synchronisation en temps réel
+  const { subscription, isActive, refresh: refreshSubscription } = useSubscriptionSync(user?.id);
+
   // États pour le modal de paiement
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [paymentStep, setPaymentStep] = useState<'method' | 'details' | 'processing' | 'success' | 'error'>('method');
+  const [paymentStep, setPaymentStep] = useState<'method' | 'details' | 'confirm' | 'processing' | 'success' | 'error'>('method');
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
 
   // Animations
@@ -110,6 +92,14 @@ export default function SubscriptionPlansScreen() {
       }),
     ]).start();
   }, []);
+
+  // Recharger les données quand l'abonnement change (en temps réel)
+  useEffect(() => {
+    if (isActive) {
+      console.log('🔄 Abonnement activé - rechargement des données');
+      loadData();
+    }
+  }, [isActive]);
 
   const loadData = async () => {
     try {
@@ -144,7 +134,7 @@ export default function SubscriptionPlansScreen() {
         setDaysRemaining(diffDays > 0 ? diffDays : 0);
       }
 
-      // Get available plans
+      // Get available plans (sans le plan gratuit)
       const { data: plansData, error: plansError } = await supabase
         .from('subscription_plans')
         .select('*')
@@ -152,7 +142,9 @@ export default function SubscriptionPlansScreen() {
         .order('display_order', { ascending: true });
 
       if (plansError) throw plansError;
-      setPlans(plansData || []);
+      // Filtrer pour retirer le plan gratuit
+      const paidPlans = (plansData || []).filter(p => p.plan_type !== 'free');
+      setPlans(paidPlans);
     } catch (error) {
       console.error('Error loading data:', error);
       Alert.alert('Erreur', 'Impossible de charger les plans');
@@ -162,37 +154,29 @@ export default function SubscriptionPlansScreen() {
   };
 
   const handleSubscribe = async (plan: SubscriptionPlan) => {
-    if (!user || !profile) return;
-
-    // Si plan gratuit
-    if (plan.plan_type === 'free') {
-      if (currentPlan === 'free') {
-        Alert.alert('Info', 'Vous êtes déjà sur le plan gratuit');
-      } else {
-        Alert.alert(
-          'Rétrograder vers Gratuit',
-          'Êtes-vous sûr de vouloir passer au plan gratuit ? Vous perdrez tous les avantages de votre plan actuel.',
-          [
-            { text: 'Annuler', style: 'cancel' },
-            {
-              text: 'Confirmer',
-              style: 'destructive',
-              onPress: () => downgradeToFree(),
-            },
-          ]
-        );
-      }
+    if (!user || !profile) {
+      console.log('❌ Utilisateur non connecté');
+      Alert.alert('Erreur', 'Vous devez être connecté pour souscrire à un abonnement');
       return;
     }
 
-    // Si déjà sur ce plan
+    console.log('📋 Tentative d\'abonnement:', {
+      planChoisi: plan.name,
+      planActuel: currentPlan
+    });
+
+    const planHierarchy = { starter: 1, pro: 2, premium: 3 };
+    const currentLevel = planHierarchy[currentPlan as keyof typeof planHierarchy] || 0;
+    const newLevel = planHierarchy[plan.plan_type as keyof typeof planHierarchy] || 0;
+
+    // Si déjà sur ce plan - Renouvellement
     if (currentPlan === plan.plan_type) {
       if (daysRemaining && daysRemaining > 0) {
         Alert.alert(
           'Renouveler l\'abonnement',
-          `Votre abonnement expire dans ${daysRemaining} jours. Voulez-vous le renouveler maintenant ?`,
+          `Votre abonnement ${plan.name} expire dans ${daysRemaining} jours. Voulez-vous le renouveler maintenant ?`,
           [
-            { text: 'Plus tard', style: 'cancel' },
+            { text: 'Annuler', style: 'cancel' },
             {
               text: 'Renouveler',
               onPress: () => openPaymentModal(plan),
@@ -200,21 +184,67 @@ export default function SubscriptionPlansScreen() {
           ]
         );
       } else {
-        Alert.alert('Info', 'Vous êtes déjà abonné à ce plan');
+        Alert.alert(
+          'Renouveler l\'abonnement',
+          `Voulez-vous renouveler votre abonnement ${plan.name} ?`,
+          [
+            { text: 'Annuler', style: 'cancel' },
+            {
+              text: 'Renouveler',
+              onPress: () => openPaymentModal(plan),
+            },
+          ]
+        );
       }
       return;
     }
 
-    // Ouvrir le modal de paiement
+    // Upgrade - Passer à un plan supérieur
+    if (newLevel > currentLevel) {
+      Alert.alert(
+        'Passer à un plan supérieur',
+        `Voulez-vous passer de ${currentPlan.toUpperCase()} à ${plan.name} ?\n\nVous bénéficierez immédiatement de tous les avantages du nouveau plan.`,
+        [
+          { text: 'Annuler', style: 'cancel' },
+          {
+            text: 'Continuer',
+            onPress: () => openPaymentModal(plan),
+          },
+        ]
+      );
+      return;
+    }
+
+    // Downgrade - Passer à un plan inférieur
+    if (newLevel < currentLevel) {
+      Alert.alert(
+        'Passer à un plan inférieur',
+        `Attention : Vous allez passer de ${currentPlan.toUpperCase()} à ${plan.name}.\n\nVous perdrez certains avantages de votre plan actuel. Êtes-vous sûr ?`,
+        [
+          { text: 'Annuler', style: 'cancel' },
+          {
+            text: 'Continuer',
+            style: 'destructive',
+            onPress: () => openPaymentModal(plan),
+          },
+        ]
+      );
+      return;
+    }
+
+    // Cas par défaut - Ouvrir le modal de paiement
     openPaymentModal(plan);
   };
 
   const openPaymentModal = (plan: SubscriptionPlan) => {
+    console.log('🔓 Ouverture du modal de confirmation pour:', plan.name);
+    // Définir le plan avant d'ouvrir le modal
     setSelectedPlan(plan);
-    setPaymentStep('method');
-    setSelectedPaymentMethod(null);
-    setPhoneNumber('');
-    setShowPaymentModal(true);
+    setPaymentStep('confirm');
+    // Utiliser setTimeout pour s'assurer que l'état est mis à jour
+    setTimeout(() => {
+      setShowPaymentModal(true);
+    }, 0);
   };
 
   const closePaymentModal = () => {
@@ -225,102 +255,66 @@ export default function SubscriptionPlansScreen() {
     setPaymentStep('method');
   };
 
-  const downgradeToFree = async () => {
-    try {
-      setSubscribing(true);
-
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          subscription_plan: 'free',
-          is_premium: false,
-          subscription_expires_at: null,
-        })
-        .eq('id', user.id);
-
-      if (error) throw error;
-
-      // Enregistrer dans l'historique
-      await supabase.from('subscription_history').insert({
-        user_id: user.id,
-        plan_type: 'free',
-        action: 'downgrade',
-        amount: 0,
-        currency: 'XOF',
-      });
-
-      Alert.alert('Succès', 'Vous êtes maintenant sur le plan gratuit');
-      await loadData();
-    } catch (error: any) {
-      console.error('Error downgrading:', error);
-      Alert.alert('Erreur', error.message || 'Impossible de rétrograder');
-    } finally {
-      setSubscribing(false);
-    }
-  };
-
-  const processPayment = async () => {
-    if (!selectedPlan || !selectedPaymentMethod || !user) return;
-
-    // Validation du numéro de téléphone pour mobile money
-    if (['orange_money', 'wave', 'free_money'].includes(selectedPaymentMethod)) {
-      if (!phoneNumber || phoneNumber.length < 9) {
-        Alert.alert('Erreur', 'Veuillez entrer un numéro de téléphone valide');
-        return;
-      }
+  const processSubscriptionRequest = async () => {
+    if (!selectedPlan || !user) {
+      Alert.alert('Erreur', 'Veuillez sélectionner un plan');
+      return;
     }
 
     setPaymentStep('processing');
 
     try {
-      // Simuler le traitement du paiement (2-3 secondes)
-      await new Promise(resolve => setTimeout(resolve, 2500));
+      // Créer une demande d'abonnement simple
+      const { data: result, error } = await supabase.rpc('request_subscription', {
+        p_user_id: user.id,
+        p_plan_type: selectedPlan.plan_type,
+        p_billing_period: billingPeriod
+      });
 
-      // Calculer la date d'expiration
-      const expiresAt = new Date();
-      if (billingPeriod === 'monthly') {
-        expiresAt.setMonth(expiresAt.getMonth() + 1);
-      } else {
-        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+      if (error) {
+        console.error('❌ Erreur:', error);
+        throw error;
       }
 
-      // Mettre à jour le profil
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          subscription_plan: selectedPlan.plan_type,
-          is_premium: selectedPlan.plan_type !== 'free',
-          subscription_expires_at: expiresAt.toISOString(),
-        })
-        .eq('id', user.id);
+      // Vérifier le succès
+      if (!result || !result.success) {
+        throw new Error(result?.error || 'Erreur lors de la demande d\'abonnement');
+      }
 
-      if (updateError) throw updateError;
-
-      // Calculer le montant
-      const amount = billingPeriod === 'monthly'
-        ? selectedPlan.price_monthly
-        : (selectedPlan.price_yearly || selectedPlan.price_monthly * 10);
-
-      // Enregistrer dans l'historique
-      await supabase.from('subscription_history').insert({
-        user_id: user.id,
-        plan_type: selectedPlan.plan_type,
-        action: currentPlan === selectedPlan.plan_type ? 'renewal' : 'upgrade',
-        amount: amount,
-        currency: selectedPlan.currency,
-        payment_method: selectedPaymentMethod,
-        billing_period: billingPeriod,
-        expires_at: expiresAt.toISOString(),
-      });
+      console.log('✅ Demande envoyée:', result.request_id);
+      console.log('✅ Message:', result.message);
 
       setPaymentStep('success');
 
-      // Recharger les données après 2 secondes
+      // Recharger les données et fermer le modal après 3 secondes
       setTimeout(async () => {
+        console.log('🔄 Rechargement des données...');
         await loadData();
-      }, 2000);
+        setShowPaymentModal(false);
+      }, 3000);
+
     } catch (error: any) {
-      console.error('Error processing payment:', error);
+      console.error('❌ Erreur lors du traitement du paiement:', error);
+      console.error('Détails:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+
+      // Message d'erreur personnalisé
+      let errorMessage = 'Une erreur est survenue. Veuillez réessayer.';
+      if (error.message?.includes('function') && error.message?.includes('does not exist')) {
+        errorMessage = 'La fonction de validation n\'est pas encore installée. Veuillez exécuter COMPLETE_DATABASE_SETUP.sql dans Supabase.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      Alert.alert(
+        'Erreur de paiement',
+        errorMessage,
+        [{ text: 'OK' }]
+      );
       setPaymentStep('error');
     }
   };
@@ -341,16 +335,15 @@ export default function SubscriptionPlansScreen() {
     return 0;
   };
 
-  const renderFeature = (icon: any, text: string, included: boolean = true) => {
-    const Icon = icon;
+  const renderFeature = (iconName: string, text: string, included: boolean = true) => {
     return (
       <View style={styles.featureRow}>
         {included ? (
-          <Check size={16} color="#10B981" strokeWidth={3} />
+          <Ionicons name="checkmark-circle" size={16} color="#10B981" />
         ) : (
           <View style={styles.featureNotIncluded} />
         )}
-        <Icon size={16} color={included ? '#6B7280' : '#D1D5DB'} />
+        <Ionicons name={iconName as any} size={16} color={included ? '#6B7280' : '#D1D5DB'} />
         <Text style={[styles.featureText, !included && styles.featureTextDisabled]}>
           {text}
         </Text>
@@ -359,12 +352,26 @@ export default function SubscriptionPlansScreen() {
   };
 
   const renderPlanCard = (plan: SubscriptionPlan, index: number) => {
-    const Icon = planIcons[plan.plan_type];
+    const iconConfig = planIcons[plan.plan_type];
+
+    // Si le plan n'a pas d'icône configurée, ne pas l'afficher
+    if (!iconConfig) {
+      return null;
+    }
+
+    const IconComponent = iconConfig.type;
     const color = planColors[plan.plan_type];
     const isCurrentPlan = currentPlan === plan.plan_type;
     const isPopular = plan.plan_type === 'pro';
     const price = getPrice(plan);
     const savings = getSavings(plan);
+
+    // Déterminer le type de changement de plan
+    const planHierarchy = { starter: 1, pro: 2, premium: 3 };
+    const currentLevel = planHierarchy[currentPlan as keyof typeof planHierarchy] || 0;
+    const newLevel = planHierarchy[plan.plan_type as keyof typeof planHierarchy] || 0;
+    const isUpgrade = newLevel > currentLevel;
+    const isDowngrade = newLevel < currentLevel;
 
     return (
       <Animated.View
@@ -379,16 +386,20 @@ export default function SubscriptionPlansScreen() {
             ],
           },
         ]}>
-        {isPopular && (
+        {isPopular && !isCurrentPlan && (
           <View style={styles.popularBadge}>
-            <Sparkles size={14} color="#FFFFFF" />
+            <Ionicons name="sparkles" size={14} color="#FFFFFF" />
             <Text style={styles.popularText}>POPULAIRE</Text>
           </View>
         )}
-        {isCurrentPlan && daysRemaining !== null && daysRemaining > 0 && (
+        {isCurrentPlan && (
           <View style={[styles.currentBadge, { backgroundColor: color }]}>
-            <Clock size={12} color="#FFFFFF" />
-            <Text style={styles.currentBadgeText}>{daysRemaining}j restants</Text>
+            <Ionicons name="checkmark-circle" size={14} color="#FFFFFF" />
+            <Text style={styles.currentBadgeText}>
+              {daysRemaining && daysRemaining > 0
+                ? `PLAN ACTUEL · ${daysRemaining}j restants`
+                : 'PLAN ACTUEL'}
+            </Text>
           </View>
         )}
         <View
@@ -400,7 +411,7 @@ export default function SubscriptionPlansScreen() {
           {/* Header */}
           <View style={styles.planHeader}>
             <View style={[styles.planIconContainer, { backgroundColor: color + '20' }]}>
-              <Icon size={32} color={color} />
+              <IconComponent name={iconConfig.name} size={32} color={color} />
             </View>
             <View style={styles.planHeaderText}>
               <Text style={[styles.planName, { color }]}>{plan.name}</Text>
@@ -439,35 +450,35 @@ export default function SubscriptionPlansScreen() {
           {/* Features */}
           <View style={styles.featuresContainer}>
             {renderFeature(
-              Target,
+              'pricetag-outline',
               `Commission ${plan.commission_rate}%`
             )}
             {renderFeature(
-              Package,
+              'cube-outline',
               plan.max_products >= 999999
                 ? 'Produits illimités'
                 : `${plan.max_products} produits max`
             )}
             {renderFeature(
-              Eye,
+              'eye-outline',
               plan.visibility_boost > 0
                 ? `Visibilité +${plan.visibility_boost}%`
                 : 'Visibilité standard'
             )}
             {renderFeature(
-              Camera,
+              'camera-outline',
               plan.hd_photos ? 'Photos HD' : 'Photos standard',
               plan.hd_photos
             )}
             {renderFeature(
-              Video,
+              'videocam-outline',
               plan.video_allowed ? 'Vidéos autorisées' : 'Pas de vidéos',
               plan.video_allowed
             )}
             {plan.badge_name &&
-              renderFeature(Check, `Badge "${plan.badge_name}"`)}
+              renderFeature('ribbon-outline', `Badge "${plan.badge_name}"`)}
             {renderFeature(
-              Headphones,
+              'headset-outline',
               plan.support_level === 'concierge'
                 ? 'Concierge 24/7'
                 : plan.support_level === 'vip'
@@ -478,17 +489,17 @@ export default function SubscriptionPlansScreen() {
               plan.support_level !== 'standard'
             )}
             {renderFeature(
-              BarChart3,
+              'bar-chart-outline',
               'Statistiques avancées',
               plan.advanced_analytics
             )}
             {renderFeature(
-              Sparkles,
+              'analytics-outline',
               'Analytics IA',
               plan.ai_analytics
             )}
             {renderFeature(
-              TrendingUp,
+              'trending-up-outline',
               'Campagnes sponsorisées',
               plan.sponsored_campaigns
             )}
@@ -510,14 +521,14 @@ export default function SubscriptionPlansScreen() {
               <>
                 <Text style={styles.subscribeButtonText}>
                   {isCurrentPlan
-                    ? (daysRemaining && daysRemaining > 0 ? 'Renouveler' : 'Plan actuel')
-                    : plan.plan_type === 'free'
-                    ? 'Passer au gratuit'
+                    ? 'Renouveler'
+                    : isUpgrade
+                    ? 'Passer au plan supérieur'
+                    : isDowngrade
+                    ? 'Passer au plan inférieur'
                     : 'Choisir ce plan'}
                 </Text>
-                {(!isCurrentPlan || (daysRemaining && daysRemaining > 0)) && (
-                  <ChevronRight size={20} color="#FFFFFF" />
-                )}
+                <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
               </>
             )}
           </TouchableOpacity>
@@ -527,31 +538,45 @@ export default function SubscriptionPlansScreen() {
   };
 
   const renderPaymentModal = () => {
-    if (!selectedPlan) return null;
+    // Ne pas rendre le modal si selectedPlan n'est pas défini ou si le modal n'est pas visible
+    if (!selectedPlan || !showPaymentModal) {
+      if (!selectedPlan && showPaymentModal) {
+        console.log('❌ Modal: selectedPlan est null');
+      }
+      return null;
+    }
 
     const price = getPrice(selectedPlan);
     const savings = getSavings(selectedPlan);
 
+    console.log('📱 Rendu du modal - Étape:', paymentStep, 'Plan:', selectedPlan.name);
+
     return (
       <Modal
-        visible={showPaymentModal}
+        visible={true}
         animationType="slide"
         transparent={true}
-        onRequestClose={closePaymentModal}>
+        onRequestClose={closePaymentModal}
+        statusBarTranslucent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <ScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled">
+            <View style={styles.modalContent}>
             {/* Header */}
             <View style={styles.modalHeader}>
               {paymentStep !== 'success' && paymentStep !== 'processing' && (
                 <TouchableOpacity
                   style={styles.modalCloseButton}
                   onPress={closePaymentModal}>
-                  <X size={24} color="#6B7280" />
+                  <Ionicons name="close" size={24} color="#6B7280" />
                 </TouchableOpacity>
               )}
               <Text style={styles.modalTitle}>
                 {paymentStep === 'method' && 'Choisir le paiement'}
                 {paymentStep === 'details' && 'Détails du paiement'}
+                {paymentStep === 'confirm' && 'Confirmation'}
                 {paymentStep === 'processing' && 'Traitement en cours'}
                 {paymentStep === 'success' && 'Paiement réussi !'}
                 {paymentStep === 'error' && 'Erreur de paiement'}
@@ -622,7 +647,6 @@ export default function SubscriptionPlansScreen() {
               <View style={styles.paymentMethods}>
                 <Text style={styles.sectionTitle}>Méthode de paiement</Text>
                 {paymentMethods.map((method) => {
-                  const MethodIcon = method.icon;
                   return (
                     <TouchableOpacity
                       key={method.id}
@@ -632,11 +656,11 @@ export default function SubscriptionPlansScreen() {
                       ]}
                       onPress={() => setSelectedPaymentMethod(method.id)}>
                       <View style={[styles.paymentMethodIcon, { backgroundColor: method.color + '20' }]}>
-                        <MethodIcon size={24} color={method.color} />
+                        <method.iconType name={method.icon as any} size={24} color={method.color} />
                       </View>
                       <Text style={styles.paymentMethodName}>{method.name}</Text>
                       {selectedPaymentMethod === method.id && (
-                        <Check size={20} color="#10B981" />
+                        <Ionicons name="checkmark-circle" size={20} color="#10B981" />
                       )}
                     </TouchableOpacity>
                   );
@@ -647,9 +671,16 @@ export default function SubscriptionPlansScreen() {
                     !selectedPaymentMethod && styles.continueButtonDisabled,
                   ]}
                   disabled={!selectedPaymentMethod}
-                  onPress={() => setPaymentStep('details')}>
+                  onPress={() => {
+                    // Pour les paiements bancaires, passer directement à la confirmation
+                    if (selectedPaymentMethod === 'bank') {
+                      setPaymentStep('confirm');
+                    } else {
+                      setPaymentStep('details');
+                    }
+                  }}>
                   <Text style={styles.continueButtonText}>Continuer</Text>
-                  <ChevronRight size={20} color="#FFFFFF" />
+                  <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
             )}
@@ -658,10 +689,10 @@ export default function SubscriptionPlansScreen() {
             {paymentStep === 'details' && (
               <View style={styles.paymentDetails}>
                 <TouchableOpacity
-                  style={styles.backButton}
+                  style={styles.modalBackButton}
                   onPress={() => setPaymentStep('method')}>
-                  <ArrowLeft size={20} color="#6B7280" />
-                  <Text style={styles.backButtonText}>Retour</Text>
+                  <Ionicons name="arrow-back" size={20} color="#6B7280" />
+                  <Text style={styles.modalBackButtonText}>Retour</Text>
                 </TouchableOpacity>
 
                 {['orange_money', 'wave', 'free_money'].includes(selectedPaymentMethod || '') && (
@@ -676,6 +707,7 @@ export default function SubscriptionPlansScreen() {
                         value={phoneNumber}
                         onChangeText={setPhoneNumber}
                         maxLength={12}
+                        autoFocus
                       />
                     </View>
                     <Text style={styles.inputHint}>
@@ -688,7 +720,7 @@ export default function SubscriptionPlansScreen() {
                   <View style={styles.cardInfo}>
                     <Text style={styles.inputLabel}>Paiement par carte</Text>
                     <Text style={styles.inputHint}>
-                      Vous serez redirigé vers une page de paiement sécurisée
+                      Vous serez redirigé vers une page de paiement sécurisée lors de la confirmation
                     </Text>
                   </View>
                 )}
@@ -710,23 +742,106 @@ export default function SubscriptionPlansScreen() {
                         {user?.id?.slice(0, 8).toUpperCase()}
                       </Text>
                     </View>
+                    <Text style={styles.inputHint}>
+                      Effectuez le virement puis confirmez pour activer votre abonnement
+                    </Text>
                   </View>
                 )}
 
                 <View style={styles.securityNote}>
-                  <Shield size={16} color="#10B981" />
+                  <Ionicons name="shield-checkmark" size={16} color="#10B981" />
                   <Text style={styles.securityNoteText}>
                     Paiement sécurisé et crypté
                   </Text>
                 </View>
 
                 <TouchableOpacity
-                  style={styles.payButton}
-                  onPress={processPayment}>
+                  style={[
+                    styles.payButton,
+                    (['orange_money', 'wave', 'free_money'].includes(selectedPaymentMethod || '') &&
+                     (!phoneNumber || phoneNumber.length < 9)) && styles.payButtonDisabled
+                  ]}
+                  disabled={
+                    ['orange_money', 'wave', 'free_money'].includes(selectedPaymentMethod || '') &&
+                    (!phoneNumber || phoneNumber.length < 9)
+                  }
+                  onPress={() => {
+                    console.log('✅ Passage à l\'étape de confirmation');
+                    setPaymentStep('confirm');
+                  }}>
                   <Text style={styles.payButtonText}>
-                    Payer {price.toLocaleString()} {selectedPlan.currency}
+                    Continuer
                   </Text>
                 </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Step: Confirmation */}
+            {paymentStep === 'confirm' && selectedPlan && (
+              <View style={styles.confirmContainer}>
+                <View style={styles.confirmHeader}>
+                  <Ionicons name="checkmark-circle" size={64} color="#F59E0B" />
+                  <Text style={styles.confirmTitle}>Demander cet abonnement</Text>
+                  <Text style={styles.confirmSubtitle}>
+                    Votre demande sera envoyée à l'administrateur pour validation
+                  </Text>
+                </View>
+
+                <View style={styles.confirmDetails}>
+                  <View style={styles.confirmRow}>
+                    <Text style={styles.confirmLabel}>Plan choisi:</Text>
+                    <Text style={styles.confirmValue}>{selectedPlan.name}</Text>
+                  </View>
+                  <View style={styles.confirmRow}>
+                    <Text style={styles.confirmLabel}>Période:</Text>
+                    <Text style={styles.confirmValue}>
+                      {billingPeriod === 'monthly' ? 'Mensuel' : 'Annuel'}
+                    </Text>
+                  </View>
+                  <View style={[styles.confirmRow, styles.confirmRowTotal]}>
+                    <Text style={styles.confirmLabelTotal}>Montant:</Text>
+                    <Text style={styles.confirmValueTotal}>
+                      {(billingPeriod === 'monthly' ? selectedPlan.price_monthly : (selectedPlan.price_yearly || selectedPlan.price_monthly * 10)).toLocaleString()} {selectedPlan.currency}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.infoCard}>
+                  <Ionicons name="information-circle" size={20} color="#3B82F6" />
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoTitle}>Comment ça marche ?</Text>
+                    <Text style={styles.infoText}>
+                      1. Vous envoyez votre demande d'abonnement{'\n'}
+                      2. L'administrateur vérifie et valide{'\n'}
+                      3. Votre abonnement est activé{'\n'}
+                      4. Vous recevrez une notification de confirmation
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.confirmActions}>
+                  <TouchableOpacity
+                    style={styles.confirmButtonPrimary}
+                    onPress={processSubscriptionRequest}>
+                    <Text style={styles.confirmButtonPrimaryText}>
+                      Envoyer la demande
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.confirmButtonSecondary}
+                    onPress={() => closePaymentModal()}>
+                    <Text style={styles.confirmButtonSecondaryText}>
+                      Annuler
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.confirmNote}>
+                  <Ionicons name="shield-checkmark" size={16} color="#6B7280" />
+                  <Text style={styles.confirmNoteText}>
+                    Votre paiement est sécurisé et crypté
+                  </Text>
+                </View>
               </View>
             )}
 
@@ -735,10 +850,10 @@ export default function SubscriptionPlansScreen() {
               <View style={styles.processingContainer}>
                 <ActivityIndicator size="large" color="#F59E0B" />
                 <Text style={styles.processingText}>
-                  Traitement de votre paiement...
+                  Envoi de votre demande...
                 </Text>
                 <Text style={styles.processingSubtext}>
-                  Ne fermez pas cette fenêtre
+                  Veuillez patienter
                 </Text>
               </View>
             )}
@@ -747,24 +862,24 @@ export default function SubscriptionPlansScreen() {
             {paymentStep === 'success' && (
               <View style={styles.successContainer}>
                 <View style={styles.successIconContainer}>
-                  <CheckCircle size={64} color="#10B981" />
+                  <Ionicons name="time" size={64} color="#F59E0B" />
                 </View>
-                <Text style={styles.successTitle}>Paiement réussi !</Text>
+                <Text style={styles.successTitle}>Demande envoyée !</Text>
                 <Text style={styles.successText}>
-                  Votre abonnement {selectedPlan.name} est maintenant actif.
+                  Votre demande d'abonnement {selectedPlan.name} a été envoyée à l'administrateur.
                 </Text>
                 <View style={styles.successDetails}>
                   <Text style={styles.successDetailText}>
-                    Valide jusqu'au{' '}
-                    {new Date(
-                      Date.now() + (billingPeriod === 'monthly' ? 30 : 365) * 24 * 60 * 60 * 1000
-                    ).toLocaleDateString('fr-FR')}
+                    Vous serez notifié une fois que votre abonnement sera activé.
+                  </Text>
+                  <Text style={styles.successDetailText}>
+                    Status: En attente de validation
                   </Text>
                 </View>
                 <TouchableOpacity
                   style={styles.successButton}
                   onPress={closePaymentModal}>
-                  <Text style={styles.successButtonText}>Continuer</Text>
+                  <Text style={styles.successButtonText}>Fermer</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -773,7 +888,7 @@ export default function SubscriptionPlansScreen() {
             {paymentStep === 'error' && (
               <View style={styles.errorContainer}>
                 <View style={styles.errorIconContainer}>
-                  <AlertCircle size={64} color="#EF4444" />
+                  <Ionicons name="alert-circle" size={64} color="#EF4444" />
                 </View>
                 <Text style={styles.errorTitle}>Échec du paiement</Text>
                 <Text style={styles.errorText}>
@@ -795,6 +910,7 @@ export default function SubscriptionPlansScreen() {
               </View>
             )}
           </View>
+          </ScrollView>
         </View>
       </Modal>
     );
@@ -814,10 +930,17 @@ export default function SubscriptionPlansScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Plans d'Abonnement</Text>
-          <Text style={styles.subtitle}>
-            Choisissez le plan qui correspond à vos besoins
-          </Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color="#111827" />
+          </TouchableOpacity>
+          <View style={styles.headerContent}>
+            <Text style={styles.title}>Plans d'Abonnement</Text>
+            <Text style={styles.subtitle}>
+              Choisissez le plan qui correspond à vos besoins
+            </Text>
+          </View>
         </View>
 
         {/* Billing Period Toggle */}
@@ -857,7 +980,7 @@ export default function SubscriptionPlansScreen() {
 
         {/* Info Box */}
         <View style={styles.infoBox}>
-          <Sparkles size={24} color="#F59E0B" />
+          <Ionicons name="sparkles" size={24} color="#F59E0B" />
           <View style={styles.infoContent}>
             <Text style={styles.infoTitle}>Maximisez votre visibilité</Text>
             <Text style={styles.infoText}>
@@ -895,11 +1018,13 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 32,
+    paddingHorizontal: Math.min(20, SCREEN_WIDTH * 0.05),
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#F9FAFB',
   },
   loadingText: {
     marginTop: 12,
@@ -907,27 +1032,49 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   header: {
-    paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 20,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  headerContent: {
+    flex: 1,
+    alignItems: 'center',
+    marginRight: 40, // Pour centrer le texte malgré la flèche
   },
   title: {
-    fontSize: 32,
+    fontSize: Math.min(32, SCREEN_WIDTH * 0.08),
     fontWeight: '700',
     color: '#111827',
     marginBottom: 4,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: Math.min(16, SCREEN_WIDTH * 0.04),
     color: '#6B7280',
+    textAlign: 'center',
+    paddingHorizontal: 10,
   },
   billingPeriodContainer: {
     flexDirection: 'row',
-    marginHorizontal: 20,
     marginBottom: 20,
     padding: 4,
     backgroundColor: '#E5E7EB',
     borderRadius: 12,
+    maxWidth: 400,
+    alignSelf: 'center',
+    width: '100%',
   },
   billingPeriodOption: {
     flex: 1,
@@ -935,6 +1082,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 12,
+    paddingHorizontal: 8,
     borderRadius: 10,
     gap: 6,
   },
@@ -967,32 +1115,36 @@ const styles = StyleSheet.create({
   },
   infoBox: {
     flexDirection: 'row',
-    marginHorizontal: 20,
     marginBottom: 24,
     padding: 16,
     backgroundColor: '#FEF3C7',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#FDE047',
+    maxWidth: 600,
+    alignSelf: 'center',
+    width: '100%',
   },
   infoContent: {
     flex: 1,
     marginLeft: 12,
   },
   infoTitle: {
-    fontSize: 16,
+    fontSize: Math.min(16, SCREEN_WIDTH * 0.04),
     fontWeight: '700',
     color: '#92400E',
     marginBottom: 4,
   },
   infoText: {
-    fontSize: 14,
+    fontSize: Math.min(14, SCREEN_WIDTH * 0.035),
     color: '#92400E',
     lineHeight: 20,
   },
   plansContainer: {
-    paddingHorizontal: 20,
     gap: 20,
+    maxWidth: 600,
+    alignSelf: 'center',
+    width: '100%',
   },
   planCardWrapper: {
     position: 'relative',
@@ -1040,7 +1192,7 @@ const styles = StyleSheet.create({
   planCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 20,
+    padding: Math.min(20, SCREEN_WIDTH * 0.05),
     borderWidth: 2,
     borderColor: '#E5E7EB',
     shadowColor: '#000',
@@ -1059,10 +1211,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
+    flexWrap: 'wrap',
   },
   planIconContainer: {
-    width: 64,
-    height: 64,
+    width: Math.min(64, SCREEN_WIDTH * 0.15),
+    height: Math.min(64, SCREEN_WIDTH * 0.15),
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1070,14 +1223,15 @@ const styles = StyleSheet.create({
   },
   planHeaderText: {
     flex: 1,
+    minWidth: 150,
   },
   planName: {
-    fontSize: 24,
+    fontSize: Math.min(24, SCREEN_WIDTH * 0.06),
     fontWeight: '700',
     marginBottom: 4,
   },
   planDescription: {
-    fontSize: 14,
+    fontSize: Math.min(14, SCREEN_WIDTH * 0.035),
     color: '#6B7280',
     lineHeight: 20,
   },
@@ -1088,22 +1242,23 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E7EB',
   },
   priceFree: {
-    fontSize: 32,
+    fontSize: Math.min(32, SCREEN_WIDTH * 0.08),
     fontWeight: '700',
     color: '#10B981',
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    flexWrap: 'wrap',
   },
   priceAmount: {
-    fontSize: 40,
+    fontSize: Math.min(40, SCREEN_WIDTH * 0.1),
     fontWeight: '700',
     color: '#111827',
     marginRight: 8,
   },
   priceCurrency: {
-    fontSize: 18,
+    fontSize: Math.min(18, SCREEN_WIDTH * 0.045),
     fontWeight: '600',
     color: '#6B7280',
   },
@@ -1169,14 +1324,16 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   footerInfo: {
-    marginHorizontal: 20,
     marginTop: 32,
     padding: 16,
     backgroundColor: '#F3F4F6',
     borderRadius: 12,
+    maxWidth: 600,
+    alignSelf: 'center',
+    width: '100%',
   },
   footerText: {
-    fontSize: 14,
+    fontSize: Math.min(14, SCREEN_WIDTH * 0.035),
     color: '#6B7280',
     lineHeight: 20,
     textAlign: 'center',
@@ -1187,6 +1344,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+  },
+  modalScrollContent: {
+    flexGrow: 1,
   },
   modalContent: {
     backgroundColor: '#FFFFFF',
@@ -1347,13 +1507,13 @@ const styles = StyleSheet.create({
   paymentDetails: {
     paddingHorizontal: 20,
   },
-  backButton: {
+  modalBackButton: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
     gap: 8,
   },
-  backButtonText: {
+  modalBackButtonText: {
     fontSize: 14,
     color: '#6B7280',
   },
@@ -1431,10 +1591,281 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
   },
+  payButtonDisabled: {
+    backgroundColor: '#D1D5DB',
+    opacity: 0.6,
+  },
   payButtonText: {
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  // Confirmation Styles
+  confirmContainer: {
+    paddingHorizontal: Math.min(20, SCREEN_WIDTH * 0.05),
+    paddingVertical: 20,
+  },
+  confirmHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+    marginTop: 16,
+  },
+  confirmTitle: {
+    fontSize: Math.min(22, SCREEN_WIDTH * 0.055),
+    fontWeight: '700',
+    color: '#111827',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  confirmSubtitle: {
+    fontSize: Math.min(14, SCREEN_WIDTH * 0.035),
+    color: '#6B7280',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  confirmDetails: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: Math.min(16, SCREEN_WIDTH * 0.04),
+    marginBottom: 20,
+  },
+  confirmRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  confirmRowTotal: {
+    borderBottomWidth: 0,
+    marginTop: 8,
+    paddingTop: 16,
+    borderTopWidth: 2,
+    borderTopColor: '#F59E0B',
+  },
+  confirmLabel: {
+    fontSize: Math.min(14, SCREEN_WIDTH * 0.035),
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  confirmValue: {
+    fontSize: Math.min(14, SCREEN_WIDTH * 0.035),
+    color: '#111827',
+    fontWeight: '600',
+  },
+  confirmLabelTotal: {
+    fontSize: Math.min(16, SCREEN_WIDTH * 0.04),
+    color: '#111827',
+    fontWeight: '700',
+  },
+  confirmValueTotal: {
+    fontSize: Math.min(18, SCREEN_WIDTH * 0.045),
+    color: '#F59E0B',
+    fontWeight: '700',
+  },
+  infoCard: {
+    flexDirection: 'row',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  confirmActions: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  confirmButtonPrimary: {
+    backgroundColor: '#F59E0B',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  confirmButtonPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: Math.min(16, SCREEN_WIDTH * 0.04),
+    fontWeight: '700',
+  },
+  confirmButtonSecondary: {
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  confirmButtonSecondaryText: {
+    color: '#6B7280',
+    fontSize: Math.min(14, SCREEN_WIDTH * 0.035),
+    fontWeight: '600',
+  },
+  confirmNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+  },
+  confirmNoteText: {
+    fontSize: Math.min(12, SCREEN_WIDTH * 0.03),
+    color: '#6B7280',
+  },
+  confirmButtonDisabled: {
+    opacity: 0.5,
+  },
+  // Bank Info Card Styles
+  bankInfoCard: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: Math.min(20, SCREEN_WIDTH * 0.05),
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  bankInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  bankInfoTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1E40AF',
+  },
+  bankInfoDetails: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  bankInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  bankInfoLabel: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  bankInfoValue: {
+    fontSize: 13,
+    color: '#111827',
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'right',
+  },
+  bankInfoNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#BFDBFE',
+  },
+  bankInfoNoteText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#6B7280',
+    lineHeight: 18,
+  },
+  // Payment Proof Styles
+  paymentProofSection: {
+    marginTop: 20,
+    marginBottom: 20,
+    paddingHorizontal: Math.min(20, SCREEN_WIDTH * 0.05),
+  },
+  paymentProofHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  paymentProofTitle: {
+    fontSize: Math.min(16, SCREEN_WIDTH * 0.04),
+    fontWeight: '700',
+    color: '#111827',
+  },
+  paymentProofSubtitle: {
+    fontSize: Math.min(13, SCREEN_WIDTH * 0.0325),
+    color: '#6B7280',
+    marginBottom: 16,
+  },
+  imagePickerButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  imagePickerButton: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    backgroundColor: '#FFF7ED',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#F59E0B',
+    borderStyle: 'dashed',
+    gap: 8,
+  },
+  imagePickerButtonText: {
+    fontSize: Math.min(13, SCREEN_WIDTH * 0.0325),
+    color: '#F59E0B',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  imagePreviewContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+  },
+  imagePreview: {
+    width: '100%',
+    height: '100%',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageValidBadge: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(16, 185, 129, 0.9)',
+    borderRadius: 20,
+  },
+  imageValidText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   processingContainer: {
     alignItems: 'center',

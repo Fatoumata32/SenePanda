@@ -90,11 +90,8 @@ export function SalesChart({ data, period, onPeriodChange }: SalesChartProps) {
   }, [chartPoints]);
 
   const formatAmount = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'XOF',
-      minimumFractionDigits: 0,
-    }).format(amount);
+    // Utiliser un formatage personnalisé car Intl ne supporte pas 'FCFA'
+    return `${amount.toLocaleString('fr-FR')} FCFA`;
   };
 
   const formatDate = (dateStr: string) => {

@@ -7,9 +7,6 @@ import ShopIcon from '@/components/icons/ShopIcon';
 import HeartIcon from '@/components/icons/HeartIcon';
 import MessageIcon from '@/components/icons/MessageIcon';
 import UserIcon from '@/components/icons/UserIcon';
-import { View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import CartBadge from '@/components/cart/CartBadge';
 
 export default function TabLayout() {
   const { isAuthenticated, hasRoleSelected, isLoading } = useNavigation();

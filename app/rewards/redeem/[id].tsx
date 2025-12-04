@@ -304,7 +304,7 @@ export default function RedeemRewardScreen() {
           {reward.value && (
             <View style={styles.valueTag}>
               <Text style={styles.valueText}>
-                {`${reward.value.toLocaleString()} XOF`}
+                {`${reward.value.toLocaleString()} FCFA`}
               </Text>
             </View>
           )}

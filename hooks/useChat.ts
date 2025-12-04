@@ -227,7 +227,14 @@ export function useChat(conversationId?: string) {
       .on('broadcast', { event: 'typing' }, (payload: any) => {
         setTyping(payload.payload.is_typing);
       })
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ [useChat] Canal activé pour conversation:', conversationId);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          // Erreur silencieuse - pas de console.error visible
+          console.warn('⚠️ [useChat] Canal non disponible pour conversation:', conversationId);
+        }
+      });
 
     channelRef.current = channel;
 

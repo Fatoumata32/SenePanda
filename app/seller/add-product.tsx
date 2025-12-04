@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { pickImageFromGallery, takePhoto as capturePhoto, uploadProductImages } from '@/lib/image-upload';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
-import { Video as ExpoVideo } from 'expo-av';
+import { Video as ExpoVideo, ResizeMode } from 'expo-av';
 
 export default function AddProductScreen() {
   const router = useRouter();
@@ -416,7 +416,7 @@ export default function AddProductScreen() {
                 source={{ uri: videoUri }}
                 style={styles.videoPreview}
                 useNativeControls
-                resizeMode="contain"
+                resizeMode={ResizeMode.CONTAIN}
                 isLooping
               />
               <TouchableOpacity

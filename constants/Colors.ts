@@ -48,8 +48,14 @@ export const Colors = {
   gradientSubscription: ['#f9eddd', '#FFFACD', '#f9eddd'],
 
   // Border Colors
+  border: '#E5E7EB',
   borderLight: '#e0e0e0',
   borderFocus: '#FFD700',
+
+  // Light Colors (for backgrounds)
+  lightBlue: '#DBEAFE',
+  lightGreen: '#D1FAE5',
+  errorLight: '#FEE2E2',
 
   // Shadow Colors (for React Native)
   shadowLight: 'rgba(0, 0, 0, 0.05)',
@@ -95,6 +101,7 @@ export const Typography = {
     base: 16,
     lg: 18,
     xl: 20,
+    xxl: 22,
     '2xl': 24,
     '3xl': 30,
     '4xl': 36,

@@ -518,7 +518,7 @@ END $$;
 DO $$ BEGIN
     IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'products') THEN
         IF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'currency') THEN
-            ALTER TABLE products ADD COLUMN currency TEXT DEFAULT 'XOF';
+            ALTER TABLE products ADD COLUMN currency TEXT DEFAULT 'FCFA';
         END IF;
     END IF;
 END $$;
@@ -629,7 +629,7 @@ CREATE TABLE IF NOT EXISTS products (
     description TEXT,
     price DECIMAL(10,2) NOT NULL,
     original_price DECIMAL(10,2),
-    currency TEXT DEFAULT 'XOF',
+    currency TEXT DEFAULT 'FCFA',
     image_url TEXT,
     images TEXT[],
     stock INTEGER DEFAULT 0,
@@ -916,7 +916,7 @@ CREATE TABLE IF NOT EXISTS subscription_history (
     plan_type TEXT NOT NULL,
     action TEXT NOT NULL, -- 'upgrade', 'downgrade', 'renewal', 'cancel'
     amount DECIMAL(10,2) DEFAULT 0,
-    currency TEXT DEFAULT 'XOF',
+    currency TEXT DEFAULT 'FCFA',
     payment_method TEXT, -- 'orange_money', 'wave', 'free_money', 'card', 'bank'
     billing_period TEXT, -- 'monthly', 'yearly'
     expires_at TIMESTAMP WITH TIME ZONE,
@@ -1624,9 +1624,9 @@ BEGIN
     JOIN products p ON p.id = ci.product_id
     WHERE ci.user_id = p_user_id;
 
-    -- Calculer les frais de livraison (gratuit au-dessus de 25000 XOF)
+    -- Calculer les frais de livraison (gratuit au-dessus de 25000 FCFA)
     IF v_subtotal < 25000 THEN
-        v_shipping_cost := 2500; -- 2500 XOF pour les commandes < 25000 XOF
+        v_shipping_cost := 2500; -- 2500 FCFA pour les commandes < 25000 FCFA
     END IF;
 
     -- Calculer la taxe (10%)
@@ -1718,7 +1718,7 @@ BEGIN
     -- Vider le panier
     DELETE FROM cart_items WHERE user_id = p_user_id;
 
-    -- Ajouter des points de fidélité (1 point pour 1000 XOF dépensé)
+    -- Ajouter des points de fidélité (1 point pour 1000 FCFA dépensé)
     INSERT INTO points_transactions (user_id, points, type, description, reference_id)
     VALUES (
         p_user_id,
@@ -1793,6 +1793,210 @@ CREATE OR REPLACE FUNCTION clear_cart(p_user_id UUID)
 RETURNS VOID AS $$
 BEGIN
     DELETE FROM cart_items WHERE user_id = p_user_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- =============================================
+-- 12.5 GESTION DES ABONNEMENTS
+-- =============================================
+
+-- Fonction pour valider et effectuer un changement d'abonnement
+CREATE OR REPLACE FUNCTION change_subscription(
+    p_user_id UUID,
+    p_new_plan_type TEXT,
+    p_payment_method TEXT,
+    p_billing_period TEXT,
+    p_amount DECIMAL(10,2)
+)
+RETURNS JSON AS $$
+DECLARE
+    v_current_plan TEXT;
+    v_old_expires_at TIMESTAMP WITH TIME ZONE;
+    v_new_expires_at TIMESTAMP WITH TIME ZONE;
+    v_action TEXT;
+    v_plan_hierarchy JSONB := '{"free": 0, "starter": 1, "pro": 2, "premium": 3}';
+    v_current_level INTEGER;
+    v_new_level INTEGER;
+    v_result JSON;
+BEGIN
+    -- Récupérer le plan actuel
+    SELECT subscription_plan, subscription_expires_at
+    INTO v_current_plan, v_old_expires_at
+    FROM profiles
+    WHERE id = p_user_id;
+
+    -- Si l'utilisateur n'existe pas
+    IF NOT FOUND THEN
+        RETURN json_build_object(
+            'success', false,
+            'error', 'Utilisateur non trouvé'
+        );
+    END IF;
+
+    -- Définir le plan actuel si NULL
+    IF v_current_plan IS NULL THEN
+        v_current_plan := 'free';
+    END IF;
+
+    -- Calculer les niveaux
+    v_current_level := COALESCE((v_plan_hierarchy ->> v_current_plan)::INTEGER, 0);
+    v_new_level := COALESCE((v_plan_hierarchy ->> p_new_plan_type)::INTEGER, 0);
+
+    -- Déterminer l'action
+    IF v_current_plan = p_new_plan_type THEN
+        v_action := 'renewal';
+    ELSIF v_new_level > v_current_level THEN
+        v_action := 'upgrade';
+    ELSIF v_new_level < v_current_level THEN
+        v_action := 'downgrade';
+    ELSE
+        v_action := 'change';
+    END IF;
+
+    -- Calculer la nouvelle date d'expiration
+    v_new_expires_at := NOW();
+    IF p_billing_period = 'monthly' THEN
+        v_new_expires_at := v_new_expires_at + INTERVAL '1 month';
+    ELSIF p_billing_period = 'yearly' THEN
+        v_new_expires_at := v_new_expires_at + INTERVAL '1 year';
+    ELSE
+        RETURN json_build_object(
+            'success', false,
+            'error', 'Période de facturation invalide (monthly ou yearly)'
+        );
+    END IF;
+
+    -- Mettre à jour le profil
+    UPDATE profiles
+    SET
+        subscription_plan = p_new_plan_type,
+        is_premium = (p_new_plan_type != 'free'),
+        subscription_expires_at = v_new_expires_at,
+        updated_at = NOW()
+    WHERE id = p_user_id;
+
+    -- Enregistrer dans l'historique
+    INSERT INTO subscription_history (
+        user_id,
+        plan_type,
+        action,
+        amount,
+        currency,
+        payment_method,
+        billing_period,
+        expires_at,
+        status
+    ) VALUES (
+        p_user_id,
+        p_new_plan_type,
+        v_action,
+        p_amount,
+        'FCFA',
+        p_payment_method,
+        p_billing_period,
+        v_new_expires_at,
+        'completed'
+    );
+
+    -- Retourner le résultat
+    v_result := json_build_object(
+        'success', true,
+        'action', v_action,
+        'old_plan', v_current_plan,
+        'new_plan', p_new_plan_type,
+        'old_expires_at', v_old_expires_at,
+        'new_expires_at', v_new_expires_at,
+        'message',
+            CASE
+                WHEN v_action = 'upgrade' THEN 'Félicitations ! Vous êtes passé au plan ' || p_new_plan_type || ' !'
+                WHEN v_action = 'downgrade' THEN 'Votre plan a été changé pour ' || p_new_plan_type
+                WHEN v_action = 'renewal' THEN 'Votre abonnement ' || p_new_plan_type || ' a été renouvelé avec succès !'
+                ELSE 'Votre abonnement a été mis à jour'
+            END
+    );
+
+    RETURN v_result;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN json_build_object(
+            'success', false,
+            'error', SQLERRM
+        );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Fonction pour vérifier si un utilisateur peut passer à un plan
+CREATE OR REPLACE FUNCTION can_change_to_plan(
+    p_user_id UUID,
+    p_target_plan TEXT
+)
+RETURNS JSON AS $$
+DECLARE
+    v_current_plan TEXT;
+    v_expires_at TIMESTAMP WITH TIME ZONE;
+    v_days_remaining INTEGER;
+    v_can_change BOOLEAN := true;
+    v_message TEXT;
+    v_plan_hierarchy JSONB := '{"free": 0, "starter": 1, "pro": 2, "premium": 3}';
+    v_current_level INTEGER;
+    v_target_level INTEGER;
+BEGIN
+    -- Récupérer les informations actuelles
+    SELECT subscription_plan, subscription_expires_at
+    INTO v_current_plan, v_expires_at
+    FROM profiles
+    WHERE id = p_user_id;
+
+    -- Si l'utilisateur n'existe pas
+    IF NOT FOUND THEN
+        RETURN json_build_object(
+            'can_change', false,
+            'reason', 'Utilisateur non trouvé'
+        );
+    END IF;
+
+    -- Définir le plan actuel si NULL
+    IF v_current_plan IS NULL THEN
+        v_current_plan := 'free';
+    END IF;
+
+    -- Calculer les jours restants
+    IF v_expires_at IS NOT NULL THEN
+        v_days_remaining := EXTRACT(DAY FROM (v_expires_at - NOW()));
+    ELSE
+        v_days_remaining := 0;
+    END IF;
+
+    -- Calculer les niveaux
+    v_current_level := COALESCE((v_plan_hierarchy ->> v_current_plan)::INTEGER, 0);
+    v_target_level := COALESCE((v_plan_hierarchy ->> p_target_plan)::INTEGER, 0);
+
+    -- Déterminer si le changement est possible
+    IF v_current_plan = p_target_plan THEN
+        IF v_days_remaining > 0 THEN
+            v_message := 'Renouvellement disponible - ' || v_days_remaining || ' jours restants';
+        ELSE
+            v_message := 'Renouvellement disponible';
+        END IF;
+    ELSIF v_target_level > v_current_level THEN
+        v_message := 'Upgrade disponible vers ' || p_target_plan;
+    ELSIF v_target_level < v_current_level THEN
+        v_message := 'Downgrade vers ' || p_target_plan || ' (vous perdrez certains avantages)';
+    ELSE
+        v_message := 'Changement de plan disponible';
+    END IF;
+
+    RETURN json_build_object(
+        'can_change', v_can_change,
+        'current_plan', v_current_plan,
+        'target_plan', p_target_plan,
+        'days_remaining', v_days_remaining,
+        'is_upgrade', v_target_level > v_current_level,
+        'is_downgrade', v_target_level < v_current_level,
+        'is_renewal', v_current_plan = p_target_plan,
+        'message', v_message
+    );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

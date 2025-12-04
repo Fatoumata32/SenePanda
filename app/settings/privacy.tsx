@@ -16,10 +16,7 @@ import {
   Shield,
   MapPin,
   Bell,
-  BarChart3,
-  Share2,
   Cookie,
-  Mail,
   Info,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -27,11 +24,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 interface ConsentSettings {
   locationTracking: boolean;
   pushNotifications: boolean;
-  analyticsData: boolean;
-  personalizedAds: boolean;
-  thirdPartySharing: boolean;
   cookies: boolean;
-  marketingEmails: boolean;
 }
 
 const CONSENT_STORAGE_KEY = '@senepanda_consent_settings';
@@ -41,11 +34,7 @@ export default function PrivacySettingsScreen() {
   const [settings, setSettings] = useState<ConsentSettings>({
     locationTracking: false,
     pushNotifications: true,
-    analyticsData: true,
-    personalizedAds: false,
-    thirdPartySharing: false,
     cookies: true,
-    marketingEmails: false,
   });
   const [loading, setLoading] = useState(true);
 
@@ -96,11 +85,7 @@ export default function PrivacySettingsScreen() {
             const newSettings: ConsentSettings = {
               locationTracking: false,
               pushNotifications: false,
-              analyticsData: false,
-              personalizedAds: false,
-              thirdPartySharing: false,
               cookies: false,
-              marketingEmails: false,
             };
             setSettings(newSettings);
             saveSettings(newSettings);
@@ -129,44 +114,12 @@ export default function PrivacySettingsScreen() {
       color: '#3B82F6',
     },
     {
-      key: 'analyticsData' as keyof ConsentSettings,
-      icon: BarChart3,
-      title: 'Données analytiques',
-      description: 'Nous aide à améliorer l\'application en analysant son utilisation',
-      required: false,
-      color: '#8B5CF6',
-    },
-    {
-      key: 'personalizedAds' as keyof ConsentSettings,
-      icon: Share2,
-      title: 'Publicités personnalisées',
-      description: 'Affiche des publicités basées sur vos intérêts',
-      required: false,
-      color: '#F59E0B',
-    },
-    {
-      key: 'thirdPartySharing' as keyof ConsentSettings,
-      icon: Share2,
-      title: 'Partage avec des tiers',
-      description: 'Partage de données anonymisées avec nos partenaires',
-      required: false,
-      color: '#EC4899',
-    },
-    {
       key: 'cookies' as keyof ConsentSettings,
       icon: Cookie,
       title: 'Cookies',
       description: 'Stocke vos préférences et améliore votre expérience',
       required: false,
       color: '#6366F1',
-    },
-    {
-      key: 'marketingEmails' as keyof ConsentSettings,
-      icon: Mail,
-      title: 'Emails marketing',
-      description: 'Recevez nos newsletters et offres promotionnelles',
-      required: false,
-      color: '#EF4444',
     },
   ];
 

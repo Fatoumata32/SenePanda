@@ -13,10 +13,11 @@ import {
   Animated,
   Linking,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { Product, ProductReview } from '@/types/database';
-import { ArrowLeft, ShoppingCart, Minus, Plus, MessageSquare, Edit, MessageCircle, Store, Heart, ChevronLeft, ChevronRight, Check, Star, MapPin, ShoppingBag, UserPlus, Phone, Share2, Shield, Truck, RotateCcw, Clock } from 'lucide-react-native';
+import { ArrowLeft, ShoppingCart, Minus, Plus, MessageSquare, Edit, MessageCircle, Store, Heart, ChevronLeft, ChevronRight, Check, Star, MapPin, ShoppingBag, UserPlus, Phone, Share2, Shield, Truck, RotateCcw, Clock, Play } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import RatingStars from '@/components/RatingStars';
 import ReviewCard from '@/components/ReviewCard';
@@ -24,14 +25,39 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useCart } from '@/contexts/CartContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import useProductRecommendations from '@/hooks/useProductRecommendations';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Helper function to detect and convert YouTube URLs
+const getYouTubeVideoId = (url: string): string | null => {
+  if (!url) return null;
+
+  // Regular YouTube URL: https://www.youtube.com/watch?v=VIDEO_ID
+  const regExp1 = /(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/;
+  // Short YouTube URL: https://youtu.be/VIDEO_ID
+  const regExp2 = /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+  // YouTube embed URL: https://www.youtube.com/embed/VIDEO_ID
+  const regExp3 = /(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/;
+
+  const match = url.match(regExp1) || url.match(regExp2) || url.match(regExp3);
+  return match ? match[1] : null;
+};
+
+const isYouTubeUrl = (url: string): boolean => {
+  if (!url) return false;
+  return url.includes('youtube.com') || url.includes('youtu.be');
+};
 
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { addToCart: addToCartContext, loading: cartLoading } = useCart();
   const { isDark } = useTheme();
+
+  // Hook pour tracker les interactions produit
+  const { recordDetailView, recordFavorite, recordShare } = useProductRecommendations();
 
   // Theme colors
   const themeColors = {
@@ -76,12 +102,36 @@ export default function ProductDetailScreen() {
     ? [product.image_url]
     : [];
 
+  // Combine images and video into media gallery
+  const mediaItems = [
+    ...productImages.map((img, index) => ({ type: 'image' as const, uri: img, id: `img-${index}` })),
+    ...(product?.video_url ? [{ type: 'video' as const, uri: product.video_url, id: 'video-0' }] : [])
+  ];
+
+  const [selectedMediaIndex, setSelectedMediaIndex] = useState(0);
+  const selectedMedia = mediaItems[selectedMediaIndex];
+
+  // Create video player with the actual video URL
+  const videoPlayer = useVideoPlayer(product?.video_url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', player => {
+    player.loop = true;
+    player.muted = false;
+  });
+
+  // Update video source when product changes
+  useEffect(() => {
+    if (product?.video_url && videoPlayer) {
+      videoPlayer.replace(product.video_url);
+    }
+  }, [product?.video_url]);
+
   useEffect(() => {
     if (id) {
       fetchProduct();
       fetchReviews();
       checkCanReview();
       checkFavorite();
+      // Tracker la vue détaillée du produit
+      recordDetailView(id as string);
     }
   }, [id]);
 
@@ -285,6 +335,8 @@ export default function ProductDetailScreen() {
           .from('favorites')
           .insert({ user_id: user.id, product_id: id as string });
         setIsFavorite(true);
+        // Tracker l'ajout aux favoris
+        recordFavorite(id as string);
       }
     } catch (error) {
       console.error('Error toggling favorite:', error);
@@ -300,6 +352,8 @@ export default function ProductDetailScreen() {
 
   const shareProduct = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Tracker le partage
+    recordShare(id as string);
     // Implement share functionality
     Alert.alert('Partager', 'Fonctionnalité de partage bientôt disponible');
   };
@@ -452,60 +506,168 @@ export default function ProductDetailScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Image Carousel Section */}
-        <View style={styles.imageSection}>
-          <View style={styles.carouselContainer}>
-            {/* Thumbnails on the left */}
-            <View style={styles.thumbnailsContainer}>
-              {productImages.map((img, index) => (
+        {/* Media Gallery Section (Images + Video) */}
+        <View style={styles.mediaGallerySection}>
+          {/* Thumbnails */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.thumbnailsScrollContainer}
+            contentContainerStyle={styles.thumbnailsContent}
+          >
+            {mediaItems.map((item, index) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  styles.mediaThumbnail,
+                  selectedMediaIndex === index && styles.mediaThumbnailActive,
+                ]}
+                onPress={() => {
+                  setSelectedMediaIndex(index);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}>
+                {item.type === 'image' ? (
+                  <Image source={{ uri: item.uri }} style={styles.thumbnailImage} resizeMode="cover" />
+                ) : (
+                  <View style={styles.videoThumbnailOverlay}>
+                    <Image source={{ uri: item.uri }} style={styles.thumbnailImage} resizeMode="cover" />
+                    <View style={styles.videoPlayBadge}>
+                      <Play size={16} color="#FFFFFF" fill="#FFFFFF" />
+                    </View>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* Main Media Display */}
+          <View style={styles.mainMediaContainer}>
+            {selectedMedia?.type === 'image' ? (
+              <>
+                <Image
+                  source={{ uri: selectedMedia.uri }}
+                  style={styles.mainMediaImage}
+                  resizeMode="contain"
+                />
+                {/* Verified Badge */}
+                <View style={styles.verifiedBadge}>
+                  <Check size={20} color="#FFFFFF" strokeWidth={3} />
+                </View>
+              </>
+            ) : selectedMedia?.type === 'video' ? (
+              <View style={styles.mainVideoContainer}>
+                {isYouTubeUrl(selectedMedia.uri) ? (
+                  // YouTube video - show thumbnail with play button
+                  (() => {
+                    const videoId = getYouTubeVideoId(selectedMedia.uri);
+                    return videoId ? (
+                      <TouchableOpacity
+                        style={styles.youtubePreview}
+                        onPress={() => {
+                          Linking.openURL(selectedMedia.uri).catch(err => {
+                            Alert.alert('Erreur', 'Impossible d\'ouvrir la vidéo YouTube');
+                          });
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        {/* YouTube Thumbnail */}
+                        <Image
+                          source={{ uri: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` }}
+                          style={styles.youtubeThumbnail}
+                          resizeMode="cover"
+                        />
+
+                        {/* Dark overlay */}
+                        <View style={styles.youtubeOverlay} />
+
+                        {/* Play button */}
+                        <View style={styles.youtubePlayButton}>
+                          <LinearGradient
+                            colors={['#FF0000', '#CC0000']}
+                            style={styles.youtubePlayGradient}
+                          >
+                            <Play size={40} color="#FFFFFF" fill="#FFFFFF" />
+                          </LinearGradient>
+                        </View>
+
+                        {/* YouTube Logo */}
+                        <View style={styles.youtubeLogoBadge}>
+                          <Text style={styles.youtubeLogoText}>YouTube</Text>
+                        </View>
+
+                        {/* Watch on YouTube text */}
+                        <View style={styles.youtubeTextContainer}>
+                          <Text style={styles.youtubeText}>Appuyez pour regarder sur YouTube</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ) : null;
+                  })()
+                ) : (
+                  // Regular video file - use VideoView
+                  <VideoView
+                    style={styles.mainVideo}
+                    player={videoPlayer}
+                    allowsFullscreen
+                    allowsPictureInPicture
+                    nativeControls
+                  />
+                )}
+                {/* Video Label */}
+                {!isYouTubeUrl(selectedMedia.uri) && (
+                  <View style={styles.videoLabelBadge}>
+                    <Play size={14} color="#FFFFFF" />
+                    <Text style={styles.videoLabelText}>Vidéo</Text>
+                  </View>
+                )}
+              </View>
+            ) : null}
+
+            {/* Navigation Arrows */}
+            {mediaItems.length > 1 && (
+              <>
                 <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.thumbnail,
-                    selectedImageIndex === index && styles.thumbnailActive,
-                  ]}
-                  onPress={() => setSelectedImageIndex(index)}>
-                  <Image source={{ uri: img }} style={styles.thumbnailImage} resizeMode="cover" />
+                  style={[styles.mediaArrow, styles.mediaArrowLeft]}
+                  onPress={() => {
+                    setSelectedMediaIndex(Math.max(0, selectedMediaIndex - 1));
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  disabled={selectedMediaIndex === 0}>
+                  <ChevronLeft size={24} color={selectedMediaIndex === 0 ? "#9CA3AF" : "#1F2937"} />
                 </TouchableOpacity>
-              ))}
+                <TouchableOpacity
+                  style={[styles.mediaArrow, styles.mediaArrowRight]}
+                  onPress={() => {
+                    setSelectedMediaIndex(Math.min(mediaItems.length - 1, selectedMediaIndex + 1));
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  disabled={selectedMediaIndex === mediaItems.length - 1}>
+                  <ChevronRight size={24} color={selectedMediaIndex === mediaItems.length - 1 ? "#9CA3AF" : "#1F2937"} />
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* Media Counter */}
+            <View style={styles.mediaCounter}>
+              <Text style={styles.mediaCounterText}>
+                {selectedMediaIndex + 1} / {mediaItems.length}
+              </Text>
             </View>
 
-            {/* Main Image */}
-            <View style={styles.mainImageContainer}>
-              <Image
-                source={{ uri: productImages[selectedImageIndex] || 'https://via.placeholder.com/400' }}
-                style={styles.mainImage}
-                resizeMode="cover"
-              />
-              {/* Blue checkmark badge */}
-              <View style={styles.verifiedBadge}>
-                <Check size={20} color="#FFFFFF" strokeWidth={3} />
-              </View>
-
-              {/* Navigation arrows */}
-              <TouchableOpacity
-                style={[styles.arrowButton, styles.arrowLeft]}
-                onPress={() => setSelectedImageIndex(Math.max(0, selectedImageIndex - 1))}
-                disabled={selectedImageIndex === 0}>
-                <ChevronLeft size={20} color="#1F2937" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.arrowButton, styles.arrowRight]}
-                onPress={() => setSelectedImageIndex(Math.min(productImages.length - 1, selectedImageIndex + 1))}
-                disabled={selectedImageIndex === productImages.length - 1}>
-                <ChevronRight size={20} color="#1F2937" />
-              </TouchableOpacity>
-
-              {/* Dots indicator */}
+            {/* Dots Indicator */}
+            {mediaItems.length > 1 && (
               <View style={styles.dotsContainer}>
-                {productImages.map((_, index) => (
+                {mediaItems.map((item, index) => (
                   <View
-                    key={index}
-                    style={[styles.dot, selectedImageIndex === index && styles.dotActive]}
+                    key={item.id}
+                    style={[
+                      styles.dot,
+                      selectedMediaIndex === index && styles.dotActive,
+                      item.type === 'video' && styles.dotVideo
+                    ]}
                   />
                 ))}
               </View>
-            </View>
+            )}
           </View>
         </View>
 
@@ -806,96 +968,242 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  imageSection: {
-    backgroundColor: '#FFF8F0',
-    paddingVertical: 16,
+  mediaGallerySection: {
+    backgroundColor: '#F9FAFB',
+    paddingTop: 12,
+    paddingBottom: 16,
   },
-  carouselContainer: {
-    flexDirection: 'row',
+  thumbnailsScrollContainer: {
+    marginBottom: 12,
+  },
+  thumbnailsContent: {
     paddingHorizontal: 16,
-    gap: 12,
+    gap: 10,
   },
-  thumbnailsContainer: {
-    gap: 12,
-  },
-  thumbnail: {
-    width: 60,
-    height: 60,
-    borderRadius: 12,
+  mediaThumbnail: {
+    width: 70,
+    height: 70,
+    borderRadius: 14,
     overflow: 'hidden',
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: 'transparent',
+    backgroundColor: '#E5E7EB',
   },
-  thumbnailActive: {
+  mediaThumbnailActive: {
     borderColor: '#FF8C42',
+    shadowColor: '#FF8C42',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   thumbnailImage: {
     width: '100%',
     height: '100%',
   },
-  mainImageContainer: {
-    flex: 1,
-    height: 280,
-    borderRadius: 16,
+  videoThumbnailOverlay: {
+    position: 'relative',
+    width: '100%',
+    height: '100%',
+  },
+  videoPlayBadge: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -12 }, { translateY: -12 }],
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(139, 92, 246, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mainMediaContainer: {
+    marginHorizontal: 16,
+    height: 380,
+    borderRadius: 20,
     overflow: 'hidden',
     position: 'relative',
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#000000',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  mainImage: {
+  mainMediaImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#F3F4F6',
+  },
+  mainVideoContainer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
+  mainVideo: {
     width: '100%',
     height: '100%',
   },
   verifiedBadge: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#3B82F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  arrowButton: {
-    position: 'absolute',
-    top: '50%',
-    transform: [{ translateY: -20 }],
+    top: 16,
+    right: 16,
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  videoLabelBadge: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(139, 92, 246, 0.95)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  videoLabelText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  mediaArrow: {
+    position: 'absolute',
+    top: '50%',
+    transform: [{ translateY: -24 }],
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 5,
   },
-  arrowLeft: {
-    left: 12,
+  mediaArrowLeft: {
+    left: 16,
   },
-  arrowRight: {
-    right: 12,
+  mediaArrowRight: {
+    right: 16,
+  },
+  mediaCounter: {
+    position: 'absolute',
+    top: 16,
+    left: '50%',
+    transform: [{ translateX: -30 }],
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  mediaCounterText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   dotsContainer: {
     position: 'absolute',
-    bottom: 12,
+    bottom: 16,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
   },
   dot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
   },
   dotActive: {
     backgroundColor: '#FFFFFF',
-    width: 24,
+    width: 28,
+    shadowColor: '#FFFFFF',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.5,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  dotVideo: {
+    backgroundColor: 'rgba(139, 92, 246, 0.6)',
+  },
+  youtubePreview: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  youtubeThumbnail: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+  },
+  youtubeOverlay: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  youtubePlayButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  youtubePlayGradient: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  youtubeLogoBadge: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    backgroundColor: '#FF0000',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+  },
+  youtubeLogoText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  youtubeTextContainer: {
+    position: 'absolute',
+    bottom: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  youtubeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   content: {
     padding: 16,

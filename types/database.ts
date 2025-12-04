@@ -17,6 +17,10 @@ export type Profile = {
   city: string | null;
   address: string | null;
   postal_code: string | null;
+  // Géolocalisation
+  latitude: number | null;
+  longitude: number | null;
+  location_updated_at: string | null;
   // Social media links for sellers
   facebook_url: string | null;
   instagram_url: string | null;
@@ -37,6 +41,9 @@ export type Profile = {
   referral_points: number;
   panda_coins: number;
   followers_count: number;
+  // Subscription fields
+  subscription_plan: SubscriptionPlanType | null;
+  shop_is_active: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -59,10 +66,18 @@ export type Product = {
   currency: string;
   image_url: string | null;
   images: string[] | null;
+  video_url?: string | null;
   stock: number;
   is_active: boolean;
   average_rating: number;
   total_reviews: number;
+  // Champs de recommandation (optionnels)
+  view_count?: number;
+  click_count?: number;
+  favorite_count?: number;
+  share_count?: number;
+  popularity_score?: number;
+  trending_score?: number;
   created_at: string;
   updated_at: string;
 };
@@ -257,6 +272,9 @@ export type SubscriptionPlan = {
   advanced_analytics: boolean;
   ai_analytics: boolean;
   sponsored_campaigns: boolean;
+
+  // Features list (for UI display)
+  features?: string[];
 
   // Metadata
   is_active: boolean;
@@ -743,4 +761,65 @@ export type MerchandiseOrderResponse = {
   available_stock?: number;
   required?: number;
   available?: number;
+};
+
+// =============================================
+// TYPES DE GÉOLOCALISATION
+// =============================================
+
+export type NearbySeller = {
+  seller_id: string;
+  full_name: string | null;
+  seller_name?: string | null;
+  shop_name: string | null;
+  shop_logo_url: string | null;
+  latitude: number;
+  longitude: number;
+  distance_km: number;
+  is_premium: boolean;
+  subscription_plan: string | null;
+  average_rating: number;
+  total_reviews: number;
+  total_products?: number;
+  verified_seller: boolean;
+  seller_badge: string | null;
+  phone: string | null;
+  city: string | null;
+  address: string | null;
+};
+
+export type NearbyProduct = {
+  product_id: string;
+  product_title?: string;
+  title: string;
+  description: string | null;
+  price: number;
+  currency: string;
+  image_url: string | null;
+  images: string[] | null;
+  stock: number;
+  average_rating: number;
+  total_reviews: number;
+  seller_id: string;
+  seller_name: string | null;
+  seller_subscription?: string | null;
+  shop_name: string | null;
+  shop_logo_url: string | null;
+  seller_latitude: number;
+  seller_longitude: number;
+  distance_km: number;
+  is_premium: boolean;
+  subscription_plan: string | null;
+  verified_seller: boolean;
+  seller_badge: string | null;
+  category_id: string | null;
+};
+
+export type LocationUpdateResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  latitude?: number;
+  longitude?: number;
+  updated_at?: string;
 };

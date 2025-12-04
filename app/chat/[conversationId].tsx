@@ -350,6 +350,10 @@ export default function ChatScreen() {
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockLoading, setBlockLoading] = useState(false);
 
+  // Avatar zoom modal state
+  const [showAvatarZoomModal, setShowAvatarZoomModal] = useState(false);
+  const scaleAnim = useState(new Animated.Value(1))[0];
+
   useEffect(() => {
     if (!user || !conversationId) return;
 
@@ -1171,7 +1175,7 @@ export default function ChatScreen() {
 
               {item.offer_price && (
                 <View style={styles.offerContainer}>
-                  <Text style={styles.offerText}>💰 Offre: {item.offer_price.toLocaleString()} XOF</Text>
+                  <Text style={styles.offerText}>💰 Offre: {item.offer_price.toLocaleString()} FCFA</Text>
                   {item.offer_status === 'pending' && !isOwn && (
                     <View style={styles.offerActions}>
                       <TouchableOpacity style={styles.acceptButton}>
@@ -1231,7 +1235,7 @@ export default function ChatScreen() {
 
               {item.offer_price && (
                 <View style={styles.offerContainer}>
-                  <Text style={styles.offerText}>💰 Offre: {item.offer_price.toLocaleString()} XOF</Text>
+                  <Text style={styles.offerText}>💰 Offre: {item.offer_price.toLocaleString()} FCFA</Text>
                   {item.offer_status === 'pending' && !isOwn && (
                     <View style={styles.offerActions}>
                       <TouchableOpacity style={styles.acceptButton}>
@@ -1293,13 +1297,32 @@ export default function ChatScreen() {
             </TouchableOpacity>
 
             <View style={styles.headerUserInfo}>
-              <Image
-                source={{
-                  uri: otherUser?.avatar_url || 'https://ui-avatars.com/api/?name=' +
-                  (otherUser?.full_name || otherUser?.username || 'User')
-                }}
-                style={styles.headerAvatar}
-              />
+              <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowAvatarZoomModal(true);
+                    Animated.spring(scaleAnim, {
+                      toValue: 0.9,
+                      useNativeDriver: true,
+                    }).start(() => {
+                      Animated.spring(scaleAnim, {
+                        toValue: 1,
+                        useNativeDriver: true,
+                      }).start();
+                    });
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Image
+                    source={{
+                      uri: otherUser?.avatar_url || 'https://ui-avatars.com/api/?name=' +
+                      (otherUser?.full_name || otherUser?.username || 'User')
+                    }}
+                    style={styles.headerAvatar}
+                  />
+                </TouchableOpacity>
+              </Animated.View>
               <View style={styles.headerTextContainer}>
                 <Text style={[styles.headerName, { color: currentTheme.id === 'default' || currentTheme.id === 'gold' ? '#111827' : '#FFFFFF' }]} numberOfLines={1}>
                   {otherUser?.full_name || otherUser?.username || 'Utilisateur'}
@@ -1486,6 +1509,74 @@ export default function ChatScreen() {
             <Text style={styles.imageViewerText}>Pincer pour zoomer</Text>
           </View>
         </View>
+      </Modal>
+
+      {/* Avatar Zoom Modal */}
+      <Modal
+        visible={showAvatarZoomModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowAvatarZoomModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.avatarZoomOverlay}
+          activeOpacity={1}
+          onPress={() => {
+            setShowAvatarZoomModal(false);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+        >
+          <View style={styles.avatarZoomContainer}>
+            <TouchableOpacity
+              style={styles.closeZoomButton}
+              onPress={() => {
+                setShowAvatarZoomModal(false);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+            >
+              <Ionicons name="close" size={32} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <Image
+              source={{
+                uri: otherUser?.avatar_url || 'https://ui-avatars.com/api/?name=' +
+                (otherUser?.full_name || otherUser?.username || 'User')
+              }}
+              style={styles.avatarZoomImage}
+            />
+
+            <View style={styles.avatarZoomInfo}>
+              <Text style={styles.avatarZoomName}>
+                {otherUser?.full_name || otherUser?.username || 'Utilisateur'}
+              </Text>
+              {otherUser?.username && otherUser?.full_name && (
+                <Text style={styles.avatarZoomUsername}>@{otherUser.username}</Text>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={styles.viewProfileButton}
+              onPress={() => {
+                setShowAvatarZoomModal(false);
+                setTimeout(async () => {
+                  await checkIfBlocked();
+                  setShowProfileModal(true);
+                }, 300);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+            >
+              <LinearGradient
+                colors={['#F59E0B', '#D97706']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.viewProfileGradient}
+              >
+                <Ionicons name="person-circle" size={20} color="#FFFFFF" />
+                <Text style={styles.viewProfileText}>Voir le profil</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* User Profile Modal */}
@@ -2358,5 +2449,90 @@ const styles = StyleSheet.create({
   },
   themeButton: {
     padding: 4,
+  },
+  // Avatar zoom modal styles
+  avatarZoomOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarZoomContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 24,
+    paddingHorizontal: 32,
+  },
+  closeZoomButton: {
+    position: 'absolute',
+    top: -120,
+    right: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  avatarZoomImage: {
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 6,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  avatarZoomInfo: {
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  avatarZoomName: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
+  avatarZoomUsername: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.8)',
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  viewProfileButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginTop: 16,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  viewProfileGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+  },
+  viewProfileText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

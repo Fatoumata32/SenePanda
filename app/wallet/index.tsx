@@ -76,47 +76,92 @@ export default function WalletScreen() {
 
       setUser(authUser);
 
-      // Charger le solde
+      // Charger le solde (utiliser panda_coins en priorité, puis pandacoins_balance)
       const { data: profile } = await supabase
         .from('profiles')
-        .select('pandacoins_balance')
+        .select('panda_coins, pandacoins_balance, current_streak, longest_streak')
         .eq('id', authUser.id)
         .maybeSingle();
 
       if (profile) {
-        setBalance(profile.pandacoins_balance || 0);
+        // Prendre panda_coins en priorité (mis à jour par DailyLoginTracker)
+        const currentBalance = profile.panda_coins ?? profile.pandacoins_balance ?? 0;
+        setBalance(currentBalance);
+        console.log('💰 Wallet balance:', currentBalance, 'streak:', profile.current_streak);
       }
 
-      // Charger les transactions
-      const { data: txData, error: txError } = await supabase
+      // Charger les transactions depuis les deux tables
+      const allTransactions: Transaction[] = [];
+
+      // 1. Transactions pandacoins_transactions
+      const { data: txData } = await supabase
         .from('pandacoins_transactions')
         .select('*')
         .eq('user_id', authUser.id)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(25);
 
-      if (!txError && txData) {
-        const mappedTransactions: Transaction[] = txData.map(tx => ({
-          id: tx.id,
-          type: tx.transaction_type as TransactionType,
-          amount: tx.amount,
-          description: tx.description || getDefaultDescription(tx.transaction_type, tx.amount),
-          created_at: tx.created_at,
-          status: 'completed',
-        }));
-        setTransactions(mappedTransactions);
+      if (txData) {
+        txData.forEach(tx => {
+          allTransactions.push({
+            id: tx.id,
+            type: tx.transaction_type as TransactionType,
+            amount: tx.amount,
+            description: tx.description || getDefaultDescription(tx.transaction_type, tx.amount),
+            created_at: tx.created_at,
+            status: 'completed',
+          });
+        });
+      }
+
+      // 2. Transactions points_transactions (bonus, daily login, etc.)
+      const { data: pointsTxData } = await supabase
+        .from('points_transactions')
+        .select('*')
+        .eq('user_id', authUser.id)
+        .order('created_at', { ascending: false })
+        .limit(25);
+
+      if (pointsTxData) {
+        pointsTxData.forEach(tx => {
+          // Mapper le type vers notre enum
+          let txType: TransactionType = 'bonus';
+          if (tx.type === 'daily_login' || tx.type === 'streak_bonus') txType = 'bonus';
+          else if (tx.type === 'welcome_bonus') txType = 'reward';
+          else if (tx.type === 'referral_bonus') txType = 'referral';
+          else if (tx.type === 'purchase') txType = 'purchase';
+          else if (tx.type === 'product_review' || tx.type === 'product_rating') txType = 'reward';
+
+          allTransactions.push({
+            id: tx.id,
+            type: txType,
+            amount: tx.points,
+            description: tx.description || getDefaultDescription(tx.type, tx.points),
+            created_at: tx.created_at,
+            status: 'completed',
+          });
+        });
+      }
+
+      // Trier par date décroissante et dédupliquer
+      allTransactions.sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      if (allTransactions.length > 0) {
+        setTransactions(allTransactions);
 
         // Calculer les stats
-        const earned = txData
+        const earned = allTransactions
           .filter(tx => tx.amount > 0)
           .reduce((sum, tx) => sum + tx.amount, 0);
 
-        const spent = txData
+        const spent = allTransactions
           .filter(tx => tx.amount < 0)
           .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
 
-        const referrals = txData
-          .filter(tx => tx.transaction_type === 'referral')
+        const referrals = allTransactions
+          .filter(tx => tx.type === 'referral')
           .reduce((sum, tx) => sum + tx.amount, 0);
 
         setStats({
@@ -126,8 +171,8 @@ export default function WalletScreen() {
           pendingRewards: 0,
         });
       } else {
-        // Pas de transactions, créer des données de démo
-        setTransactions(getDemoTransactions());
+        // Pas de transactions - afficher message vide (pas de démo)
+        setTransactions([]);
       }
     } catch (error) {
       console.error('Error loading wallet:', error);
@@ -151,33 +196,6 @@ export default function WalletScreen() {
         return amount > 0 ? `+ ${absAmount} PandaCoins` : `- ${absAmount} PandaCoins`;
     }
   };
-
-  const getDemoTransactions = (): Transaction[] => [
-    {
-      id: '1',
-      type: 'referral',
-      amount: 100,
-      description: 'Bonus de parrainage',
-      created_at: new Date().toISOString(),
-      status: 'completed',
-    },
-    {
-      id: '2',
-      type: 'purchase',
-      amount: -50,
-      description: 'Achat de produit',
-      created_at: new Date(Date.now() - 3600000).toISOString(),
-      status: 'completed',
-    },
-    {
-      id: '3',
-      type: 'bonus',
-      amount: 25,
-      description: 'Bonus quotidien',
-      created_at: new Date(Date.now() - 86400000).toISOString(),
-      status: 'completed',
-    },
-  ];
 
   const onRefresh = async () => {
     setRefreshing(true);

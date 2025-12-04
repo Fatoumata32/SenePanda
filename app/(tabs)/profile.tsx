@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,11 @@ import {
   Image,
   Modal,
   TextInput,
+  Dimensions,
+  Animated,
 } from 'react-native';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -44,6 +48,14 @@ import {
   TrendingUp,
   Sparkles,
   Check,
+  Clock,
+  MessageCircle,
+  Headphones,
+  Facebook,
+  Instagram,
+  Twitter,
+  ExternalLink,
+  Store,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -57,10 +69,12 @@ import {
   validatePhoneNumber,
 } from '@/lib/validation';
 import TeardropAvatar from '@/components/TeardropAvatar';
+import { useSubscriptionSync } from '@/hooks/useSubscriptionSync';
 
 // Fonction pour générer un avatar unique par utilisateur
 const getDefaultAvatar = (userId: string) => {
-  return `https://api.dicebear.com/7.x/avataaars/png?seed=${userId}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
+  // Utiliser UI Avatars comme fallback (plus fiable sur les émulateurs)
+  return `https://ui-avatars.com/api/?name=${userId.substring(0, 2)}&size=256&background=random&color=fff&bold=true`;
 };
 
 export default function ProfileScreen() {
@@ -78,6 +92,12 @@ export default function ProfileScreen() {
   const [totalProducts, setTotalProducts] = useState(0);
   const [totalReviews, setTotalReviews] = useState(0);
 
+  // Abonnement avec synchronisation en temps réel
+  const { subscription: realtimeSubscription, isActive: isSubscriptionActive, refresh: refreshSubscription } = useSubscriptionSync(user?.id);
+  const [currentPlan, setCurrentPlan] = useState<string>('starter');
+  const [planName, setPlanName] = useState<string>('Starter');
+  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+
   // Menu déroulant pour les commandes (vendeur)
   const [ordersMenuExpanded, setOrdersMenuExpanded] = useState(false);
 
@@ -89,6 +109,10 @@ export default function ProfileScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [subscriptionModalVisible, setSubscriptionModalVisible] = useState(false);
   const [pointsModalVisible, setPointsModalVisible] = useState(false);
+  const [avatarZoomModalVisible, setAvatarZoomModalVisible] = useState(false);
+
+  // Animation pour le zoom
+  const scaleAnim = useState(new Animated.Value(1))[0];
 
   // Edit form
   const [editFirstName, setEditFirstName] = useState('');
@@ -127,6 +151,8 @@ export default function ProfileScreen() {
       blue: isDark ? '#1E3A8A' : '#DBEAFE',
       purple: isDark ? '#581C87' : '#F3E8FF',
       teal: isDark ? '#134E4A' : '#CCFBF1',
+      pink: isDark ? '#831843' : '#FCE7F3',
+      green: isDark ? '#064E3B' : '#D1FAE5',
     },
   }), [isDark]);
 
@@ -186,6 +212,31 @@ export default function ProfileScreen() {
       setProfile(data);
       if (data) {
         setAvatarUri(data.avatar_url || getDefaultAvatar(userId));
+
+        // Charger les informations d'abonnement (seulement si plan payant)
+        const plan = data.subscription_plan || 'starter';
+        if (plan !== 'free') {
+          setCurrentPlan(plan);
+
+          // Mapping des noms de plans
+          const planNames: Record<string, string> = {
+            starter: 'Starter',
+            pro: 'Pro',
+            premium: 'Premium'
+          };
+          setPlanName(planNames[plan] || 'Starter');
+
+          // Calculer les jours restants si abonné
+          if (data.subscription_expires_at) {
+            const expiresAt = new Date(data.subscription_expires_at);
+            const now = new Date();
+            const diffTime = expiresAt.getTime() - now.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            setDaysRemaining(diffDays > 0 ? diffDays : 0);
+          } else {
+            setDaysRemaining(null);
+          }
+        }
       } else {
         setAvatarUri(getDefaultAvatar(userId));
       }
@@ -227,6 +278,19 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
+  };
+
+  const handleAvatarPress = () => {
+    setAvatarZoomModalVisible(true);
+    Animated.spring(scaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start(() => {
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+      }).start();
+    });
   };
 
   const handlePickImage = async () => {
@@ -369,27 +433,82 @@ export default function ProfileScreen() {
 
         {/* Avatar et Info */}
         <View style={styles.profileSection}>
-          <TouchableOpacity
-            onPress={handlePickImage}
-            style={styles.avatarContainer}>
-            <TeardropAvatar
-              imageUri={avatarUri}
-              size={140}
-              shape="squircle"
-              glowColor={['#93C5FD', '#60A5FA']}
-              borderWidth={4}
-              borderColor={isDark ? '#374151' : '#FFFFFF'}
-            >
-              <Text style={styles.avatarText}>{userInitials}</Text>
-            </TeardropAvatar>
-            <View style={styles.cameraButton}>
-              <Camera size={16} color="#FFFFFF" />
-            </View>
-          </TouchableOpacity>
+          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+            <TouchableOpacity
+              onPress={handleAvatarPress}
+              style={styles.avatarContainer}
+              activeOpacity={0.9}>
+              <TeardropAvatar
+                imageUri={avatarUri}
+                size={140}
+                shape="circle"
+                glowColor={['#93C5FD', '#60A5FA']}
+                borderWidth={4}
+                borderColor={isDark ? '#374151' : '#FFFFFF'}
+              >
+                <Text style={styles.avatarText}>{userInitials}</Text>
+              </TeardropAvatar>
 
-          <Text style={[styles.userName, { color: themeColors.text }]}>
-            {profile?.full_name || 'Utilisateur'}
-          </Text>
+              {/* Badge d'abonnement ou bouton caméra */}
+              {currentPlan && currentPlan !== 'free' && currentPlan !== 'starter' ? (
+                <LinearGradient
+                  colors={
+                    currentPlan === 'premium' ? ['#FBBF24', '#F59E0B', '#D97706'] :
+                    currentPlan === 'pro' ? ['#A78BFA', '#8B5CF6', '#7C3AED'] :
+                    ['#60A5FA', '#3B82F6', '#2563EB']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.avatarSubscriptionBadge}
+                >
+                  <View style={styles.badgeInner}>
+                    <Shield
+                      size={22}
+                      color="#FFFFFF"
+                      strokeWidth={2.5}
+                      fill={currentPlan === 'premium' ? '#FCD34D' : currentPlan === 'pro' ? '#C4B5FD' : '#93C5FD'}
+                    />
+                    <View style={styles.checkIconContainer}>
+                      <Check size={10} color="#FFFFFF" strokeWidth={3} />
+                    </View>
+                  </View>
+                </LinearGradient>
+              ) : (
+                <TouchableOpacity
+                  style={styles.cameraButton}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handlePickImage();
+                  }}>
+                  <Camera size={16} color="#FFFFFF" />
+                </TouchableOpacity>
+              )}
+            </TouchableOpacity>
+          </Animated.View>
+
+          <View style={styles.userNameContainer}>
+            <Text style={[styles.userName, { color: themeColors.text }]}>
+              {profile?.full_name || 'Utilisateur'}
+            </Text>
+            {/* Badge d'abonnement */}
+            {currentPlan && currentPlan !== 'free' && (
+              <View style={[
+                styles.subscriptionBadge,
+                { backgroundColor:
+                  currentPlan === 'premium' ? '#F59E0B' :
+                  currentPlan === 'pro' ? '#8B5CF6' :
+                  '#3B82F6'
+                }
+              ]}>
+                <Crown size={12} color="#FFFFFF" />
+                <Text style={styles.subscriptionBadgeText}>
+                  {currentPlan === 'premium' ? 'PREMIUM' :
+                   currentPlan === 'pro' ? 'PRO' :
+                   'STARTER'}
+                </Text>
+              </View>
+            )}
+          </View>
           <Text style={[styles.userHandle, { color: themeColors.textSecondary }]}>
             @{profile?.username || 'username'}
           </Text>
@@ -445,7 +564,10 @@ export default function ProfileScreen() {
           <MenuItem
             icon={<Crown size={24} color={themeColors.menuIcon.text} />}
             label="Abonnement"
-            onPress={() => setSubscriptionModalVisible(true)}
+            onPress={() => {
+              router.push('/seller/subscription-plans');
+              Speech.speak('Gestion des abonnements', { language: 'fr-FR' });
+            }}
             backgroundColor={themeColors.menuIcon.bg.yellow}
             themeColors={themeColors}
           />
@@ -528,12 +650,26 @@ export default function ProfileScreen() {
           />
 
           <MenuItem
-            icon={<Info size={24} color={themeColors.menuIcon.text} />}
-            label="Informations"
+            icon={<Headphones size={24} color={themeColors.menuIcon.text} />}
+            label="Aide et Support"
             onPress={() => setInformationModalVisible(true)}
             backgroundColor={themeColors.menuIcon.bg.green}
             themeColors={themeColors}
           />
+
+          {/* Mode développeur - Test de localisation */}
+          {__DEV__ && (
+            <MenuItem
+              icon={<MapPin size={24} color={themeColors.menuIcon.text} />}
+              label="🧪 Test Géolocalisation"
+              onPress={() => {
+                router.push('/test-location');
+                Speech.speak('Test de localisation', { language: 'fr-FR' });
+              }}
+              backgroundColor="#9333EA"
+              themeColors={themeColors}
+            />
+          )}
 
           <MenuItem
             icon={<LogOut size={24} color={themeColors.menuIcon.text} />}
@@ -547,24 +683,45 @@ export default function ProfileScreen() {
 
         {/* Vendeur Section */}
         {profile?.is_seller && (
-          <TouchableOpacity
-            style={[styles.sellerCard, { backgroundColor: themeColors.card }]}
-            onPress={() => router.push('/seller/products')}>
-            <LinearGradient
-              colors={['#F59E0B', '#D97706']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.sellerGradient}>
-              <ShoppingBag size={24} color="#FFFFFF" />
-              <View style={styles.sellerContent}>
-                <Text style={styles.sellerTitle}>Espace Vendeur</Text>
-                <Text style={styles.sellerText}>
-                  {totalProducts} produit{totalProducts > 1 ? 's' : ''} en vente
-                </Text>
-              </View>
-              <ChevronRight size={20} color="#FFFFFF" />
-            </LinearGradient>
-          </TouchableOpacity>
+          <View style={styles.sellerSection}>
+            <TouchableOpacity
+              style={[styles.sellerCard, { backgroundColor: themeColors.card, marginBottom: 12 }]}
+              onPress={() => router.push('/seller/my-shop')}>
+              <LinearGradient
+                colors={['#8B5CF6', '#7C3AED']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.sellerGradient}>
+                <Store size={24} color="#FFFFFF" />
+                <View style={styles.sellerContent}>
+                  <Text style={styles.sellerTitle}>Ma Boutique</Text>
+                  <Text style={styles.sellerText}>
+                    Personnalisez votre espace vendeur
+                  </Text>
+                </View>
+                <ChevronRight size={20} color="#FFFFFF" />
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.sellerCard, { backgroundColor: themeColors.card }]}
+              onPress={() => router.push('/seller/products')}>
+              <LinearGradient
+                colors={['#F59E0B', '#D97706']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.sellerGradient}>
+                <ShoppingBag size={24} color="#FFFFFF" />
+                <View style={styles.sellerContent}>
+                  <Text style={styles.sellerTitle}>Mes Produits</Text>
+                  <Text style={styles.sellerText}>
+                    {totalProducts} produit{totalProducts > 1 ? 's' : ''} en vente
+                  </Text>
+                </View>
+                <ChevronRight size={20} color="#FFFFFF" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         )}
 
         {!profile?.is_seller && (
@@ -879,7 +1036,7 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: themeColors.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: themeColors.border }]}>
-              <Text style={[styles.modalTitle, { color: themeColors.text }]}>Informations</Text>
+              <Text style={[styles.modalTitle, { color: themeColors.text }]}>Aide et Support</Text>
               <TouchableOpacity onPress={() => setInformationModalVisible(false)}>
                 <X size={24} color={themeColors.textSecondary} />
               </TouchableOpacity>
@@ -887,31 +1044,149 @@ export default function ProfileScreen() {
 
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.infoSection}>
+                {/* Section Contact */}
+                <View style={[styles.supportSectionHeader, { borderBottomColor: themeColors.border }]}>
+                  <MessageCircle size={20} color="#F59E0B" />
+                  <Text style={[styles.supportSectionTitle, { color: themeColors.text }]}>
+                    Contactez-nous
+                  </Text>
+                </View>
+
                 <InfoItem
-                  icon={<Phone size={20} color={isDark ? '#60A5FA' : '#3B82F6'} />}
-                  label="Téléphone"
-                  value={profile?.phone || 'Non renseigné'}
+                  icon={<Phone size={20} color={isDark ? '#34D399' : '#10B981'} />}
+                  label="Service Client"
+                  value="+221 77 123 45 67"
+                  bgColor={themeColors.infoBadge.green}
+                  themeColors={themeColors}
+                />
+                <InfoItem
+                  icon={<Phone size={20} color={isDark ? '#34D399' : '#10B981'} />}
+                  label="Support Technique"
+                  value="+221 78 987 65 43"
+                  bgColor={themeColors.infoBadge.green}
+                  themeColors={themeColors}
+                />
+                <InfoItem
+                  icon={<Mail size={20} color={isDark ? '#60A5FA' : '#3B82F6'} />}
+                  label="Email"
+                  value="support@senepanda.com"
                   bgColor={themeColors.infoBadge.blue}
                   themeColors={themeColors}
                 />
                 <InfoItem
-                  icon={<Mail size={20} color={isDark ? '#C084FC' : '#8B5CF6'} />}
-                  label="Email"
-                  value={user?.email || 'Non renseigné'}
-                  bgColor={themeColors.infoBadge.purple}
+                  icon={<Mail size={20} color={isDark ? '#60A5FA' : '#3B82F6'} />}
+                  label="Email Commercial"
+                  value="contact@senepanda.com"
+                  bgColor={themeColors.infoBadge.blue}
+                  themeColors={themeColors}
+                />
+
+                {/* Section Réseaux Sociaux */}
+                <View style={[styles.supportSectionHeader, { borderBottomColor: themeColors.border }]}>
+                  <Star size={20} color="#F59E0B" />
+                  <Text style={[styles.supportSectionTitle, { color: themeColors.text }]}>
+                    Suivez-nous
+                  </Text>
+                </View>
+
+                <InfoItem
+                  icon={<Facebook size={20} color={isDark ? '#60A5FA' : '#1877F2'} />}
+                  label="Facebook"
+                  value="@SenePanda"
+                  bgColor={themeColors.infoBadge.blue}
                   themeColors={themeColors}
                 />
                 <InfoItem
-                  icon={<MapPin size={20} color={isDark ? '#2DD4BF' : '#0D9488'} />}
-                  label="Localisation"
-                  value={profile?.city || profile?.country || 'Non renseigné'}
-                  bgColor={themeColors.infoBadge.teal}
+                  icon={<Instagram size={20} color={isDark ? '#F472B6' : '#E4405F'} />}
+                  label="Instagram"
+                  value="@senepanda_official"
+                  bgColor={themeColors.infoBadge.pink}
                   themeColors={themeColors}
                 />
+                <InfoItem
+                  icon={<Twitter size={20} color={isDark ? '#60A5FA' : '#1DA1F2'} />}
+                  label="Twitter / X"
+                  value="@SenePanda"
+                  bgColor={themeColors.infoBadge.blue}
+                  themeColors={themeColors}
+                />
+
+                {/* Section Horaires */}
+                <View style={[styles.supportSectionHeader, { borderBottomColor: themeColors.border }]}>
+                  <Clock size={20} color="#F59E0B" />
+                  <Text style={[styles.supportSectionTitle, { color: themeColors.text }]}>
+                    Horaires d'ouverture
+                  </Text>
+                </View>
+
+                <View style={[styles.hoursContainer, { backgroundColor: themeColors.background }]}>
+                  <Text style={[styles.hoursText, { color: themeColors.text }]}>
+                    Lundi - Vendredi : 8h00 - 20h00
+                  </Text>
+                  <Text style={[styles.hoursText, { color: themeColors.text }]}>
+                    Samedi : 9h00 - 18h00
+                  </Text>
+                  <Text style={[styles.hoursText, { color: themeColors.text }]}>
+                    Dimanche : 10h00 - 16h00
+                  </Text>
+                </View>
+
+                {/* Note */}
+                <View style={[styles.supportNote, { backgroundColor: isDark ? '#1F2937' : '#FFF7ED' }]}>
+                  <Headphones size={18} color="#F59E0B" />
+                  <Text style={[styles.supportNoteText, { color: themeColors.textSecondary }]}>
+                    Notre équipe est disponible pour répondre à toutes vos questions et vous accompagner dans votre expérience SenePanda.
+                  </Text>
+                </View>
               </View>
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      {/* Avatar Zoom Modal */}
+      <Modal
+        visible={avatarZoomModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAvatarZoomModalVisible(false)}>
+        <TouchableOpacity
+          style={styles.avatarZoomOverlay}
+          activeOpacity={1}
+          onPress={() => setAvatarZoomModalVisible(false)}>
+          <View style={styles.avatarZoomContainer}>
+            <TouchableOpacity
+              style={styles.closeZoomButton}
+              onPress={() => setAvatarZoomModalVisible(false)}>
+              <X size={32} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TeardropAvatar
+              imageUri={avatarUri}
+              size={SCREEN_WIDTH * 0.85}
+              shape="circle"
+              glowColor={['#93C5FD', '#60A5FA']}
+              borderWidth={6}
+              borderColor="#FFFFFF"
+            >
+              <Text style={[styles.avatarText, { fontSize: 120 }]}>{userInitials}</Text>
+            </TeardropAvatar>
+            <TouchableOpacity
+              style={styles.changePhotoButton}
+              onPress={() => {
+                setAvatarZoomModalVisible(false);
+                handlePickImage();
+              }}>
+              <LinearGradient
+                colors={['#3B82F6', '#2563EB']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.changePhotoGradient}>
+                <Camera size={20} color="#FFFFFF" />
+                <Text style={styles.changePhotoText}>Changer la photo</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* Edit Profile Modal */}
@@ -1135,10 +1410,73 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#FFFFFF',
   },
+  avatarSubscriptionBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 4,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  badgeInner: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  checkIconContainer: {
+    position: 'absolute',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    bottom: -2,
+    right: -2,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  userNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
   userName: {
     fontSize: 24,
     fontWeight: '700',
-    marginBottom: 4,
+  },
+  subscriptionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  subscriptionBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
   userHandle: {
     fontSize: 14,
@@ -1225,9 +1563,91 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
-  sellerCard: {
+  subscriptionCard: {
+    marginHorizontal: Math.min(20, SCREEN_WIDTH * 0.05),
+    marginTop: 20,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
+    maxWidth: 600,
+    alignSelf: 'center',
+    width: '100%',
+  },
+  subscriptionGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Math.min(20, SCREEN_WIDTH * 0.05),
+    gap: Math.min(16, SCREEN_WIDTH * 0.04),
+    flexWrap: 'wrap',
+  },
+  subscriptionIconContainer: {
+    width: Math.min(56, SCREEN_WIDTH * 0.14),
+    height: Math.min(56, SCREEN_WIDTH * 0.14),
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  subscriptionInfo: {
+    flex: 1,
+    minWidth: 150,
+  },
+  subscriptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+    flexWrap: 'wrap',
+  },
+  subscriptionLabel: {
+    fontSize: Math.min(12, SCREEN_WIDTH * 0.03),
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.8)',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  premiumBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    borderRadius: 12,
+  },
+  premiumBadgeText: {
+    fontSize: Math.min(10, SCREEN_WIDTH * 0.025),
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  subscriptionPlan: {
+    fontSize: Math.min(24, SCREEN_WIDTH * 0.06),
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  subscriptionDays: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  subscriptionDaysText: {
+    fontSize: Math.min(13, SCREEN_WIDTH * 0.0325),
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  subscriptionChevron: {
+    opacity: 0.6,
+  },
+  sellerSection: {
     marginHorizontal: 20,
     marginTop: 20,
+  },
+  sellerCard: {
     borderRadius: 16,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -1441,6 +1861,41 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  supportSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingBottom: 12,
+    marginBottom: 16,
+    marginTop: 8,
+    borderBottomWidth: 1,
+  },
+  supportSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  hoursContainer: {
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  hoursText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  supportNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  supportNoteText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 20,
+  },
   inputGroup: {
     marginBottom: 16,
   },
@@ -1593,5 +2048,46 @@ const styles = StyleSheet.create({
   subMenuDescription: {
     fontSize: 13,
     fontWeight: '500',
+  },
+  // Avatar Zoom Modal styles
+  avatarZoomOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarZoomContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 32,
+  },
+  closeZoomButton: {
+    position: 'absolute',
+    top: -100,
+    right: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  changePhotoButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginTop: 24,
+  },
+  changePhotoGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+  },
+  changePhotoText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

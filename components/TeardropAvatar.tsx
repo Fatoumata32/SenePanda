@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, StyleSheet, ViewStyle } from 'react-native';
+import React, { useState } from 'react';
+import { View, StyleSheet, ViewStyle, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, ClipPath, Path, Image as SvgImage, LinearGradient as SvgLinearGradient, Stop, Circle, Rect } from 'react-native-svg';
 
@@ -26,6 +26,8 @@ export default function TeardropAvatar({
   borderWidth = 0,
   borderColor = '#FFFFFF',
 }: TeardropAvatarProps) {
+  const [imageError, setImageError] = useState(false);
+
   // Calculer les dimensions
   const avatarSize = size;
 
@@ -103,6 +105,54 @@ export default function TeardropAvatar({
 
   const shapePath = getShapePath();
 
+  // Vérifier si on doit afficher l'image
+  const showImage = imageUri && !imageError;
+
+  // Pour la forme circle, utiliser directement Image de React Native
+  if (shape === 'circle') {
+    return (
+      <View style={[styles.container, style]}>
+        <View
+          style={{
+            width: avatarSize,
+            height: avatarSize,
+            borderRadius: avatarSize / 2,
+            overflow: 'hidden',
+            borderWidth: borderWidth,
+            borderColor: borderColor,
+          }}
+        >
+          {showImage ? (
+            <Image
+              source={{ uri: imageUri }}
+              style={{
+                width: avatarSize - borderWidth * 2,
+                height: avatarSize - borderWidth * 2,
+              }}
+              resizeMode="cover"
+              onError={() => setImageError(true)}
+            />
+          ) : (
+            <LinearGradient
+              colors={glowColor as [string, string, ...string[]]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{
+                width: avatarSize - borderWidth * 2,
+                height: avatarSize - borderWidth * 2,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              {children}
+            </LinearGradient>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  // Pour les autres formes, utiliser SVG
   return (
     <View style={[styles.container, style]}>
       {/* Avatar Container */}
@@ -134,7 +184,7 @@ export default function TeardropAvatar({
           )}
 
           {/* Image ou gradient */}
-          {imageUri ? (
+          {showImage ? (
             <SvgImage
               href={{ uri: imageUri }}
               width={avatarSize}
@@ -147,7 +197,8 @@ export default function TeardropAvatar({
           )}
         </Svg>
 
-        {!imageUri && (
+        {/* Afficher le placeholder/children si pas d'image */}
+        {!showImage && (
           <View style={[styles.placeholderContainer, { width: avatarSize, height: avatarSize }]} pointerEvents="none">
             {children}
           </View>

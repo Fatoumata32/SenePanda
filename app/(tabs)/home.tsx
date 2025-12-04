@@ -7,16 +7,16 @@ import {
   TextInput,
   ActivityIndicator,
   RefreshControl,
-  Image,
   TouchableOpacity,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Store, ShoppingBag, Search, Bell, ShoppingCart } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
-import { Product, Category } from '@/types/database';
+import { Category } from '@/types/database';
 import CategoryChip from '@/components/CategoryChip';
 import FlashDeals from '@/components/FlashDeals';
-import SimpleProductGrid from '@/components/SimpleProductGrid';
+import RecommendedProductGrid from '@/components/RecommendedProductGrid';
+import SortSelector from '@/components/SortSelector';
 import PCCarousel from '@/components/PCCarousel';
 import WaveDivider from '@/components/WaveDivider';
 import PandaLogo from '@/components/PandaLogo';
@@ -25,12 +25,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Gradients, Shadows, Typography, Spacing, BorderRadius } from '@/constants/Colors';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useCart } from '@/contexts/CartContext';
+import { useNotifications } from '@/contexts/NotificationContext';
+import useProductRecommendations, { SortOption } from '@/hooks/useProductRecommendations';
 import * as Haptics from 'expo-haptics';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { isDark } = useTheme();
   const { cartItems } = useCart();
+  const { unreadCount: notificationCount, refreshCount: refreshNotifications } = useNotifications();
 
   // Theme colors
   const themeColors = {
@@ -43,15 +46,30 @@ export default function HomeScreen() {
     searchBg: isDark ? '#374151' : Colors.backgroundLight,
     inputBg: isDark ? '#1F2937' : Colors.white,
   };
-  const [products, setProducts] = useState<Product[]>([]);
+
+  // États locaux
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [userShop, setUserShop] = useState<any>(null);
-  const [totalNotifications, setTotalNotifications] = useState(0);
+  const [sortOption] = useState<SortOption>('smart');
+
+  // Utiliser le hook de recommandation pour les produits
+  const {
+    products,
+    loading,
+    refreshing,
+    refresh: refreshProducts,
+    recordView,
+    recordClick,
+    changeSortOption,
+    currentSortOption,
+  } = useProductRecommendations({
+    categoryId: selectedCategory,
+    sortBy: sortOption,
+    limit: 20,
+  });
 
   const cartItemCount = useMemo(() => {
     return cartItems?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0;
@@ -59,91 +77,8 @@ export default function HomeScreen() {
 
   useEffect(() => {
     fetchCategories();
-    fetchProducts();
     checkUserProfile();
-    fetchTotalNotifications();
-  }, [selectedCategory]);
-
-  // Listener temps réel pour les notifications
-  useEffect(() => {
-    const setupNotificationListener = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Écouter les changements sur les deux tables possibles
-      const channel = supabase
-        .channel('notifications-changes')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'notifications',
-            filter: `user_id=eq.${user.id}`,
-          },
-          () => {
-            fetchTotalNotifications();
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'deal_notifications',
-            filter: `user_id=eq.${user.id}`,
-          },
-          () => {
-            fetchTotalNotifications();
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    };
-
-    setupNotificationListener();
   }, []);
-
-  const fetchTotalNotifications = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      console.log('🔍 Fetching notifications for user:', user?.id);
-
-      if (user) {
-        // Essayer avec deal_notifications
-        const { count, error, data } = await supabase
-          .from('deal_notifications')
-          .select('*', { count: 'exact', head: false })
-          .eq('user_id', user.id);
-
-        console.log('📊 deal_notifications result:', { count, error, dataLength: data?.length });
-
-        if (error) {
-          console.error('❌ Supabase error:', error.message, error.code);
-
-          // Essayer avec notifications comme fallback
-          const fallback = await supabase
-            .from('notifications')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', user.id);
-
-          console.log('📊 notifications fallback:', { count: fallback.count, error: fallback.error });
-          setTotalNotifications(fallback.count || 0);
-        } else {
-          console.log('✅ Total notifications count:', count);
-          setTotalNotifications(count || 0);
-        }
-      } else {
-        console.log('⚠️ No user found');
-      }
-    } catch (error) {
-      console.error('💥 Error fetching total notifications:', error);
-      setTotalNotifications(0);
-    }
-  };
 
   const checkUserProfile = async () => {
     try {
@@ -173,12 +108,9 @@ export default function HomeScreen() {
   };
 
   const handleSellPress = useCallback(() => {
-    if (userShop) {
-      // Le vendeur a déjà une boutique -> Aller vers sa boutique
-      router.push(`/shop/${userShop.id}` as any);
-    } else if (userProfile?.is_seller) {
-      // C'est un vendeur mais sans boutique -> Créer une boutique (avec aperçu temps réel)
-      router.push('/seller/shop-wizard' as any);
+    if (userShop || userProfile?.is_seller) {
+      // Le vendeur a déjà une boutique ou est vendeur -> Aller vers Ma Boutique avec édition temps réel
+      router.push('/seller/my-shop');
     } else {
       // Pas encore vendeur -> Configuration vendeur
       router.push('/seller/setup');
@@ -199,36 +131,10 @@ export default function HomeScreen() {
     }
   };
 
-  const fetchProducts = useCallback(async () => {
-    try {
-      setLoading(true);
-      let query = supabase
-        .from('products')
-        .select('*')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
-      if (selectedCategory) {
-        query = query.eq('category_id', selectedCategory);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-      setProducts(data || []);
-    } catch (error) {
-      console.error('Error fetching products:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [selectedCategory]);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchProducts();
-    fetchTotalNotifications();
-  }, [fetchProducts]);
+  const onRefresh = useCallback(async () => {
+    await refreshProducts();
+    refreshNotifications();
+  }, [refreshProducts, refreshNotifications]);
 
   const filteredProducts = useMemo(() =>
     products.filter((product) =>
@@ -280,15 +186,15 @@ export default function HomeScreen() {
               <View style={styles.headerActions}>
                 <TouchableOpacity
                   onPress={navigateToNotifications}
-                  style={[styles.iconButton, { backgroundColor: '#D1FAE5' }]}
+                  style={[styles.iconButton, { backgroundColor: '#DCFCE7' }]}
                   accessibilityRole="button"
-                  accessibilityLabel={`Notifications - ${totalNotifications} au total`}
+                  accessibilityLabel={`Notifications - ${notificationCount} non lues`}
                 >
-                  <Bell size={20} color="#059669" />
-                  {totalNotifications > 0 && (
+                  <Bell size={20} color="#16A34A" />
+                  {notificationCount > 0 && (
                     <View style={styles.badge}>
                       <Text style={styles.badgeText}>
-                        {totalNotifications > 99 ? '99+' : totalNotifications}
+                        {notificationCount > 99 ? '99+' : notificationCount}
                       </Text>
                     </View>
                   )}
@@ -296,11 +202,11 @@ export default function HomeScreen() {
 
                 <TouchableOpacity
                   onPress={navigateToCart}
-                  style={[styles.iconButton, { backgroundColor: '#D1FAE5' }]}
+                  style={[styles.iconButton, { backgroundColor: '#DCFCE7' }]}
                   accessibilityRole="button"
                   accessibilityLabel={`Panier avec ${cartItemCount} articles`}
                 >
-                  <ShoppingCart size={20} color="#059669" />
+                  <ShoppingCart size={20} color="#16A34A" />
                   {cartItemCount > 0 && (
                     <View style={styles.badge}>
                       <Text style={styles.badgeText}>{cartItemCount}</Text>
@@ -437,9 +343,16 @@ export default function HomeScreen() {
           }>
           <ListHeader />
 
-          {/* Section Nouveautés - Images uniquement, 2 par ligne */}
+          {/* Sélecteur de tri */}
+          <SortSelector
+            currentSort={currentSortOption}
+            onSortChange={changeSortOption}
+            isDark={isDark}
+          />
+
+          {/* Section Recommandations - avec badges et stats */}
           {filteredProducts.length > 0 ? (
-            <SimpleProductGrid products={filteredProducts} />
+            <RecommendedProductGrid products={filteredProducts} />
           ) : (
             <View style={[styles.emptyContainer, { backgroundColor: themeColors.background }]}>
               <Text style={[styles.emptyText, { color: themeColors.textMuted }]}>Aucun produit disponible</Text>

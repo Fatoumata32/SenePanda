@@ -16,6 +16,8 @@ import { ArrowLeft, Camera, X } from 'lucide-react-native';
 import RatingStars from '@/components/RatingStars';
 import { supabase } from '@/lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function AddReviewScreen() {
@@ -57,9 +59,14 @@ export default function AddReviewScreen() {
     try {
       setUploading(true);
 
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const arrayBuffer = await blob.arrayBuffer();
+      // Lire le fichier en base64
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: 'base64',
+      });
+
+      // Convertir base64 en ArrayBuffer
+      const arrayBuffer = decode(base64);
+
       const fileExt = uri.split('.').pop();
       const fileName = `${Date.now()}.${fileExt}`;
       const filePath = `review-images/${fileName}`;

@@ -10,12 +10,15 @@ import { NavigationProvider } from '@/contexts/NavigationContext';
 import { CartProvider } from '@/contexts/CartContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { ToastProvider } from '@/contexts/ToastContext';
+import { NotificationProvider } from '@/contexts/NotificationContext';
 import { AuthGuard } from '@/components/AuthGuard';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Colors } from '@/constants/Colors';
 import PrivacyPolicyModal from '@/components/PrivacyPolicyModal';
 import OnboardingScreen, { ONBOARDING_COMPLETED_KEY } from '@/components/OnboardingScreen';
 import OfflineBanner from '@/components/OfflineBanner';
+import SubscriptionNotificationListener from '@/components/SubscriptionNotificationListener';
+import DailyLoginTracker from '@/components/DailyLoginTracker';
 
 export default function RootLayout() {
   useFrameworkReady();
@@ -134,14 +137,18 @@ export default function RootLayout() {
         <AuthProvider>
           <NavigationProvider>
             <CartProvider>
-              <ToastProvider>
-                <AuthGuard>
-                  <Stack screenOptions={{ headerShown: false }} />
-                  <PrivacyPolicyModal />
-                  <OfflineBanner />
-                  <StatusBar style="auto" />
-                </AuthGuard>
-              </ToastProvider>
+              <NotificationProvider>
+                <ToastProvider>
+                  <AuthGuard>
+                    <Stack screenOptions={{ headerShown: false }} />
+                    <PrivacyPolicyModal />
+                    <OfflineBanner />
+                    <SubscriptionNotificationListener />
+                    <DailyLoginTracker />
+                    <StatusBar style="auto" />
+                  </AuthGuard>
+                </ToastProvider>
+              </NotificationProvider>
             </CartProvider>
           </NavigationProvider>
         </AuthProvider>

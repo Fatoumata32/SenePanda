@@ -292,7 +292,7 @@ export default function SellerBenefitsScreen() {
                 <DollarSign size={24} color="#10B981" />
               </View>
               <Text style={styles.statValue}>
-                {stats.monthlyRevenue.toLocaleString()} XOF
+                {stats.monthlyRevenue.toLocaleString()} FCFA
               </Text>
               <Text style={styles.statLabel}>Revenus ce mois</Text>
             </View>
@@ -310,7 +310,7 @@ export default function SellerBenefitsScreen() {
                 <Target size={24} color="#3B82F6" />
               </View>
               <Text style={styles.statValue}>
-                {stats.averageOrderValue.toLocaleString()} XOF
+                {stats.averageOrderValue.toLocaleString()} FCFA
               </Text>
               <Text style={styles.statLabel}>Panier moyen</Text>
             </View>
@@ -341,26 +341,26 @@ export default function SellerBenefitsScreen() {
               </Text>
             </View>
             <Text style={styles.commissionSubtitle}>
-              Sur vos {stats.monthlyRevenue.toLocaleString()} XOF ce mois
+              Sur vos {stats.monthlyRevenue.toLocaleString()} FCFA ce mois
             </Text>
             <View style={styles.commissionCalculation}>
               <Text style={styles.commissionLabel}>Vous payez en commission :</Text>
               <Text style={styles.commissionAmount}>
-                {(stats.monthlyRevenue * currentPlanData.commission / 100).toLocaleString()} XOF
+                {(stats.monthlyRevenue * currentPlanData.commission / 100).toLocaleString()} FCFA
               </Text>
             </View>
             {currentPlan !== 'free' && (
               <View style={styles.commissionCalculation}>
                 <Text style={styles.commissionLabel}>Coût abonnement :</Text>
                 <Text style={styles.commissionAmount}>
-                  -{currentPlanData.price.toLocaleString()} XOF
+                  -{currentPlanData.price.toLocaleString()} FCFA
                 </Text>
               </View>
             )}
             <View style={[styles.netProfit, currentPlan === 'free' ? styles.netProfitWarning : styles.netProfitSuccess]}>
               <Text style={styles.netProfitLabel}>Vous gardez :</Text>
               <Text style={styles.netProfitAmount}>
-                {(stats.monthlyRevenue * (100 - currentPlanData.commission) / 100 - currentPlanData.price).toLocaleString()} XOF
+                {(stats.monthlyRevenue * (100 - currentPlanData.commission) / 100 - currentPlanData.price).toLocaleString()} FCFA
               </Text>
             </View>
           </View>
@@ -374,11 +374,11 @@ export default function SellerBenefitsScreen() {
                   ⚠️ Vous perdez de l'argent !
                 </Text>
                 <Text style={styles.lostMoneyText}>
-                  Avec vos {stats.monthlyRevenue.toLocaleString()} XOF de revenus ce mois,
-                  vous payez {(stats.monthlyRevenue * 0.2).toLocaleString()} XOF en commission (20%).
+                  Avec vos {stats.monthlyRevenue.toLocaleString()} FCFA de revenus ce mois,
+                  vous payez {(stats.monthlyRevenue * 0.2).toLocaleString()} FCFA en commission (20%).
                 </Text>
                 <Text style={styles.lostMoneyHighlight}>
-                  En passant à Starter, vous économiseriez {(stats.monthlyRevenue * 0.05).toLocaleString()} XOF !
+                  En passant à Starter, vous économiseriez {(stats.monthlyRevenue * 0.05).toLocaleString()} FCFA !
                 </Text>
               </View>
             </View>
@@ -389,7 +389,7 @@ export default function SellerBenefitsScreen() {
         <View style={styles.comparisonSection}>
           <Text style={styles.sectionTitle}>🔥 Et si vous changiez de plan ?</Text>
           <Text style={styles.comparisonSubtitle}>
-            Calculé avec vos revenus réels de {stats.monthlyRevenue.toLocaleString()} XOF/mois
+            Calculé avec vos revenus réels de {stats.monthlyRevenue.toLocaleString()} FCFA/mois
           </Text>
 
           {(Object.keys(subscriptionPlans) as SubscriptionPlanType[])
@@ -417,7 +417,7 @@ export default function SellerBenefitsScreen() {
                       <View style={styles.planComparisonTitleContent}>
                         <Text style={styles.planComparisonName}>{plan.name}</Text>
                         <Text style={styles.planComparisonPrice}>
-                          {plan.price > 0 ? `${plan.price.toLocaleString()} XOF/mois` : 'Gratuit'}
+                          {plan.price > 0 ? `${plan.price.toLocaleString()} FCFA/mois` : 'Gratuit'}
                         </Text>
                       </View>
                     </View>
@@ -438,7 +438,7 @@ export default function SellerBenefitsScreen() {
                           💸 Économie commission ({currentPlanData.commission}% → {plan.commission}%):
                         </Text>
                         <Text style={[styles.roiValue, roi.commissionSaved > 0 ? styles.roiPositive : styles.roiNegative]}>
-                          {roi.commissionSaved > 0 ? '+' : ''}{roi.commissionSaved.toLocaleString()} XOF
+                          {roi.commissionSaved > 0 ? '+' : ''}{roi.commissionSaved.toLocaleString()} FCFA
                         </Text>
                       </View>
                     )}
@@ -448,7 +448,7 @@ export default function SellerBenefitsScreen() {
                       <View style={styles.roiRow}>
                         <Text style={styles.roiLabel}>💳 Coût mensuel:</Text>
                         <Text style={styles.roiNegative}>
-                          -{roi.planCost.toLocaleString()} XOF
+                          -{roi.planCost.toLocaleString()} FCFA
                         </Text>
                       </View>
                     )}
@@ -460,7 +460,7 @@ export default function SellerBenefitsScreen() {
                           📈 Ventes extra (+{plan.visibilityBoost}% visibilité):
                         </Text>
                         <Text style={styles.roiPositive}>
-                          +{roi.estimatedExtraProfit.toLocaleString()} XOF
+                          +{roi.estimatedExtraProfit.toLocaleString()} FCFA
                         </Text>
                       </View>
                     )}
@@ -478,7 +478,7 @@ export default function SellerBenefitsScreen() {
                         roi.totalMonthlyBenefit > 0 ? styles.roiTotalPositive : styles.roiTotalNegative
                       ]}>
                         {roi.totalMonthlyBenefit > 0 ? '+' : ''}
-                        {roi.totalMonthlyBenefit.toLocaleString()} XOF
+                        {roi.totalMonthlyBenefit.toLocaleString()} FCFA
                       </Text>
                     </View>
 
@@ -487,14 +487,14 @@ export default function SellerBenefitsScreen() {
                       <View style={styles.conclusionPositive}>
                         <CheckCircle size={16} color="#10B981" />
                         <Text style={styles.conclusionText}>
-                          Ce plan vous rapporte {roi.totalMonthlyBenefit.toLocaleString()} XOF de plus par mois !
+                          Ce plan vous rapporte {roi.totalMonthlyBenefit.toLocaleString()} FCFA de plus par mois !
                         </Text>
                       </View>
                     ) : stats.monthlyRevenue < roi.breakEvenSales ? (
                       <View style={styles.conclusionNeutral}>
                         <Clock size={16} color="#F59E0B" />
                         <Text style={styles.conclusionText}>
-                          Rentable à partir de {roi.breakEvenSales.toLocaleString()} XOF de ventes/mois
+                          Rentable à partir de {roi.breakEvenSales.toLocaleString()} FCFA de ventes/mois
                         </Text>
                       </View>
                     ) : (
@@ -532,7 +532,7 @@ export default function SellerBenefitsScreen() {
               <View style={styles.benefitContent}>
                 <Text style={styles.benefitTitle}>Commission {currentPlanData.commission}%</Text>
                 <Text style={styles.benefitDescription}>
-                  Sur chaque vente de 10,000 XOF, vous payez {currentPlanData.commission * 100} XOF
+                  Sur chaque vente de 10,000 FCFA, vous payez {currentPlanData.commission * 100} FCFA
                 </Text>
               </View>
             </View>

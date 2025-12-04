@@ -35,7 +35,7 @@ INSERT INTO subscription_plans (
     'Pour débuter votre activité',
     0,
     0,
-    'XOF',
+    'FCFA',
     10,
     15.00,
     0,
@@ -54,9 +54,9 @@ INSERT INTO subscription_plans (
     'starter',
     'Starter',
     'Pour les vendeurs actifs',
-    2500,
-    25000,
-    'XOF',
+    3000,
+    30000,
+    'FCFA',
     50,
     12.00,
     20,
@@ -75,9 +75,9 @@ INSERT INTO subscription_plans (
     'pro',
     'Pro',
     'Pour les professionnels',
-    5000,
-    50000,
-    'XOF',
+    7000,
+    70000,
+    'FCFA',
     200,
     10.00,
     50,
@@ -96,9 +96,9 @@ INSERT INTO subscription_plans (
     'premium',
     'Premium',
     'Pour dominer le marché',
-    10000,
-    100000,
-    'XOF',
+    15000,
+    150000,
+    'FCFA',
     999999,
     7.00,
     100,
@@ -136,8 +136,8 @@ BEGIN
     ORDER BY display_order
   LOOP
     RAISE NOTICE '📦 % (%)', plan_record.name, plan_record.plan_type;
-    RAISE NOTICE '   Prix mensuel: % XOF', plan_record.price_monthly;
-    RAISE NOTICE '   Prix annuel: % XOF', plan_record.price_yearly;
+    RAISE NOTICE '   Prix mensuel: % FCFA', plan_record.price_monthly;
+    RAISE NOTICE '   Prix annuel: % FCFA', plan_record.price_yearly;
     RAISE NOTICE '   Produits max: %', plan_record.max_products;
     RAISE NOTICE '   Commission: %%%', plan_record.commission_rate;
     RAISE NOTICE '';

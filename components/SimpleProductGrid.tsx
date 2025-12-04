@@ -7,6 +7,7 @@ import { Colors, Typography, Spacing, BorderRadius } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
 import { Heart } from 'lucide-react-native';
+import useProductRecommendations from '@/hooks/useProductRecommendations';
 
 const { width } = Dimensions.get('window');
 const SPACING = 8;
@@ -20,12 +21,14 @@ const ProductImageItem = memo(({ product, index }: { product: Product; index: nu
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [isFavorite, setIsFavorite] = useState(false);
+  const { recordClick, recordFavorite } = useProductRecommendations();
 
   useEffect(() => {
     if (user && !authLoading) {
       checkFavorite();
     }
-  }, [user, authLoading, product.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, authLoading, product.id]);
 
   const checkFavorite = async () => {
     if (!user) return;
@@ -94,6 +97,8 @@ const ProductImageItem = memo(({ product, index }: { product: Product; index: nu
         }
 
         setIsFavorite(true);
+        // Tracker l'ajout aux favoris
+        recordFavorite(product.id);
       }
     } catch (error) {
       console.error('Error toggling favorite:', error);
@@ -101,11 +106,13 @@ const ProductImageItem = memo(({ product, index }: { product: Product; index: nu
   };
 
   const handlePress = useCallback(() => {
+    // Tracker le clic sur le produit
+    recordClick(product.id);
     router.push(`/product/${product.id}`);
-  }, [product.id, router]);
+  }, [product.id, router, recordClick]);
 
   const formatPrice = (price: number, currency: string) => {
-    if (currency === 'XOF') {
+    if (currency === 'FCFA' || currency === 'XOF') {
       return `${price.toLocaleString()} FCFA`;
     }
     return `${price.toLocaleString()} ${currency}`;
