@@ -81,11 +81,13 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({ targetRef 
   const isLastStep = currentStepIndex === totalSteps - 1;
   const isCenterPosition = currentStep.position === 'center';
 
+  console.log('[OnboardingTooltip] 🎨 Rendering Modal - isActive:', isActive);
+
   return (
     <Modal
       visible={isActive}
       transparent
-      animationType="none"
+      animationType="fade"
       statusBarTranslucent
     >
       <View style={styles.container}>

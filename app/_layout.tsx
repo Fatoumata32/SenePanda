@@ -20,6 +20,7 @@ import OnboardingScreen, { ONBOARDING_COMPLETED_KEY } from '@/components/Onboard
 import OfflineBanner from '@/components/OfflineBanner';
 import SubscriptionNotificationListener from '@/components/SubscriptionNotificationListener';
 import DailyLoginTracker from '@/components/DailyLoginTracker';
+import { OnboardingTooltip } from '@/components/onboarding';
 
 export default function RootLayout() {
   useFrameworkReady();
@@ -147,6 +148,7 @@ export default function RootLayout() {
                       <OfflineBanner />
                       <SubscriptionNotificationListener />
                       <DailyLoginTracker />
+                      <OnboardingTooltip />
                       <StatusBar style="auto" />
                     </AuthGuard>
                   </OnboardingProvider>
