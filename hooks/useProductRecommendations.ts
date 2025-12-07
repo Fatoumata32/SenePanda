@@ -155,16 +155,9 @@ export function useProductRecommendations(
     try {
       let query = supabase
         .from('products')
-        .select(`
-          *,
-          view_count,
-          click_count,
-          favorite_count,
-          popularity_score,
-          trending_score
-        `)
+        .select('*')
         .eq('is_active', true)
-        .gt('stock', 0);
+        .gte('stock', 0); // Changé de gt à gte pour inclure les produits avec stock = 0
 
       if (categoryId) {
         query = query.eq('category_id', categoryId);
@@ -173,29 +166,23 @@ export function useProductRecommendations(
       // Appliquer le tri selon l'option
       switch (sortOption) {
         case 'popular':
-          query = query.order('popularity_score', { ascending: false, nullsFirst: false });
-          break;
         case 'trending':
-          query = query.order('trending_score', { ascending: false, nullsFirst: false });
+        case 'smart':
+        default:
+          // Tri par défaut : plus récents en premier
+          query = query.order('created_at', { ascending: false });
           break;
         case 'newest':
           query = query.order('created_at', { ascending: false });
           break;
         case 'rating':
-          query = query.order('average_rating', { ascending: false, nullsFirst: false });
+          query = query.order('created_at', { ascending: false }); // Fallback si average_rating n'existe pas
           break;
         case 'price_asc':
           query = query.order('price', { ascending: true });
           break;
         case 'price_desc':
           query = query.order('price', { ascending: false });
-          break;
-        case 'smart':
-        default:
-          // Tri intelligent: mélange de popularité et fraîcheur
-          query = query
-            .order('popularity_score', { ascending: false, nullsFirst: false })
-            .order('created_at', { ascending: false });
           break;
       }
 
