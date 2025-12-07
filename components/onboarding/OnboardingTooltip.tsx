@@ -11,11 +11,44 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  Search,
+  Package,
+  Zap,
+  Heart,
+  ShoppingCart,
+  User,
+  Gift,
+  Users,
+  Store,
+  Sparkles,
+  X as XIcon,
+  ChevronRight,
+  ChevronLeft,
+} from 'lucide-react-native';
 import { useOnboarding } from '../../contexts/OnboardingContext';
 import { Colors, Gradients } from '../../constants/Colors';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Map step IDs to icons
+const getStepIcon = (stepId: string) => {
+  const iconMap: Record<string, any> = {
+    welcome: Sparkles,
+    search: Search,
+    categories: Package,
+    'flash-sales': Zap,
+    favorites: Heart,
+    cart: ShoppingCart,
+    profile: User,
+    points: Gift,
+    referral: Users,
+    seller: Store,
+    complete: Sparkles,
+  };
+  return iconMap[stepId] || Sparkles;
+};
 
 interface OnboardingTooltipProps {
   targetRef?: React.RefObject<View>;
@@ -81,6 +114,9 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({ targetRef 
   const isLastStep = currentStepIndex === totalSteps - 1;
   const isCenterPosition = currentStep.position === 'center';
 
+  // Get icon component for current step
+  const StepIcon = getStepIcon(currentStep.id);
+
   console.log('[OnboardingTooltip] 🎨 Rendering Modal - isActive:', isActive);
 
   return (
@@ -142,11 +178,16 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({ targetRef 
               accessibilityLabel="Fermer le guide"
               accessibilityRole="button"
             >
-              <Ionicons name="close" size={24} color={Colors.white} />
+              <XIcon size={24} color={Colors.white} strokeWidth={2.5} />
             </TouchableOpacity>
 
             {/* Content */}
             <View style={styles.content}>
+              {/* Icon */}
+              <View style={styles.iconContainer}>
+                <StepIcon size={64} color={Colors.white} strokeWidth={1.5} />
+              </View>
+
               {/* Step indicator */}
               <View style={styles.stepIndicator}>
                 <Text style={styles.stepText}>
@@ -182,7 +223,7 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({ targetRef 
                     accessibilityLabel="Étape précédente"
                     accessibilityRole="button"
                   >
-                    <Ionicons name="chevron-back" size={20} color={Colors.white} />
+                    <ChevronLeft size={20} color={Colors.white} strokeWidth={2.5} />
                     <Text style={styles.secondaryButtonText}>Précédent</Text>
                   </TouchableOpacity>
                 )}
@@ -205,7 +246,7 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({ targetRef 
                   <Text style={styles.primaryButtonText}>
                     {isLastStep ? 'Terminer' : 'Suivant'}
                   </Text>
-                  <Ionicons name="chevron-forward" size={20} color={Colors.primary} />
+                  <ChevronRight size={20} color={Colors.primaryOrange} strokeWidth={2.5} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -280,6 +321,10 @@ const styles = StyleSheet.create({
   },
   content: {
     alignItems: 'center',
+  },
+  iconContainer: {
+    marginBottom: 16,
+    opacity: 0.95,
   },
   stepIndicator: {
     backgroundColor: 'rgba(255, 255, 255, 0.25)',

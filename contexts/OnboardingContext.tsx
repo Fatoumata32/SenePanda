@@ -35,7 +35,7 @@ const ONBOARDING_KEY = '@onboarding_completed';
 const ONBOARDING_STEPS: OnboardingStep[] = [
   {
     id: 'welcome',
-    title: 'Bienvenue sur ShopExpress! 👋',
+    title: 'Bienvenue sur SenePanda! 👋',
     description: 'Découvrez toutes les fonctionnalités de votre marketplace préférée',
     screen: 'home',
     position: 'center',
