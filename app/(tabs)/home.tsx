@@ -28,6 +28,7 @@ import { useCart } from '@/contexts/CartContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import useProductRecommendations, { SortOption } from '@/hooks/useProductRecommendations';
 import * as Haptics from 'expo-haptics';
+import { OnboardingDebugButton } from '@/components/onboarding/OnboardingDebugButton';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -360,6 +361,9 @@ export default function HomeScreen() {
           )}
         </ScrollView>
       )}
+
+      {/* Bouton flottant pour lancer le guide interactif */}
+      <OnboardingDebugButton />
     </SafeAreaView>
   );
 }
