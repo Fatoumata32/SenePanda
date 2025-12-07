@@ -387,10 +387,10 @@ export default function ShopWizardV2() {
       // Nettoyer le cache
       await AsyncStorage.removeItem('shop_wizard_progress');
 
-      // Rediriger après l'animation
+      // Rediriger vers le choix de l'abonnement après 2 secondes
       setTimeout(() => {
-        router.replace('/seller/shop-success');
-      }, 3000);
+        router.replace('/seller/choose-subscription');
+      }, 2000);
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {
@@ -417,7 +417,13 @@ export default function ShopWizardV2() {
       <View style={[styles.header, { backgroundColor: cardBg }]}>
         <View style={styles.headerLeft}>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/(tabs)/profile');
+              }
+            }}
             style={styles.backButton}>
             <ArrowLeft size={24} color={textColor} />
           </TouchableOpacity>

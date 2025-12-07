@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -33,8 +34,32 @@ export default function ChooseSubscriptionScreen() {
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+
   useEffect(() => {
     loadData();
+
+    // Animation d'entrée
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
 
   const loadData = async () => {
@@ -45,7 +70,11 @@ export default function ChooseSubscriptionScreen() {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
         Alert.alert('Erreur', 'Vous devez être connecté');
-        router.back();
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/(tabs)/profile');
+        }
         return;
       }
       setUserId(user.id);
@@ -80,23 +109,32 @@ export default function ChooseSubscriptionScreen() {
 
       // Si c'est le plan Free, créer l'abonnement gratuit immédiatement
       if (selectedPlan.plan_type === 'free') {
-        const { error } = await supabase.from('user_subscriptions').upsert({
-          user_id: userId,
-          plan_id: selectedPlan.id,
-          plan_type: selectedPlan.plan_type,
-          status: 'active',
-          start_date: new Date().toISOString(),
-          end_date: null, // Pas de date de fin pour free
-          is_active: true,
-        }, { onConflict: 'user_id' });
+        // Mettre à jour le profil avec l'abonnement Free
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({
+            subscription_plan: 'free',
+            subscription_expires_at: null, // Pas d'expiration pour le plan gratuit
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', userId);
 
-        if (error) {
-          console.error('Erreur création abonnement free:', error);
-          throw error;
+        if (profileError) {
+          console.error('Erreur mise à jour profil:', profileError);
+          throw profileError;
         }
 
-        // Rediriger vers la création de boutique
-        router.replace('/seller/my-shop');
+        // Afficher un message de succès
+        Alert.alert(
+          '🎉 Bienvenue !',
+          'Votre boutique a été créée avec succès !\n\nVous utilisez le plan GRATUIT. Vous pourrez toujours passer à un plan payant pour débloquer plus de fonctionnalités.',
+          [
+            {
+              text: 'Commencer',
+              onPress: () => router.replace('/seller/my-shop')
+            }
+          ]
+        );
       } else {
         // Pour les plans payants, rediriger vers la page de paiement
         router.push({
@@ -215,7 +253,13 @@ export default function ChooseSubscriptionScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)/profile');
+            }
+          }}
           disabled={loading}
         >
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
@@ -229,19 +273,55 @@ export default function ChooseSubscriptionScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Titre et description */}
-        <View style={styles.titleSection}>
-          <Text style={styles.mainTitle}>Choisissez votre plan d'abonnement</Text>
-          <Text style={styles.subtitle}>
-            Sélectionnez le plan qui correspond le mieux à vos besoins.
-            Vous pourrez toujours le modifier plus tard.
+        {/* Message de félicitations */}
+        <Animated.View
+          style={[
+            styles.congratsSection,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
+            },
+          ]}
+        >
+          <View style={styles.congratsIcon}>
+            <Ionicons name="checkmark-circle" size={64} color={Colors.success} />
+          </View>
+          <Text style={styles.congratsTitle}>🎉 Félicitations !</Text>
+          <Text style={styles.congratsText}>
+            Votre boutique a été créée avec succès !{'\n'}
+            Il ne reste plus qu'à choisir votre plan d'abonnement.
           </Text>
-        </View>
+        </Animated.View>
+
+        {/* Titre et description */}
+        <Animated.View
+          style={[
+            styles.titleSection,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          <Text style={styles.mainTitle}>Choisissez votre plan</Text>
+          <Text style={styles.subtitle}>
+            Commencez gratuitement ou profitez de fonctionnalités avancées.{'\n'}
+            Vous pourrez toujours changer de plan plus tard.
+          </Text>
+        </Animated.View>
 
         {/* Plans */}
-        <View style={styles.plansContainer}>
+        <Animated.View
+          style={[
+            styles.plansContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
           {plans.map(plan => renderPlanCard(plan))}
-        </View>
+        </Animated.View>
 
         {/* Info */}
         <View style={styles.infoCard}>
@@ -330,21 +410,46 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     paddingBottom: 100,
   },
-  titleSection: {
-    marginBottom: Spacing['2xl'],
+  congratsSection: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    marginBottom: Spacing.xl,
+    ...Shadows.medium,
   },
-  mainTitle: {
+  congratsIcon: {
+    marginBottom: Spacing.md,
+  },
+  congratsTitle: {
     fontSize: Typography.fontSize['2xl'],
     fontWeight: Typography.fontWeight.bold,
     color: Colors.textPrimary,
     marginBottom: Spacing.sm,
     textAlign: 'center',
   },
-  subtitle: {
+  congratsText: {
     fontSize: Typography.fontSize.base,
     color: Colors.textSecondary,
     textAlign: 'center',
     lineHeight: 24,
+  },
+  titleSection: {
+    marginBottom: Spacing.xl,
+  },
+  mainTitle: {
+    fontSize: Typography.fontSize.xl,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
   },
   plansContainer: {
     gap: Spacing.lg,

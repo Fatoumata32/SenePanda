@@ -139,8 +139,9 @@ export default function SubscriptionPlansScreen() {
       setCurrentPlan(profileData.subscription_plan || 'free');
 
       // Calculer les jours restants
-      if (profileData.subscription_expires_at) {
-        const expiresAt = new Date(profileData.subscription_expires_at);
+      const expiresAtValue = (profileData as any).subscription_expires_at;
+      if (expiresAtValue) {
+        const expiresAt = new Date(expiresAtValue);
         const now = new Date();
         const diffTime = expiresAt.getTime() - now.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -321,7 +322,6 @@ export default function SubscriptionPlansScreen() {
         setProfile({
           ...profile,
           subscription_plan: selectedPlan.plan_type,
-          subscription_expires_at: expiresAt.toISOString(),
           updated_at: new Date().toISOString(),
         });
       }
@@ -335,6 +335,9 @@ export default function SubscriptionPlansScreen() {
         await refreshSubscription();
         await refreshProfileSubscription();
         setShowPaymentModal(false);
+
+        // Rediriger vers la boutique
+        router.replace('/seller/my-shop');
       }, 2000);
 
     } catch (error: any) {
@@ -390,7 +393,6 @@ export default function SubscriptionPlansScreen() {
         setProfile({
           ...profile,
           subscription_plan: selectedPlan.plan_type,
-          subscription_expires_at: expiresAt.toISOString(),
           updated_at: new Date().toISOString(),
         });
       }
@@ -403,11 +405,16 @@ export default function SubscriptionPlansScreen() {
       await refreshSubscription();
       await refreshProfileSubscription();
 
-      // Afficher un message de succès
+      // Afficher un message de succès avec redirection
       Alert.alert(
         '🎉 Abonnement activé !',
-        `Votre abonnement ${selectedPlan.name} est maintenant actif !\n\nValable jusqu'au ${expiresAt.toLocaleDateString('fr-FR')}\n\nVotre profil a été synchronisé automatiquement.`,
-        [{ text: 'Super !' }]
+        `Votre abonnement ${selectedPlan.name} est maintenant actif !\n\nValable jusqu'au ${expiresAt.toLocaleDateString('fr-FR')}\n\nVotre boutique est maintenant prête à accueillir vos produits !`,
+        [
+          {
+            text: 'Commencer',
+            onPress: () => router.replace('/seller/my-shop')
+          }
+        ]
       );
 
     } catch (error: any) {
