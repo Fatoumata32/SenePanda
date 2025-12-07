@@ -30,10 +30,12 @@ import {
   CreditCard,
   MapPin,
   Info,
+  BookOpen,
 } from 'lucide-react-native';
 import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NavigationService from '@/lib/navigation';
+import { useOnboarding } from '@/contexts/OnboardingContext';
 
 interface SettingSection {
   title: string;
@@ -53,6 +55,7 @@ interface SettingItem {
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { resetOnboarding, startOnboarding } = useOnboarding();
   const [user, setUser] = useState<any>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [darkModeEnabled, setDarkModeEnabled] = useState(false);
@@ -146,6 +149,31 @@ export default function SettingsScreen() {
     } catch (error) {
       console.error('Error opening URL:', error);
     }
+  };
+
+  const handleRestartOnboarding = async () => {
+    Alert.alert(
+      'Guide interactif',
+      'Voulez-vous recommencer le guide interactif pour découvrir toutes les fonctionnalités?',
+      [
+        {
+          text: 'Annuler',
+          style: 'cancel',
+        },
+        {
+          text: 'Commencer',
+          onPress: async () => {
+            await resetOnboarding();
+            router.push('/(tabs)/home' as any);
+            // Petit délai pour laisser la navigation se faire
+            setTimeout(() => {
+              startOnboarding();
+            }, 500);
+            Speech.speak('Guide interactif relancé');
+          },
+        },
+      ]
+    );
   };
 
   const sections: SettingSection[] = [
@@ -270,6 +298,14 @@ export default function SettingsScreen() {
     {
       title: 'Assistance',
       items: [
+        {
+          id: 'onboarding',
+          label: 'Revoir le guide interactif',
+          icon: BookOpen,
+          type: 'action',
+          action: () => handleRestartOnboarding(),
+          iconColor: '#10B981',
+        },
         {
           id: 'help',
           label: 'Aide & Support',

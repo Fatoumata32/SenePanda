@@ -11,6 +11,7 @@ import { CartProvider } from '@/contexts/CartContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
+import { OnboardingProvider } from '@/contexts/OnboardingContext';
 import { AuthGuard } from '@/components/AuthGuard';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Colors } from '@/constants/Colors';
@@ -139,14 +140,16 @@ export default function RootLayout() {
             <CartProvider>
               <NotificationProvider>
                 <ToastProvider>
-                  <AuthGuard>
-                    <Stack screenOptions={{ headerShown: false }} />
-                    <PrivacyPolicyModal />
-                    <OfflineBanner />
-                    <SubscriptionNotificationListener />
-                    <DailyLoginTracker />
-                    <StatusBar style="auto" />
-                  </AuthGuard>
+                  <OnboardingProvider>
+                    <AuthGuard>
+                      <Stack screenOptions={{ headerShown: false }} />
+                      <PrivacyPolicyModal />
+                      <OfflineBanner />
+                      <SubscriptionNotificationListener />
+                      <DailyLoginTracker />
+                      <StatusBar style="auto" />
+                    </AuthGuard>
+                  </OnboardingProvider>
                 </ToastProvider>
               </NotificationProvider>
             </CartProvider>
