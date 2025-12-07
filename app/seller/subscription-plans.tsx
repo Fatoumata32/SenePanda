@@ -18,6 +18,8 @@ import { supabase } from '@/lib/supabase';
 import { SubscriptionPlan, SubscriptionPlanType, Profile } from '@/types/database';
 import { Ionicons, MaterialIcons, FontAwesome5, Feather } from '@expo/vector-icons';
 import { useSubscriptionSync } from '@/hooks/useSubscriptionSync';
+import { useProfileSubscriptionSync } from '@/hooks/useProfileSubscriptionSync';
+import WavePaymentSimulator from '@/components/payment/WavePaymentSimulator';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -55,8 +57,16 @@ export default function SubscriptionPlansScreen() {
   const [currentPlan, setCurrentPlan] = useState<SubscriptionPlanType>('free');
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
 
-  // Hook de synchronisation en temps réel
+  // Hook de synchronisation en temps réel (ancien système user_subscriptions)
   const { subscription, isActive, refresh: refreshSubscription } = useSubscriptionSync(user?.id);
+
+  // Hook de synchronisation du profil (nouveau système - colonnes dans profiles)
+  const {
+    subscription: profileSubscription,
+    isActive: profileIsActive,
+    daysRemaining: profileDaysRemaining,
+    refresh: refreshProfileSubscription
+  } = useProfileSubscriptionSync(user?.id);
 
   // États pour le modal de paiement
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -65,6 +75,9 @@ export default function SubscriptionPlansScreen() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [paymentStep, setPaymentStep] = useState<'method' | 'details' | 'confirm' | 'processing' | 'success' | 'error'>('method');
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
+
+  // États pour le simulateur Wave
+  const [showWaveSimulator, setShowWaveSimulator] = useState(false);
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -240,6 +253,7 @@ export default function SubscriptionPlansScreen() {
     console.log('🔓 Ouverture du modal de confirmation pour:', plan.name);
     // Définir le plan avant d'ouvrir le modal
     setSelectedPlan(plan);
+    setSelectedPaymentMethod('wave'); // Sélectionner Wave par défaut
     setPaymentStep('confirm');
     // Utiliser setTimeout pour s'assurer que l'état est mis à jour
     setTimeout(() => {
@@ -261,61 +275,144 @@ export default function SubscriptionPlansScreen() {
       return;
     }
 
+    // Si Wave est sélectionné, ouvrir le simulateur
+    if (selectedPaymentMethod === 'wave') {
+      setShowPaymentModal(false);
+      setShowWaveSimulator(true);
+      return;
+    }
+
+    // Sinon, traitement normal (autres méthodes de paiement)
     setPaymentStep('processing');
 
     try {
-      // Créer une demande d'abonnement simple
-      const { data: result, error } = await supabase.rpc('request_subscription', {
-        p_user_id: user.id,
-        p_plan_type: selectedPlan.plan_type,
-        p_billing_period: billingPeriod
+      // Activer directement l'abonnement
+      const expiresAt = new Date();
+      if (billingPeriod === 'monthly') {
+        expiresAt.setMonth(expiresAt.getMonth() + 1);
+      } else {
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+      }
+
+      // Mettre à jour le profil avec l'abonnement
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          subscription_plan: selectedPlan.plan_type,
+          subscription_expires_at: expiresAt.toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      console.log('✅ Abonnement activé:', {
+        plan: selectedPlan.plan_type,
+        expires: expiresAt.toISOString()
       });
 
-      if (error) {
-        console.error('❌ Erreur:', error);
-        throw error;
-      }
+      // Mettre à jour immédiatement les états locaux pour synchronisation instantanée
+      setCurrentPlan(selectedPlan.plan_type);
+      const diffDays = Math.ceil((expiresAt.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+      setDaysRemaining(diffDays);
 
-      // Vérifier le succès
-      if (!result || !result.success) {
-        throw new Error(result?.error || 'Erreur lors de la demande d\'abonnement');
+      // Mettre à jour le profil local
+      if (profile) {
+        setProfile({
+          ...profile,
+          subscription_plan: selectedPlan.plan_type,
+          subscription_expires_at: expiresAt.toISOString(),
+          updated_at: new Date().toISOString(),
+        });
       }
-
-      console.log('✅ Demande envoyée:', result.request_id);
-      console.log('✅ Message:', result.message);
 
       setPaymentStep('success');
 
-      // Recharger les données et fermer le modal après 3 secondes
+      // Recharger les données et fermer le modal après 2 secondes
       setTimeout(async () => {
-        console.log('🔄 Rechargement des données...');
+        console.log('🔄 Rechargement des données pour synchronisation complète...');
         await loadData();
+        await refreshSubscription();
+        await refreshProfileSubscription();
         setShowPaymentModal(false);
-      }, 3000);
+      }, 2000);
 
     } catch (error: any) {
       console.error('❌ Erreur lors du traitement du paiement:', error);
-      console.error('Détails:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      });
-
-      // Message d'erreur personnalisé
-      let errorMessage = 'Une erreur est survenue. Veuillez réessayer.';
-      if (error.message?.includes('function') && error.message?.includes('does not exist')) {
-        errorMessage = 'La fonction de validation n\'est pas encore installée. Veuillez exécuter COMPLETE_DATABASE_SETUP.sql dans Supabase.';
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
 
       Alert.alert(
         'Erreur de paiement',
-        errorMessage,
+        'Une erreur est survenue. Veuillez réessayer.',
         [{ text: 'OK' }]
       );
       setPaymentStep('error');
+    }
+  };
+
+  // Fonction pour gérer le succès du paiement Wave
+  const handleWavePaymentSuccess = async () => {
+    if (!selectedPlan || !user) return;
+
+    try {
+      console.log('💳 Paiement Wave simulé réussi');
+
+      // Activer l'abonnement
+      const expiresAt = new Date();
+      if (billingPeriod === 'monthly') {
+        expiresAt.setMonth(expiresAt.getMonth() + 1);
+      } else {
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+      }
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          subscription_plan: selectedPlan.plan_type,
+          subscription_expires_at: expiresAt.toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      console.log('✅ Abonnement activé via Wave:', {
+        plan: selectedPlan.plan_type,
+        expires: expiresAt.toISOString()
+      });
+
+      // Mettre à jour immédiatement les états locaux
+      setCurrentPlan(selectedPlan.plan_type);
+      const diffDays = Math.ceil((expiresAt.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+      setDaysRemaining(diffDays);
+
+      // Mettre à jour le profil local
+      if (profile) {
+        setProfile({
+          ...profile,
+          subscription_plan: selectedPlan.plan_type,
+          subscription_expires_at: expiresAt.toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+
+      // Fermer le simulateur
+      setShowWaveSimulator(false);
+
+      // Recharger les données pour synchroniser avec la base
+      await loadData();
+      await refreshSubscription();
+      await refreshProfileSubscription();
+
+      // Afficher un message de succès
+      Alert.alert(
+        '🎉 Abonnement activé !',
+        `Votre abonnement ${selectedPlan.name} est maintenant actif !\n\nValable jusqu'au ${expiresAt.toLocaleDateString('fr-FR')}\n\nVotre profil a été synchronisé automatiquement.`,
+        [{ text: 'Super !' }]
+      );
+
+    } catch (error: any) {
+      console.error('❌ Erreur activation abonnement:', error);
+      Alert.alert('Erreur', 'Impossible d\'activer l\'abonnement. Réessayez.');
     }
   };
 
@@ -781,9 +878,9 @@ export default function SubscriptionPlansScreen() {
               <View style={styles.confirmContainer}>
                 <View style={styles.confirmHeader}>
                   <Ionicons name="checkmark-circle" size={64} color="#F59E0B" />
-                  <Text style={styles.confirmTitle}>Demander cet abonnement</Text>
+                  <Text style={styles.confirmTitle}>Confirmer votre abonnement</Text>
                   <Text style={styles.confirmSubtitle}>
-                    Votre demande sera envoyée à l'administrateur pour validation
+                    Votre abonnement sera activé immédiatement après paiement
                   </Text>
                 </View>
 
@@ -807,14 +904,14 @@ export default function SubscriptionPlansScreen() {
                 </View>
 
                 <View style={styles.infoCard}>
-                  <Ionicons name="information-circle" size={20} color="#3B82F6" />
+                  <Ionicons name="information-circle" size={20} color="#10B981" />
                   <View style={styles.infoContent}>
-                    <Text style={styles.infoTitle}>Comment ça marche ?</Text>
+                    <Text style={styles.infoTitle}>Activation immédiate</Text>
                     <Text style={styles.infoText}>
-                      1. Vous envoyez votre demande d'abonnement{'\n'}
-                      2. L'administrateur vérifie et valide{'\n'}
-                      3. Votre abonnement est activé{'\n'}
-                      4. Vous recevrez une notification de confirmation
+                      1. Confirmez votre commande{'\n'}
+                      2. Effectuez le paiement via Wave{'\n'}
+                      3. Votre abonnement est activé instantanément{'\n'}
+                      4. Profitez immédiatement de tous les avantages !
                     </Text>
                   </View>
                 </View>
@@ -824,7 +921,7 @@ export default function SubscriptionPlansScreen() {
                     style={styles.confirmButtonPrimary}
                     onPress={processSubscriptionRequest}>
                     <Text style={styles.confirmButtonPrimaryText}>
-                      Envoyer la demande
+                      Procéder au paiement
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -839,7 +936,7 @@ export default function SubscriptionPlansScreen() {
                 <View style={styles.confirmNote}>
                   <Ionicons name="shield-checkmark" size={16} color="#6B7280" />
                   <Text style={styles.confirmNoteText}>
-                    Votre paiement est sécurisé et crypté
+                    Paiement sécurisé via Wave Mobile Money
                   </Text>
                 </View>
               </View>
@@ -862,24 +959,24 @@ export default function SubscriptionPlansScreen() {
             {paymentStep === 'success' && (
               <View style={styles.successContainer}>
                 <View style={styles.successIconContainer}>
-                  <Ionicons name="time" size={64} color="#F59E0B" />
+                  <Ionicons name="checkmark-circle" size={64} color="#10B981" />
                 </View>
-                <Text style={styles.successTitle}>Demande envoyée !</Text>
+                <Text style={styles.successTitle}>Abonnement activé !</Text>
                 <Text style={styles.successText}>
-                  Votre demande d'abonnement {selectedPlan.name} a été envoyée à l'administrateur.
+                  Votre abonnement {selectedPlan?.name} est maintenant actif !
                 </Text>
                 <View style={styles.successDetails}>
                   <Text style={styles.successDetailText}>
-                    Vous serez notifié une fois que votre abonnement sera activé.
+                    ✅ Activation immédiate
                   </Text>
                   <Text style={styles.successDetailText}>
-                    Status: En attente de validation
+                    🎉 Tous les avantages sont maintenant disponibles
                   </Text>
                 </View>
                 <TouchableOpacity
                   style={styles.successButton}
                   onPress={closePaymentModal}>
-                  <Text style={styles.successButtonText}>Fermer</Text>
+                  <Text style={styles.successButtonText}>Commencer</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -1007,6 +1104,18 @@ export default function SubscriptionPlansScreen() {
 
       {/* Payment Modal */}
       {renderPaymentModal()}
+
+      {/* Wave Payment Simulator */}
+      <WavePaymentSimulator
+        visible={showWaveSimulator}
+        amount={selectedPlan ? getPrice(selectedPlan) : 0}
+        phoneNumber={phoneNumber || '+221 XX XXX XX XX'}
+        onSuccess={handleWavePaymentSuccess}
+        onCancel={() => {
+          setShowWaveSimulator(false);
+          setShowPaymentModal(true);
+        }}
+      />
     </SafeAreaView>
   );
 }

@@ -145,22 +145,28 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const checkOnboardingStatus = async () => {
     try {
       const value = await AsyncStorage.getItem(ONBOARDING_KEY);
+      console.log('[OnboardingContext] 📝 Onboarding status in storage:', value);
       setIsOnboardingComplete(value === 'true');
 
       // Auto-start onboarding if not completed
       if (value !== 'true') {
+        console.log('[OnboardingContext] ⏱️ Auto-starting in 1s...');
         setTimeout(() => {
           startOnboarding();
         }, 1000);
+      } else {
+        console.log('[OnboardingContext] ✅ Onboarding already completed');
       }
     } catch (error) {
-      console.error('Error checking onboarding status:', error);
+      console.error('[OnboardingContext] ❌ Error checking onboarding status:', error);
     }
   };
 
   const startOnboarding = () => {
+    console.log('[OnboardingContext] 🚀 Starting onboarding...');
     setCurrentStepIndex(0);
     setIsActive(true);
+    console.log('[OnboardingContext] ✅ Onboarding started, isActive:', true);
   };
 
   const nextStep = () => {

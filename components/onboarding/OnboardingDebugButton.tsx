@@ -14,7 +14,11 @@ export const OnboardingDebugButton: React.FC = () => {
   const router = useRouter();
 
   const handlePress = async () => {
+    console.log('[OnboardingDebugButton] 🔘 Button pressed');
+    console.log('[OnboardingDebugButton] isActive:', isActive);
+
     if (isActive) {
+      console.log('[OnboardingDebugButton] ⚠️ Already active, showing alert');
       Alert.alert('Guide en cours', 'Le guide interactif est déjà actif!');
       return;
     }
@@ -26,15 +30,20 @@ export const OnboardingDebugButton: React.FC = () => {
         {
           text: 'Annuler',
           style: 'cancel',
+          onPress: () => console.log('[OnboardingDebugButton] ❌ Cancelled'),
         },
         {
           text: 'Lancer',
           onPress: async () => {
+            console.log('[OnboardingDebugButton] ▶️ Launching guide...');
             await resetOnboarding();
+            console.log('[OnboardingDebugButton] ✅ Reset done');
             // S'assurer d'être sur la page home
             router.push('/(tabs)/home' as any);
+            console.log('[OnboardingDebugButton] 📍 Navigated to home');
             // Petit délai pour laisser la navigation se faire
             setTimeout(() => {
+              console.log('[OnboardingDebugButton] 🚀 Starting onboarding...');
               startOnboarding();
             }, 500);
           },

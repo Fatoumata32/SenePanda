@@ -16,14 +16,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowRight, Eye, EyeOff, Settings, X, Gift, CheckCircle, XCircle } from 'lucide-react-native';
+import { ArrowRight, Eye, EyeOff, Gift, CheckCircle, XCircle } from 'lucide-react-native';
 import PandaLogo from '@/components/PandaLogo';
 import { Colors, Gradients, Typography, Spacing, BorderRadius, Shadows } from '@/constants/Colors';
 import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// Code admin fixe
-const ADMIN_CODE = '741852';
 
 // Fonction pour générer un code de parrainage unique
 const generateReferralCode = (): string => {
@@ -52,11 +49,6 @@ export default function SimpleAuthScreen() {
   const [referralCode, setReferralCode] = useState('');
   const [referrerInfo, setReferrerInfo] = useState<{ id: string; name: string } | null>(null);
   const [referralStatus, setReferralStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
-
-  // État pour le modal admin
-  const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminCode, setAdminCode] = useState('');
-  const [adminLoading, setAdminLoading] = useState(false);
 
   // Gérer le changement du numéro de téléphone pour toujours garder +221
   const handlePhoneChange = (text: string) => {
@@ -644,85 +636,9 @@ export default function SimpleAuthScreen() {
     }
   };
 
-  // Fonction pour vérifier le code admin
-  const handleAdminLogin = () => {
-    setAdminLoading(true);
-
-    // Vérifier le code admin
-    if (adminCode === ADMIN_CODE) {
-      setAdminLoading(false);
-      setShowAdminModal(false);
-      setAdminCode('');
-      Speech.speak('Accès administrateur accordé', { language: 'fr-FR' });
-      router.push('/admin/dashboard');
-    } else {
-      setAdminLoading(false);
-      Alert.alert('Erreur', 'Code administrateur invalide');
-      setAdminCode('');
-    }
-  };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Bouton Admin discret en haut à droite */}
-      <TouchableOpacity
-        style={styles.adminButton}
-        onPress={() => setShowAdminModal(true)}>
-        <Settings size={20} color={Colors.textMuted} />
-      </TouchableOpacity>
-
-      {/* Modal Admin */}
-      <Modal
-        visible={showAdminModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowAdminModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => {
-                setShowAdminModal(false);
-                setAdminCode('');
-              }}>
-              <X size={24} color={Colors.textMuted} />
-            </TouchableOpacity>
-
-            <Settings size={48} color={Colors.primaryOrange} />
-            <Text style={styles.modalTitle}>Accès Administration</Text>
-            <Text style={styles.modalSubtitle}>Entrez le code administrateur</Text>
-
-            <TextInput
-              style={styles.adminCodeInput}
-              value={adminCode}
-              onChangeText={setAdminCode}
-              placeholder="••••••"
-              keyboardType="number-pad"
-              secureTextEntry
-              maxLength={6}
-              placeholderTextColor={Colors.textMuted}
-              autoFocus
-            />
-
-            <TouchableOpacity
-              style={[styles.adminSubmitButton, adminLoading && styles.buttonDisabled]}
-              onPress={handleAdminLogin}
-              disabled={adminLoading || adminCode.length < 6}>
-              <LinearGradient
-                colors={['#4B5563', '#374151']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              {adminLoading ? (
-                <ActivityIndicator color={Colors.white} />
-              ) : (
-                <Text style={styles.adminSubmitText}>Accéder</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}>
@@ -1120,83 +1036,6 @@ const styles = StyleSheet.create({
   switchModeBold: {
     fontWeight: Typography.fontWeight.bold,
     color: Colors.primaryOrange,
-  },
-  // Styles Admin
-  adminButton: {
-    position: 'absolute',
-    top: 50,
-    right: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.backgroundLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 100,
-    opacity: 0.6,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.xl,
-  },
-  modalContent: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing['2xl'],
-    width: '100%',
-    maxWidth: 340,
-    alignItems: 'center',
-    ...Shadows.large,
-  },
-  modalCloseButton: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    padding: 8,
-  },
-  modalTitle: {
-    fontSize: Typography.fontSize.xl,
-    fontWeight: Typography.fontWeight.bold,
-    color: Colors.textPrimary,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.xs,
-  },
-  modalSubtitle: {
-    fontSize: Typography.fontSize.sm,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.xl,
-    textAlign: 'center',
-  },
-  adminCodeInput: {
-    backgroundColor: Colors.backgroundLight,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 2,
-    borderColor: Colors.borderLight,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.lg,
-    fontSize: Typography.fontSize['2xl'],
-    fontWeight: Typography.fontWeight.bold,
-    color: Colors.textPrimary,
-    textAlign: 'center',
-    letterSpacing: 8,
-    width: '100%',
-    marginBottom: Spacing.xl,
-  },
-  adminSubmitButton: {
-    width: '100%',
-    borderRadius: BorderRadius.lg,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  adminSubmitText: {
-    fontSize: Typography.fontSize.base,
-    fontWeight: Typography.fontWeight.bold,
-    color: Colors.white,
   },
   // Styles pour le code de parrainage
   labelRow: {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -70,6 +70,8 @@ import {
 } from '@/lib/validation';
 import TeardropAvatar from '@/components/TeardropAvatar';
 import { useSubscriptionSync } from '@/hooks/useSubscriptionSync';
+import { useProfileSubscriptionSync } from '@/hooks/useProfileSubscriptionSync';
+import { useFocusEffect } from '@react-navigation/native';
 
 // Fonction pour générer un avatar unique par utilisateur
 const getDefaultAvatar = (userId: string) => {
@@ -92,8 +94,17 @@ export default function ProfileScreen() {
   const [totalProducts, setTotalProducts] = useState(0);
   const [totalReviews, setTotalReviews] = useState(0);
 
-  // Abonnement avec synchronisation en temps réel
+  // Abonnement avec synchronisation en temps réel (ancien système)
   const { subscription: realtimeSubscription, isActive: isSubscriptionActive, refresh: refreshSubscription } = useSubscriptionSync(user?.id);
+
+  // Synchronisation du profil (nouveau système)
+  const {
+    subscription: profileSubscription,
+    isActive: profileIsActive,
+    daysRemaining: profileDaysRemaining,
+    refresh: refreshProfileSubscription
+  } = useProfileSubscriptionSync(user?.id);
+
   const [currentPlan, setCurrentPlan] = useState<string>('starter');
   const [planName, setPlanName] = useState<string>('Starter');
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
@@ -184,6 +195,46 @@ export default function ProfileScreen() {
       router.replace('/simple-auth');
     }
   }, [user, loading, router]);
+
+  // Effet pour synchroniser avec profileSubscription (nouveau système)
+  useEffect(() => {
+    if (profileSubscription) {
+      console.log('🔄 Mise à jour du profil depuis profileSubscription:', profileSubscription);
+
+      setCurrentPlan(profileSubscription.subscription_plan || 'free');
+      setDaysRemaining(profileSubscription.days_remaining);
+
+      // Mettre à jour le nom du plan
+      const planNames: Record<string, string> = {
+        free: 'Gratuit',
+        starter: 'Starter',
+        pro: 'Pro',
+        premium: 'Premium'
+      };
+      setPlanName(planNames[profileSubscription.subscription_plan] || 'Gratuit');
+
+      // Mettre à jour le profil local si nécessaire
+      if (profile && profile.subscription_plan !== profileSubscription.subscription_plan) {
+        setProfile({
+          ...profile,
+          subscription_plan: profileSubscription.subscription_plan,
+          subscription_expires_at: profileSubscription.subscription_expires_at,
+        });
+      }
+    }
+  }, [profileSubscription]);
+
+  // Recharger le profil quand l'utilisateur revient sur cette page
+  useFocusEffect(
+    useCallback(() => {
+      console.log('📱 Page profil active - Rechargement des données...');
+      if (user?.id) {
+        fetchProfile(user.id);
+        fetchStats(user.id);
+        refreshProfileSubscription();
+      }
+    }, [user?.id])
+  );
 
   const checkUser = async () => {
     try {

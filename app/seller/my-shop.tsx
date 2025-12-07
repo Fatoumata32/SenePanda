@@ -42,8 +42,8 @@ import { Colors, Typography, Spacing, BorderRadius, Shadows, Gradients } from '@
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/AuthProvider';
 import { Product } from '@/types/database';
-import { useMyReputation } from '@/hooks/useSellerReputation';
-import SellerReputationBadge from '@/components/SellerReputationBadge';
+import { useProfileSubscriptionSync } from '@/hooks/useProfileSubscriptionSync';
+import { useFocusEffect } from '@react-navigation/native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -98,7 +98,12 @@ interface ShopData {
 export default function MyShopScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const { reputation, loading: reputationLoading } = useMyReputation();
+
+  // Synchronisation de l'abonnement en temps réel
+  const {
+    subscription: profileSubscription,
+    refresh: refreshProfileSubscription
+  } = useProfileSubscriptionSync(user?.id);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -125,6 +130,17 @@ export default function MyShopScreen() {
   // Modal de bienvenue
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [modalAnimation] = useState(new Animated.Value(0));
+
+  // Recharger quand l'utilisateur revient sur la page
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('📱 Page My Shop active - Rechargement...');
+      if (user) {
+        loadShopData();
+        refreshProfileSubscription();
+      }
+    }, [user])
+  );
 
   // Charger les données
   useEffect(() => {
@@ -929,17 +945,6 @@ export default function MyShopScreen() {
             )}
           </View>
 
-          {/* Badge de Réputation */}
-          {reputation && !reputationLoading && (
-            <View style={styles.reputationCard}>
-              <SellerReputationBadge
-                reputation={reputation}
-                size="medium"
-                showDetails={true}
-                showProgress={true}
-              />
-            </View>
-          )}
 
           {/* Carte Téléphone */}
           <View style={styles.viewCard}>
@@ -1468,14 +1473,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
     paddingHorizontal: Spacing.xl,
     lineHeight: 20,
-  },
-  reputationCard: {
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.lg,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    ...Shadows.medium,
   },
   viewCard: {
     flexDirection: 'row',

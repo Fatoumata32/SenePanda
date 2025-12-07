@@ -38,6 +38,7 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({ targetRef 
 
   useEffect(() => {
     if (isActive && currentStep) {
+      console.log('[OnboardingTooltip] 💬 Rendering step:', currentStepIndex + 1, '/', totalSteps, '-', currentStep.title);
       // Entrance animation
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -71,7 +72,10 @@ export const OnboardingTooltip: React.FC<OnboardingTooltipProps> = ({ targetRef 
     }
   }, [isActive, currentStep]);
 
-  if (!isActive || !currentStep) return null;
+  if (!isActive || !currentStep) {
+    console.log('[OnboardingTooltip] ⏸️ Not rendering - isActive:', isActive, 'currentStep:', currentStep?.id);
+    return null;
+  }
 
   const isFirstStep = currentStepIndex === 0;
   const isLastStep = currentStepIndex === totalSteps - 1;
