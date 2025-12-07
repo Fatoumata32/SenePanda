@@ -102,62 +102,14 @@ export function useProductRecommendations(
     };
   }, []);
 
-  // Récupérer les produits avec l'algorithme de recommandation
-  const fetchProducts = useCallback(async (reset = false) => {
-    try {
-      if (reset) {
-        setLoading(true);
-        setOffset(0);
-      }
-
-      const currentOffset = reset ? 0 : offset;
-
-      // Essayer d'utiliser la fonction RPC si disponible
-      const { data: rpcData, error: rpcError } = await supabase.rpc('get_recommended_products', {
-        p_user_id: userId,
-        p_category_id: categoryId,
-        p_limit: limit,
-        p_offset: currentOffset,
-        p_sort_by: sortOption,
-      });
-
-      if (!rpcError && rpcData) {
-        // Fonction RPC disponible
-        const newProducts = rpcData as RecommendedProduct[];
-
-        if (reset) {
-          setProducts(newProducts);
-        } else {
-          setProducts(prev => [...prev, ...newProducts]);
-        }
-
-        setHasMore(newProducts.length >= limit);
-        setOffset(currentOffset + newProducts.length);
-        setError(null);
-      } else {
-        // Fallback: utiliser une requête classique avec tri amélioré
-        console.log('RPC non disponible, utilisation du fallback');
-        await fetchProductsFallback(reset, currentOffset);
-      }
-    } catch (err) {
-      console.error('Erreur chargement produits:', err);
-      setError('Erreur lors du chargement des produits');
-      // Essayer le fallback
-      await fetchProductsFallback(reset, offset);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [userId, categoryId, limit, offset, sortOption]);
-
-  // Fallback pour le chargement des produits (si RPC non disponible)
+  // Fallback pour le chargement des produits - Simple et fiable
   const fetchProductsFallback = async (reset: boolean, currentOffset: number) => {
     try {
       let query = supabase
         .from('products')
         .select('*')
         .eq('is_active', true)
-        .gte('stock', 0); // Changé de gt à gte pour inclure les produits avec stock = 0
+        .gt('stock', 0); // Exclure les produits en rupture de stock (stock = 0)
 
       if (categoryId) {
         query = query.eq('category_id', categoryId);
@@ -212,6 +164,27 @@ export function useProductRecommendations(
     }
   };
 
+  // Récupérer les produits - Utilise directement fetchProductsFallback
+  const fetchProducts = useCallback(async (reset = false) => {
+    try {
+      if (reset) {
+        setLoading(true);
+        setOffset(0);
+      }
+
+      const currentOffset = reset ? 0 : offset;
+
+      // Utiliser directement le fallback (requête simple et fiable)
+      await fetchProductsFallback(reset, currentOffset);
+    } catch (err) {
+      console.error('Erreur chargement produits:', err);
+      setError('Erreur lors du chargement des produits');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [categoryId, limit, offset, sortOption]);
+
   // Déterminer la raison de recommandation
   const getRecommendationReason = (product: any): string => {
     const now = new Date();
@@ -225,43 +198,16 @@ export function useProductRecommendations(
     return 'Recommandé';
   };
 
-  // Enregistrer une interaction
+  // Enregistrer une interaction - Version simplifiée sans RPC
   const recordInteraction = useCallback(async (
     productId: string,
     interactionType: string,
     source = 'home'
   ) => {
     try {
-      // Essayer d'utiliser la fonction RPC
-      const { error: rpcError } = await supabase.rpc('record_product_interaction', {
-        p_product_id: productId,
-        p_user_id: userId,
-        p_interaction_type: interactionType,
-        p_source: source,
-        p_session_id: sessionId,
-      });
-
-      if (rpcError) {
-        // Fallback: incrémenter directement
-        const updateField = interactionType === 'view' ? 'view_count' :
-                           interactionType === 'click' || interactionType === 'detail_view' ? 'click_count' :
-                           interactionType === 'favorite' ? 'favorite_count' :
-                           interactionType === 'share' ? 'share_count' : null;
-
-        if (updateField) {
-          try {
-            await supabase.rpc('increment', {
-              table_name: 'products',
-              field_name: updateField,
-              row_id: productId,
-            });
-          } catch {
-            // Si rpc increment n'existe pas, faire un update manuel
-            // Note: ceci est moins efficace mais fonctionne comme fallback
-            console.log('Tracking interaction (fallback):', interactionType, productId);
-          }
-        }
-      }
+      // Log simple pour le tracking (peut être étendu plus tard)
+      console.log('📊 Interaction:', interactionType, productId, 'from:', source);
+      // TODO: Implémenter le tracking d'interactions si nécessaire
     } catch (err) {
       console.warn('Erreur enregistrement interaction:', err);
     }
