@@ -6,6 +6,11 @@
   "scripts": {
     "dev": "EXPO_NO_TELEMETRY=1 expo start",
     "build:web": "expo export --platform web",
+    "build:android:dev": "eas build --platform android --profile preview",
+    "build:android:prod": "eas build --platform android --profile production",
+    "build:android:local": "eas build --platform android --profile preview --local",
+    "build:ios:dev": "eas build --platform ios --profile preview",
+    "build:ios:prod": "eas build --platform ios --profile production",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "db:migrations": "node scripts/show-migration-sql.js",
