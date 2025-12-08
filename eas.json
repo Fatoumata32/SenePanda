@@ -18,10 +18,18 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease"
+        "image": "latest"
       },
       "ios": {
         "simulator": true
+      }
+    },
+    "preview-simple": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "withoutCredentials": true,
+        "image": "latest"
       }
     },
     "production": {
