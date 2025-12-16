@@ -1,3 +1,33 @@
+-- Créer la table notifications si elle n'existe pas déjà
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  message TEXT,
+  data JSONB,
+  is_read BOOLEAN DEFAULT FALSE,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index pour les notifications
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
+
+-- RLS
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "Users can view their own notifications"
+  ON notifications FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY IF NOT EXISTS "Users can update their own notifications"
+  ON notifications FOR UPDATE
+  USING (auth.uid() = user_id);
+
 -- Fonction pour notifier les followers quand un live démarre
 CREATE OR REPLACE FUNCTION notify_followers_of_live(p_seller_id UUID, p_session_id UUID)
 RETURNS INTEGER
@@ -20,7 +50,7 @@ BEGIN
 
   -- Insérer une notification pour chaque follower
   WITH inserted AS (
-    INSERT INTO notifications (user_id, type, title, message, data, read)
+    INSERT INTO notifications (user_id, type, title, message, data, is_read)
     SELECT
       follower_id,
       'live_started',
@@ -67,7 +97,7 @@ BEGIN
 
   -- Notifier les utilisateurs qui ont ce produit en favori
   WITH inserted AS (
-    INSERT INTO notifications (user_id, type, title, message, data, read)
+    INSERT INTO notifications (user_id, type, title, message, data, is_read)
     SELECT DISTINCT
       f.user_id,
       'product_live',
@@ -160,7 +190,7 @@ RETURNS TABLE(
   title TEXT,
   message TEXT,
   data JSONB,
-  read BOOLEAN,
+  is_read BOOLEAN,
   created_at TIMESTAMPTZ
 )
 LANGUAGE plpgsql
@@ -174,7 +204,7 @@ BEGIN
     n.title,
     n.message,
     n.data,
-    n.read,
+    n.is_read,
     n.created_at
   FROM notifications n
   WHERE n.user_id = p_user_id
@@ -193,10 +223,12 @@ DECLARE
   v_count INTEGER;
 BEGIN
   UPDATE notifications
-  SET read = true
+  SET is_read = true,
+      read_at = NOW(),
+      updated_at = NOW()
   WHERE user_id = p_user_id
     AND id = ANY(p_notification_ids)
-    AND read = false;
+    AND is_read = false;
 
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;
@@ -206,7 +238,7 @@ $$;
 -- Index pour optimiser les requêtes de notifications
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
   ON notifications(user_id, created_at DESC)
-  WHERE read = false;
+  WHERE is_read = false;
 
 CREATE INDEX IF NOT EXISTS idx_notifications_type_data
   ON notifications(type, (data->>'session_id'));
