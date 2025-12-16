@@ -623,6 +623,25 @@ export default function MyShopScreen() {
           </Text>
 
           <View style={styles.headerActions}>
+            {/* Bouton Live - visible uniquement en mode normal */}
+            {!editMode && (
+              <TouchableOpacity
+                style={styles.liveButton}
+                onPress={() => router.push('/seller/start-live' as any)}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={['#EF4444', '#DC2626']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.liveButtonGradient}
+                >
+                  <Video size={18} color={Colors.white} />
+                  <Text style={styles.liveButtonText}>LIVE</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+
             {editMode && (
               <TouchableOpacity
                 style={styles.headerButton}
@@ -1161,6 +1180,25 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     gap: Spacing.sm,
+    alignItems: 'center',
+  },
+  liveButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    ...Shadows.medium,
+  },
+  liveButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  liveButtonText: {
+    color: Colors.white,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
 
   // Mode édition
