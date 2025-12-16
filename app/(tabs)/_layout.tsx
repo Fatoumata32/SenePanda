@@ -1,4 +1,6 @@
 import { Tabs, useSegments } from 'expo-router';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
 import { useNavigation } from '@/contexts/NavigationContext';
 import NavigationService from '@/lib/navigation';
@@ -7,6 +9,7 @@ import ShopIcon from '@/components/icons/ShopIcon';
 import HeartIcon from '@/components/icons/HeartIcon';
 import MessageIcon from '@/components/icons/MessageIcon';
 import UserIcon from '@/components/icons/UserIcon';
+import { RoleSwitchButton } from '@/components/RoleSwitchButton';
 
 export default function TabLayout() {
   const { isAuthenticated, hasRoleSelected, isLoading } = useNavigation();
@@ -35,6 +38,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      initialRouteName="profile"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: Colors.primaryGold,
@@ -112,6 +116,13 @@ export default function TabLayout() {
           title: 'Profil',
           tabBarIcon: ({ color, focused }) => (
             <UserIcon size={26} color={color} focused={focused} />
+          ),
+          headerShown: true,
+          headerTitle: 'Mon Profil',
+          headerRight: () => (
+            <View style={{ marginRight: 16 }}>
+              <RoleSwitchButton size={22} color={Colors.primaryOrange} />
+            </View>
           ),
         }}
       />
