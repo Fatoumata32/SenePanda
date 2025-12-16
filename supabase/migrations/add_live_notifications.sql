@@ -48,26 +48,30 @@ BEGIN
   FROM live_sessions
   WHERE id = p_session_id;
 
-  -- Insérer une notification pour chaque follower
-  WITH inserted AS (
-    INSERT INTO notifications (user_id, type, title, message, data, is_read)
-    SELECT
-      follower_id,
-      'live_started',
-      '🔴 Live en cours !',
-      COALESCE(v_seller_name, 'Un vendeur') || ' est en direct : ' || COALESCE(v_live_title, 'Rejoignez maintenant !'),
-      jsonb_build_object(
-        'session_id', p_session_id,
-        'seller_id', p_seller_id,
-        'seller_name', v_seller_name,
-        'live_title', v_live_title
-      ),
-      false
-    FROM user_follows
-    WHERE followed_id = p_seller_id
-    RETURNING *
-  )
-  SELECT COUNT(*) INTO v_notification_count FROM inserted;
+  -- Insérer une notification pour chaque follower (si la table user_follows existe)
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_follows') THEN
+    WITH inserted AS (
+      INSERT INTO notifications (user_id, type, title, message, data, is_read)
+      SELECT
+        follower_id,
+        'live_started',
+        '🔴 Live en cours !',
+        COALESCE(v_seller_name, 'Un vendeur') || ' est en direct : ' || COALESCE(v_live_title, 'Rejoignez maintenant !'),
+        jsonb_build_object(
+          'session_id', p_session_id,
+          'seller_id', p_seller_id,
+          'seller_name', v_seller_name,
+          'live_title', v_live_title
+        ),
+        false
+      FROM user_follows
+      WHERE followed_id = p_seller_id
+      RETURNING *
+    )
+    SELECT COUNT(*) INTO v_notification_count FROM inserted;
+  ELSE
+    v_notification_count := 0;
+  END IF;
 
   RETURN v_notification_count;
 END;
@@ -95,39 +99,43 @@ BEGIN
     AND lfp.live_session_id = p_session_id
   LIMIT 1;
 
-  -- Notifier les utilisateurs qui ont ce produit en favori
-  WITH inserted AS (
-    INSERT INTO notifications (user_id, type, title, message, data, is_read)
-    SELECT DISTINCT
-      f.user_id,
-      'product_live',
-      '🎁 Votre produit favori est en live !',
-      CASE
-        WHEN v_special_price IS NOT NULL THEN
-          v_product_title || ' avec prix spécial chez ' || v_seller_name
-        ELSE
-          v_product_title || ' en live chez ' || v_seller_name
-      END,
-      jsonb_build_object(
-        'session_id', p_session_id,
-        'product_id', p_product_id,
-        'product_title', v_product_title,
-        'special_price', v_special_price
-      ),
-      false
-    FROM favorites f
-    WHERE f.product_id = p_product_id
-      AND NOT EXISTS (
-        -- Éviter les doublons si déjà notifié pour ce live
-        SELECT 1 FROM notifications
-        WHERE user_id = f.user_id
-          AND type = 'product_live'
-          AND data->>'session_id' = p_session_id::text
-          AND created_at > NOW() - INTERVAL '1 hour'
-      )
-    RETURNING *
-  )
-  SELECT COUNT(*) INTO v_notification_count FROM inserted;
+  -- Notifier les utilisateurs qui ont ce produit en favori (si la table favorites existe)
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'favorites') THEN
+    WITH inserted AS (
+      INSERT INTO notifications (user_id, type, title, message, data, is_read)
+      SELECT DISTINCT
+        f.user_id,
+        'product_live',
+        '🎁 Votre produit favori est en live !',
+        CASE
+          WHEN v_special_price IS NOT NULL THEN
+            v_product_title || ' avec prix spécial chez ' || v_seller_name
+          ELSE
+            v_product_title || ' en live chez ' || v_seller_name
+        END,
+        jsonb_build_object(
+          'session_id', p_session_id,
+          'product_id', p_product_id,
+          'product_title', v_product_title,
+          'special_price', v_special_price
+        ),
+        false
+      FROM favorites f
+      WHERE f.product_id = p_product_id
+        AND NOT EXISTS (
+          -- Éviter les doublons si déjà notifié pour ce live
+          SELECT 1 FROM notifications
+          WHERE user_id = f.user_id
+            AND type = 'product_live'
+            AND data->>'session_id' = p_session_id::text
+            AND created_at > NOW() - INTERVAL '1 hour'
+        )
+      RETURNING *
+    )
+    SELECT COUNT(*) INTO v_notification_count FROM inserted;
+  ELSE
+    v_notification_count := 0;
+  END IF;
 
   RETURN v_notification_count;
 END;
