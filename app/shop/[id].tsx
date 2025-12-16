@@ -60,7 +60,7 @@ export default function ShopPage() {
       // Charger les produits de la boutique
       const { data: productsData, error: productsError } = await supabase
         .from('products')
-        .select('*')
+        .select('*, views_count')
         .eq('seller_id', id)
         .eq('is_active', true)
         .order('created_at', { ascending: false });

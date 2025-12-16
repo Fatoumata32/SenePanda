@@ -173,7 +173,13 @@ export default function SellerSetupScreen() {
       <View style={styles.footer}>
         <TouchableOpacity
           style={styles.secondaryButton}
-          onPress={() => router.back()}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)/profile');
+            }
+          }}
           disabled={loading}
         >
           <Text style={styles.secondaryButtonText}>Plus tard</Text>

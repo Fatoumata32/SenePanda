@@ -112,7 +112,7 @@ export default function SearchScreen() {
       if (activeFilter === 'all' || activeFilter === 'products') {
         const { data: products, error: productsError } = await supabase
           .from('products')
-          .select('id, name, price, images, shop_id')
+          .select('id, name, price, images, shop_id, views_count')
           .or(`name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`)
           .eq('is_active', true)
           .limit(20);

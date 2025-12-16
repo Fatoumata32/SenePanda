@@ -86,7 +86,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       // Vérifier si le produit existe et est actif
       const { data: product, error: productError } = await supabase
         .from('products')
-        .select('*')
+        .select('*, views_count')
         .eq('id', productId)
         .eq('is_active', true)
         .single();

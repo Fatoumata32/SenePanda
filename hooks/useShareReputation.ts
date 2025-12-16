@@ -88,18 +88,8 @@ export function useShareReputation() {
         result: 'tmpfile',
       });
 
-      // Créer un nom de fichier unique
-      const filename = `senepanda-reputation-${Date.now()}.png`;
-      const newUri = `${FileSystem.cacheDirectory}${filename}`;
-
-      // Copier le fichier dans le cache
-      await FileSystem.copyAsync({
-        from: uri,
-        to: newUri,
-      });
-
-      // Partager l'image
-      await Sharing.shareAsync(newUri, {
+      // Partager l'image directement
+      await Sharing.shareAsync(uri, {
         mimeType: 'image/png',
         dialogTitle: 'Partager ma réputation',
         UTI: 'public.png',
@@ -108,7 +98,7 @@ export function useShareReputation() {
       // Nettoyer le fichier temporaire
       setTimeout(async () => {
         try {
-          await FileSystem.deleteAsync(newUri, { idempotent: true });
+          await FileSystem.deleteAsync(uri, { idempotent: true });
         } catch (err) {
           console.error('Error cleaning up temp file:', err);
         }

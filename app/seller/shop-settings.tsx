@@ -206,7 +206,11 @@ export default function ShopSettingsScreen() {
       if (error) throw error;
 
       Alert.alert('Succès', 'Boutique mise à jour avec succès');
-      router.back();
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/(tabs)/profile');
+      }
     } catch (error: any) {
       Alert.alert('Erreur', error.message);
     } finally {
@@ -225,7 +229,13 @@ export default function ShopSettingsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(tabs)/profile');
+          }
+        }} style={styles.backButton}>
           <ArrowLeft size={24} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.title}>Paramètres de la boutique</Text>

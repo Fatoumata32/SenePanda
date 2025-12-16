@@ -151,7 +151,7 @@ export default function UserProfileScreen() {
       if (data.is_seller) {
         const { data: productsData, error: productsError } = await supabase
           .from('products')
-          .select('id, title, price, image_url, stock, is_active')
+          .select('id, title, price, image_url, stock, is_active, views_count')
           .eq('seller_id', userId)
           .eq('is_active', true)
           .order('created_at', { ascending: false });

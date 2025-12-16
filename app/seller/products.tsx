@@ -50,7 +50,7 @@ export default function SellerProductsScreen() {
 
       const { data, error } = await supabase
         .from('products')
-        .select('*')
+        .select('*, views_count')
         .eq('seller_id', user.id)
         .order('created_at', { ascending: false });
 
@@ -213,7 +213,13 @@ export default function SellerProductsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(tabs)/profile');
+          }
+        }} style={styles.backButton}>
           <ArrowLeft size={24} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.title}>Mes Produits</Text>

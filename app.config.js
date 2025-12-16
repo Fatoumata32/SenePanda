@@ -23,7 +23,9 @@ module.exports = {
         NSLocationWhenInUseUsageDescription: "SenePanda utilise votre localisation pour vous montrer les produits disponibles près de chez vous.",
         NSLocationAlwaysUsageDescription: "SenePanda utilise votre localisation pour améliorer votre expérience d'achat.",
         NSSpeechRecognitionUsageDescription: "Cette application utilise la reconnaissance vocale pour rechercher des produits.",
-        NSMicrophoneUsageDescription: "Cette application utilise le microphone pour la recherche vocale."
+        NSMicrophoneUsageDescription: "Cette application utilise le microphone pour la recherche vocale et le Live Shopping.",
+        NSCameraUsageDescription: "SenePanda a besoin d'accéder à votre caméra pour le Live Shopping et les photos de produits.",
+        NSPhotoLibraryUsageDescription: "SenePanda a besoin d'accéder à vos photos pour ajouter des images de produits."
       }
     },
     android: {
@@ -35,7 +37,15 @@ module.exports = {
       permissions: [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.BLUETOOTH",
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.INTERNET",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE"
       ]
     },
     web: {
@@ -51,6 +61,20 @@ module.exports = {
         "expo-location",
         {
           locationAlwaysAndWhenInUsePermission: "SenePanda utilise votre localisation pour vous montrer les produits et services près de chez vous."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          cameraPermission: "SenePanda a besoin d'accéder à votre caméra pour le Live Shopping et les photos de produits.",
+          microphonePermission: "SenePanda a besoin d'accéder à votre microphone pour le Live Shopping.",
+          recordAudioAndroid: true
+        }
+      ],
+      [
+        "expo-av",
+        {
+          microphonePermission: "SenePanda a besoin d'accéder à votre microphone pour le Live Shopping."
         }
       ]
     ],

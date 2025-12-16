@@ -8,6 +8,7 @@ import {
   TextInput,
   Image,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,6 +18,7 @@ import { Category, Product } from '@/types/database';
 import { Search, Mic, Star } from 'lucide-react-native';
 import { getCategoryIcon } from '@/constants/CategoryIcons';
 import { useTheme } from '@/contexts/ThemeContext';
+// import { useActiveLiveSessions } from '@/hooks/useLiveShopping'; // EN STANDBY
 
 const { width } = Dimensions.get('window');
 
@@ -41,6 +43,9 @@ export default function ExploreScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'recent' | 'price-low' | 'price-high' | 'popular'>('recent');
 
+  // Hook pour les lives actifs - EN STANDBY
+  // const { sessions: activeLives, isLoading: loadingLives } = useActiveLiveSessions(10);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -64,6 +69,7 @@ export default function ExploreScreen() {
         .from('products')
         .select(`
           *,
+          views_count,
           seller:profiles!seller_id(
             id,
             shop_name,
@@ -135,6 +141,92 @@ export default function ExploreScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Lives en cours - EN STANDBY
+        {!loadingLives && activeLives.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.livesHeader}>
+              <View style={styles.livesTitleContainer}>
+                <View style={styles.liveIndicator} />
+                <Text style={[styles.sectionTitle, { color: themeColors.text }]}>Lives en cours</Text>
+              </View>
+              <TouchableOpacity onPress={() => {}}>
+                <Text style={styles.seeAllText}>Voir tout</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.livesScroll}
+            >
+              {activeLives.map((live) => (
+                <TouchableOpacity
+                  key={live.id}
+                  style={styles.liveCard}
+                  onPress={() => router.push(`/live/${live.id}` as any)}
+                  activeOpacity={0.9}
+                >
+                  <LinearGradient
+                    colors={['#FF6B6B', '#FF8C42']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.liveCardGradient}
+                  >
+                    <View style={styles.liveBadge}>
+                      <View style={styles.liveBadgePulse} />
+                      <Text style={styles.liveBadgeText}>LIVE</Text>
+                    </View>
+
+                    {live.thumbnail_url ? (
+                      <Image
+                        source={{ uri: live.thumbnail_url }}
+                        style={styles.liveThumbnail}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.liveThumbnailPlaceholder}>
+                        <Video size={48} color="rgba(255, 255, 255, 0.9)" strokeWidth={2} />
+                      </View>
+                    )}
+
+                    <LinearGradient
+                      colors={['transparent', 'rgba(0, 0, 0, 0.7)']}
+                      style={styles.liveOverlay}
+                    >
+                      <View style={styles.liveSellerInfo}>
+                        {live.seller_avatar ? (
+                          <Image source={{ uri: live.seller_avatar }} style={styles.liveSellerAvatar} />
+                        ) : (
+                          <View style={styles.liveSellerAvatarPlaceholder}>
+                            <Text style={styles.liveSellerAvatarText}>
+                              {live.seller_name?.[0]?.toUpperCase() || '?'}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={styles.liveSellerTextContainer}>
+                          <Text style={styles.liveSellerName} numberOfLines={1}>
+                            {live.seller_name || 'Vendeur'}
+                          </Text>
+                          <Text style={styles.liveTitle} numberOfLines={1}>
+                            {live.title}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.liveViewerCount}>
+                        <Users size={14} color="#FFFFFF" />
+                        <Text style={styles.liveViewerText}>
+                          {live.viewer_count || 0}
+                        </Text>
+                      </View>
+                    </LinearGradient>
+                  </LinearGradient>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+        */}
 
         {/* Filtres par catégorie */}
         <View style={styles.section}>
@@ -516,5 +608,160 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#9CA3AF',
     textAlign: 'center',
+  },
+  // Lives Section
+  livesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  livesTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  liveIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF6B6B',
+    shadowColor: '#FF6B6B',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  seeAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FF8C42',
+  },
+  livesScroll: {
+    paddingRight: 16,
+  },
+  liveCard: {
+    width: 280,
+    height: 180,
+    marginRight: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  liveCardGradient: {
+    flex: 1,
+    position: 'relative',
+  },
+  liveBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FF6B6B',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  liveBadgePulse: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FFFFFF',
+    opacity: 0.9,
+  },
+  liveBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  liveThumbnail: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+  },
+  liveThumbnailPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+  },
+  liveOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  liveSellerInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  liveSellerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  liveSellerAvatarPlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  liveSellerAvatarText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  liveSellerTextContainer: {
+    flex: 1,
+  },
+  liveSellerName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  liveTitle: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  liveViewerCount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  liveViewerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

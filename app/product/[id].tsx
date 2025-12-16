@@ -17,7 +17,7 @@ import { WebView } from 'react-native-webview';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { Product, ProductReview } from '@/types/database';
-import { ArrowLeft, ShoppingCart, Minus, Plus, MessageSquare, Edit, MessageCircle, Store, Heart, ChevronLeft, ChevronRight, Check, Star, MapPin, ShoppingBag, UserPlus, Phone, Share2, Shield, Truck, RotateCcw, Clock, Play } from 'lucide-react-native';
+import { ArrowLeft, ShoppingCart, Minus, Plus, MessageSquare, Edit, MessageCircle, Store, Heart, ChevronLeft, ChevronRight, Check, Star, MapPin, ShoppingBag, UserPlus, Phone, Share2, Shield, Truck, RotateCcw, Clock, Play, Eye } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import RatingStars from '@/components/RatingStars';
 import ReviewCard from '@/components/ReviewCard';
@@ -27,6 +27,7 @@ import { useCart } from '@/contexts/CartContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import useProductRecommendations from '@/hooks/useProductRecommendations';
+import { useProductViews } from '@/hooks/useProductViews';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -58,6 +59,9 @@ export default function ProductDetailScreen() {
 
   // Hook pour tracker les interactions produit
   const { recordDetailView, recordFavorite, recordShare } = useProductRecommendations();
+
+  // Hook pour gérer les vues du produit
+  const { viewStats, incrementViews } = useProductViews(id as string);
 
   // Theme colors
   const themeColors = {
@@ -132,6 +136,8 @@ export default function ProductDetailScreen() {
       checkFavorite();
       // Tracker la vue détaillée du produit
       recordDetailView(id as string);
+      // Incrémenter le compteur de vues
+      incrementViews();
     }
   }, [id]);
 
@@ -147,7 +153,7 @@ export default function ProductDetailScreen() {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('*')
+        .select('*, views_count')
         .eq('id', id)
         .maybeSingle();
 
@@ -380,7 +386,7 @@ export default function ProductDetailScreen() {
     try {
       const { data } = await supabase
         .from('products')
-        .select('*')
+        .select('*, views_count')
         .eq('category_id', product.category_id)
         .neq('id', product.id)
         .limit(5);
@@ -678,16 +684,26 @@ export default function ProductDetailScreen() {
             {product.price.toLocaleString('fr-FR')} <Text style={styles.currency}>F CFA</Text>
           </Text>
 
-          {/* Rating */}
-          {(product.average_rating > 0 || product.total_reviews > 0) && (
-            <View style={styles.ratingRow}>
-              <Star size={16} color="#FFA500" fill="#FFA500" />
-              <Text style={[styles.ratingText, { color: themeColors.textSecondary }]}>
-                {product.average_rating > 0 ? product.average_rating.toFixed(1) : 'Nouveau'}
-                {product.total_reviews > 0 && ` (${product.total_reviews} avis)`}
-              </Text>
-            </View>
-          )}
+          {/* Rating and Views */}
+          <View style={styles.statsRow}>
+            {(product.average_rating > 0 || product.total_reviews > 0) && (
+              <View style={styles.ratingRow}>
+                <Star size={16} color="#FFA500" fill="#FFA500" />
+                <Text style={[styles.ratingText, { color: themeColors.textSecondary }]}>
+                  {product.average_rating > 0 ? product.average_rating.toFixed(1) : 'Nouveau'}
+                  {product.total_reviews > 0 && ` (${product.total_reviews} avis)`}
+                </Text>
+              </View>
+            )}
+            {viewStats && viewStats.totalViews > 0 && (
+              <View style={styles.viewsRow}>
+                <Eye size={16} color="#6B7280" />
+                <Text style={[styles.viewsText, { color: themeColors.textSecondary }]}>
+                  {viewStats.totalViews.toLocaleString('fr-FR')} vue{viewStats.totalViews > 1 ? 's' : ''}
+                </Text>
+              </View>
+            )}
+          </View>
 
           {/* Description */}
           {product.description && (
@@ -1224,13 +1240,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 16,
+  },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 16,
   },
   ratingText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  viewsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  viewsText: {
     fontSize: 14,
     color: '#6B7280',
     fontWeight: '500',

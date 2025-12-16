@@ -48,6 +48,7 @@ function FeaturedProducts() {
         .from('products')
         .select(`
           *,
+          views_count,
           profiles!products_seller_id_fkey (
             shop_name,
             subscription_plan,

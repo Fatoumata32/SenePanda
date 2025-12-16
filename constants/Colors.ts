@@ -21,6 +21,7 @@ export const Colors = {
   success: '#10B981',
 
   // Neutral Colors
+  black: '#000000',
   dark: '#1C1C1C',
   beige: '#f9eddd',
   lemon: '#FFFACD',

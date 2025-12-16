@@ -7,7 +7,7 @@ import RatingStars from './RatingStars';
 import { ProductImage } from './ProductImage';
 import { useFavorite } from '@/hooks/useFavorites';
 import * as Speech from 'expo-speech';
-import { Volume2, Heart } from 'lucide-react-native';
+import { Volume2, Heart, Eye } from 'lucide-react-native';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/Colors';
 
 type ProductCardProps = {
@@ -151,12 +151,20 @@ export default function ProductCard({ product, onPress }: ProductCardProps) {
           </TouchableOpacity>
         </View>
 
-        {/* Rating */}
-        {product.total_reviews > 0 && (
-          <View style={styles.ratingContainer}>
-            <RatingStars rating={product.average_rating} size={14} showNumber totalReviews={product.total_reviews} />
-          </View>
-        )}
+        {/* Rating and Views */}
+        <View style={styles.statsContainer}>
+          {product.total_reviews > 0 && (
+            <View style={styles.ratingContainer}>
+              <RatingStars rating={product.average_rating} size={14} showNumber totalReviews={product.total_reviews} />
+            </View>
+          )}
+          {(product as any).views_count !== undefined && (
+            <View style={styles.viewsContainer}>
+              <Eye size={12} color={Colors.textMuted} />
+              <Text style={styles.viewsText}>{(product as any).views_count || 0}</Text>
+            </View>
+          )}
+        </View>
 
         {/* Shop info */}
         {product.seller && (
@@ -252,8 +260,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...Shadows.small,
   },
-  ratingContainer: {
+  statsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: Spacing.sm,
+  },
+  ratingContainer: {
+    flex: 1,
+  },
+  viewsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.backgroundLight,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
+  },
+  viewsText: {
+    fontSize: 11,
+    fontWeight: Typography.fontWeight.medium,
+    color: Colors.textMuted,
   },
   shopBadge: {
     flexDirection: 'row',

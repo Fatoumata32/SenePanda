@@ -601,6 +601,12 @@ export default function ChatScreen() {
         p_conversation_id: conversationId,
         p_sender_id: user.id,
         p_content: content.trim(),
+        p_message_type: 'text',
+        p_image_url: null,
+        p_voice_url: null,
+        p_voice_duration: null,
+        p_product_id: null,
+        p_offer_price: null,
       });
 
       if (error) {
@@ -730,6 +736,7 @@ export default function ChatScreen() {
         p_image_url: url,
         p_voice_url: null,
         p_voice_duration: null,
+        p_product_id: null,
         p_offer_price: null,
       });
 
@@ -911,6 +918,7 @@ export default function ChatScreen() {
         p_image_url: null,
         p_voice_url: url,
         p_voice_duration: duration,
+        p_product_id: null,
         p_offer_price: null,
       });
 

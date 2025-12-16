@@ -55,6 +55,7 @@ export default function CategoryScreen() {
         .from('products')
         .select(`
           *,
+          views_count,
           seller:profiles!seller_id(
             id,
             shop_name,

@@ -32,6 +32,9 @@ import {
   Palette,
   RotateCw,
   Shuffle,
+  Video,
+  ChevronRight,
+  Zap,
 } from 'lucide-react-native';
 import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -77,12 +80,12 @@ const COLOR_PALETTE = [
 
 // Gradients prédéfinis populaires
 const PRESET_GRADIENTS = [
-  { name: 'Sunset', colors: ['#FF6B6B', '#FFD93D'], angle: 135 },
-  { name: 'Ocean', colors: ['#2DD4BF', '#3B82F6'], angle: 135 },
-  { name: 'Forest', colors: ['#34D399', '#059669'], angle: 180 },
-  { name: 'Purple Dream', colors: ['#A78BFA', '#EC4899'], angle: 135 },
-  { name: 'Fire', colors: ['#FF8C42', '#DC2626'], angle: 90 },
-  { name: 'Ice', colors: ['#60A5FA', '#22D3EE'], angle: 180 },
+  { name: 'Sunset', colors: ['#FF6B6B', '#FFD93D'] as const, angle: 135 },
+  { name: 'Ocean', colors: ['#2DD4BF', '#3B82F6'] as const, angle: 135 },
+  { name: 'Forest', colors: ['#34D399', '#059669'] as const, angle: 180 },
+  { name: 'Purple Dream', colors: ['#A78BFA', '#EC4899'] as const, angle: 135 },
+  { name: 'Fire', colors: ['#FF8C42', '#DC2626'] as const, angle: 90 },
+  { name: 'Ice', colors: ['#60A5FA', '#22D3EE'] as const, angle: 180 },
 ];
 
 interface ShopData {
@@ -211,7 +214,7 @@ export default function MyShopScreen() {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('*, view_count')
+        .select('*, views_count')
         .eq('seller_id', userId)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
@@ -382,8 +385,8 @@ export default function MyShopScreen() {
 
   // Utiliser le gradient personnalisé
   const customGradient = {
-    gradient: [primaryColor, secondaryColor],
-    lightGradient: [primaryColor + '20', secondaryColor + '20'],
+    gradient: [primaryColor, secondaryColor] as const,
+    lightGradient: [primaryColor + '20', secondaryColor + '20'] as const,
     angle: gradientAngle
   };
 
@@ -604,7 +607,11 @@ export default function MyShopScreen() {
               } else if (editMode) {
                 cancelEdit();
               } else {
-                router.back();
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace('/(tabs)/profile');
+                }
               }
             }}
           >
@@ -968,6 +975,62 @@ export default function MyShopScreen() {
             </View>
           </View>
 
+          {/* Live Shopping - Premium Only - EN STANDBY
+          {profileSubscription?.subscription_plan === 'premium' && (
+            <TouchableOpacity
+              style={styles.liveShoppingBanner}
+              onPress={() => router.push('/seller/start-live')}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={['#FF6B6B', '#FF8C42', '#FFD93D']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.liveShoppingGradient}
+              >
+                <View style={styles.liveNewBadge}>
+                  <Zap size={12} color="#FFD93D" fill="#FFD93D" />
+                  <Text style={styles.liveNewText}>NOUVEAU</Text>
+                </View>
+
+                <View style={styles.liveShoppingContent}>
+                  <View style={styles.liveShoppingLeft}>
+                    <View style={styles.liveShoppingIcon}>
+                      <Video size={28} color={Colors.white} strokeWidth={2.5} />
+                      <View style={styles.livePulse} />
+                    </View>
+                    <View style={styles.liveShoppingText}>
+                      <Text style={styles.liveShoppingTitle}>Live Shopping</Text>
+                      <Text style={styles.liveShoppingSubtitle}>
+                        Vendez en direct et boostez vos ventes ! 🔥
+                      </Text>
+                      <View style={styles.liveShoppingStats}>
+                        <View style={styles.liveStatItem}>
+                          <Text style={styles.liveStatValue}>+300%</Text>
+                          <Text style={styles.liveStatLabel}>Ventes</Text>
+                        </View>
+                        <View style={styles.liveStatDivider} />
+                        <View style={styles.liveStatItem}>
+                          <Text style={styles.liveStatValue}>HD</Text>
+                          <Text style={styles.liveStatLabel}>Qualité</Text>
+                        </View>
+                        <View style={styles.liveStatDivider} />
+                        <View style={styles.liveStatItem}>
+                          <Text style={styles.liveStatValue}>Gratuit</Text>
+                          <Text style={styles.liveStatLabel}>166h/mois</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.liveShoppingArrow}>
+                    <ChevronRight size={24} color={Colors.white} strokeWidth={3} />
+                  </View>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+          */}
+
           {/* Section Produits */}
           <View style={styles.viewProductsSection}>
             <View style={styles.viewProductsHeader}>
@@ -1009,9 +1072,9 @@ export default function MyShopScreen() {
                       <Text style={styles.viewProductPrice}>{product.price.toLocaleString()} FCFA</Text>
                       <View style={styles.viewProductMeta}>
                         <View style={styles.viewProductMetaItem}>
-                          <Eye size={12} color={Colors.textMuted} />
-                          <Text style={styles.viewProductMetaText}>
-                            {product.view_count || 0}
+                          <Eye size={14} color={Colors.primaryOrange} />
+                          <Text style={[styles.viewProductMetaText, { color: Colors.primaryOrange, fontWeight: '600' }]}>
+                            {(product as any).views_count || 0} vues
                           </Text>
                         </View>
                         <Text style={styles.viewProductStock}>
@@ -1504,6 +1567,121 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.lg,
     fontWeight: '600',
     color: Colors.textPrimary,
+  },
+  // Live Shopping Banner
+  liveShoppingBanner: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.md,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    ...Shadows.large,
+    elevation: 8,
+  },
+  liveShoppingGradient: {
+    padding: Spacing.lg,
+    position: 'relative',
+  },
+  liveNewBadge: {
+    position: 'absolute',
+    top: Spacing.sm,
+    right: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.md,
+  },
+  liveNewText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFD93D',
+    letterSpacing: 0.5,
+  },
+  liveShoppingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.xs,
+  },
+  liveShoppingLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  liveShoppingIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  livePulse: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    opacity: 0.7,
+  },
+  liveShoppingText: {
+    flex: 1,
+  },
+  liveShoppingTitle: {
+    fontSize: Typography.fontSize.xl,
+    fontWeight: '800',
+    color: Colors.white,
+    marginBottom: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  liveShoppingSubtitle: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.white,
+    opacity: 0.95,
+    marginBottom: Spacing.sm,
+    lineHeight: 18,
+  },
+  liveShoppingStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: 4,
+  },
+  liveStatItem: {
+    alignItems: 'center',
+  },
+  liveStatValue: {
+    fontSize: Typography.fontSize.sm,
+    fontWeight: '800',
+    color: Colors.white,
+  },
+  liveStatLabel: {
+    fontSize: 9,
+    color: Colors.white,
+    opacity: 0.85,
+    marginTop: 2,
+  },
+  liveStatDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    marginHorizontal: 4,
+  },
+  liveShoppingArrow: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: Spacing.sm,
   },
   viewProductsSection: {
     marginTop: Spacing.xl,
