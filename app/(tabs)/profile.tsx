@@ -58,6 +58,7 @@ import {
   Store,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useNavigation as useNavigationContext } from '@/contexts/NavigationContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Speech from 'expo-speech';
 import * as ImagePicker from 'expo-image-picker';
@@ -82,6 +83,7 @@ const getDefaultAvatar = (userId: string) => {
 export default function ProfileScreen() {
   const router = useRouter();
   const { isDark, setThemeMode, themeMode } = useTheme();
+  const { userRole, setUserRole } = useNavigationContext();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -218,7 +220,6 @@ export default function ProfileScreen() {
         setProfile({
           ...profile,
           subscription_plan: profileSubscription.subscription_plan,
-          subscription_expires_at: profileSubscription.subscription_expires_at,
         });
       }
     }
@@ -541,24 +542,6 @@ export default function ProfileScreen() {
             <Text style={[styles.userName, { color: themeColors.text }]}>
               {profile?.full_name || 'Utilisateur'}
             </Text>
-            {/* Badge d'abonnement */}
-            {currentPlan && currentPlan !== 'free' && (
-              <View style={[
-                styles.subscriptionBadge,
-                { backgroundColor:
-                  currentPlan === 'premium' ? '#F59E0B' :
-                  currentPlan === 'pro' ? '#8B5CF6' :
-                  '#3B82F6'
-                }
-              ]}>
-                <Crown size={12} color="#FFFFFF" />
-                <Text style={styles.subscriptionBadgeText}>
-                  {currentPlan === 'premium' ? 'PREMIUM' :
-                   currentPlan === 'pro' ? 'PRO' :
-                   'STARTER'}
-                </Text>
-              </View>
-            )}
           </View>
           <Text style={[styles.userHandle, { color: themeColors.textSecondary }]}>
             @{profile?.username || 'username'}
@@ -621,6 +604,30 @@ export default function ProfileScreen() {
             }}
             backgroundColor={themeColors.menuIcon.bg.yellow}
             themeColors={themeColors}
+            rightIcon={
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={[
+                  styles.subscriptionBadgeSmall,
+                  { backgroundColor:
+                    currentPlan === 'premium' ? '#F59E0B' :
+                    currentPlan === 'pro' ? '#8B5CF6' :
+                    currentPlan === 'starter' ? '#3B82F6' :
+                    themeColors.border
+                  }
+                ]}>
+                  {currentPlan && currentPlan !== 'free' && (
+                    <Crown size={10} color="#FFFFFF" />
+                  )}
+                  <Text style={styles.subscriptionBadgeSmallText}>
+                    {currentPlan === 'premium' ? 'PREMIUM' :
+                     currentPlan === 'pro' ? 'PRO' :
+                     currentPlan === 'starter' ? 'STARTER' :
+                     'GRATUIT'}
+                  </Text>
+                </View>
+                <ChevronRight size={20} color={themeColors.textSecondary} />
+              </View>
+            }
           />
 
           {/* Menu Commandes - avec sous-menu pour vendeurs */}
@@ -985,6 +992,80 @@ export default function ProfileScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.settingsSection}>
+                <Text style={[styles.settingsSectionTitle, { color: themeColors.textSecondary }]}>Préférences d'interface</Text>
+
+                <TouchableOpacity
+                  style={[
+                    styles.settingsItem,
+                    { backgroundColor: themeColors.background },
+                    userRole === 'buyer' && styles.settingsItemSelected
+                  ]}
+                  onPress={async () => {
+                    try {
+                      await setUserRole('buyer');
+                      Alert.alert(
+                        'Rôle modifié',
+                        'Vous utilisez maintenant l\'interface acheteur.',
+                        [
+                          {
+                            text: 'OK',
+                            onPress: () => {
+                              setSettingsModalVisible(false);
+                              router.replace('/' as any);
+                            }
+                          }
+                        ]
+                      );
+                    } catch (error) {
+                      Alert.alert('Erreur', 'Impossible de changer de rôle');
+                    }
+                  }}>
+                  <ShoppingBag size={20} color={userRole === 'buyer' ? '#D97706' : themeColors.textSecondary} />
+                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Mode Acheteur</Text>
+                  {userRole === 'buyer' && (
+                    <View style={styles.checkIcon}>
+                      <Text style={styles.checkText}>✓</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.settingsItem,
+                    { backgroundColor: themeColors.background },
+                    userRole === 'seller' && styles.settingsItemSelected
+                  ]}
+                  onPress={async () => {
+                    try {
+                      await setUserRole('seller');
+                      Alert.alert(
+                        'Rôle modifié',
+                        'Vous utilisez maintenant l\'interface vendeur.',
+                        [
+                          {
+                            text: 'OK',
+                            onPress: () => {
+                              setSettingsModalVisible(false);
+                              router.replace('/seller/my-shop' as any);
+                            }
+                          }
+                        ]
+                      );
+                    } catch (error) {
+                      Alert.alert('Erreur', 'Impossible de changer de rôle');
+                    }
+                  }}>
+                  <Store size={20} color={userRole === 'seller' ? '#D97706' : themeColors.textSecondary} />
+                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Mode Vendeur</Text>
+                  {userRole === 'seller' && (
+                    <View style={styles.checkIcon}>
+                      <Text style={styles.checkText}>✓</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+
               <View style={styles.settingsSection}>
                 <Text style={[styles.settingsSectionTitle, { color: themeColors.textSecondary }]}>Apparence</Text>
 
@@ -1525,6 +1606,20 @@ const styles = StyleSheet.create({
   },
   subscriptionBadgeText: {
     fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  subscriptionBadgeSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  subscriptionBadgeSmallText: {
+    fontSize: 9,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,

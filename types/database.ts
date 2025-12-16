@@ -8,6 +8,8 @@ export type Profile = {
   bio: string | null;
   is_seller: boolean;
   is_premium: boolean;
+  // Rôle préféré de l'utilisateur (demandé une seule fois)
+  preferred_role: 'buyer' | 'seller' | null;
   shop_name: string | null;
   shop_description: string | null;
   shop_logo_url: string | null;

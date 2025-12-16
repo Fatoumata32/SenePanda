@@ -14,6 +14,7 @@ import { NotificationProvider } from '@/contexts/NotificationContext';
 import { OnboardingProvider } from '@/contexts/OnboardingContext';
 import { AuthGuard } from '@/components/AuthGuard';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { RoleRedirect } from '@/components/RoleRedirect';
 import { Colors } from '@/constants/Colors';
 import PrivacyPolicyModal from '@/components/PrivacyPolicyModal';
 import OnboardingScreen, { ONBOARDING_COMPLETED_KEY } from '@/components/OnboardingScreen';
@@ -143,13 +144,15 @@ export default function RootLayout() {
                 <ToastProvider>
                   <OnboardingProvider>
                     <AuthGuard>
-                      <Stack screenOptions={{ headerShown: false }} />
-                      <PrivacyPolicyModal />
-                      <OfflineBanner />
-                      <SubscriptionNotificationListener />
-                      <DailyLoginTracker />
-                      <OnboardingTooltip />
-                      <StatusBar style="auto" />
+                      <RoleRedirect>
+                        <Stack screenOptions={{ headerShown: false }} />
+                        <PrivacyPolicyModal />
+                        <OfflineBanner />
+                        <SubscriptionNotificationListener />
+                        <DailyLoginTracker />
+                        <OnboardingTooltip />
+                        <StatusBar style="auto" />
+                      </RoleRedirect>
                     </AuthGuard>
                   </OnboardingProvider>
                 </ToastProvider>
