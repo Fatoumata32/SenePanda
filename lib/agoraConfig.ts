@@ -1,6 +1,22 @@
 // Configuration Agora pour le Live Shopping
 // IMPORTANT : Remplacez ces valeurs par vos vraies clés Agora
 
+// Détection de la disponibilité d'Agora
+let AgoraEngine: any = null;
+let isAgoraAvailable = false;
+
+try {
+  // Essayer d'importer Agora (fonctionne uniquement avec build natif)
+  AgoraEngine = require('react-native-agora').default;
+  isAgoraAvailable = true;
+  console.log('✅ Agora SDK available');
+} catch (e) {
+  console.warn('⚠️ Agora SDK not available - Live streaming disabled in Expo Go');
+  console.log('ℹ️ Build with EAS to enable live streaming: eas build --profile development');
+}
+
+export { AgoraEngine, isAgoraAvailable };
+
 export const AGORA_APP_ID = 'c1a1a6f975c84c8fb781485a24933e9d'; // App ID Agora configuré
 export const AGORA_APP_CERTIFICATE = 'YOUR_AGORA_APP_CERTIFICATE'; // À remplacer
 

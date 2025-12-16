@@ -47,6 +47,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { Product } from '@/types/database';
 import { useProfileSubscriptionSync } from '@/hooks/useProfileSubscriptionSync';
 import { useFocusEffect } from '@react-navigation/native';
+import { isAgoraAvailable } from '@/lib/agoraConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -623,8 +624,8 @@ export default function MyShopScreen() {
           </Text>
 
           <View style={styles.headerActions}>
-            {/* Bouton Live - visible uniquement en mode normal */}
-            {!editMode && (
+            {/* Bouton Live - visible uniquement en mode normal ET si Agora disponible */}
+            {!editMode && isAgoraAvailable && (
               <TouchableOpacity
                 style={styles.liveButton}
                 onPress={() => router.push('/seller/start-live' as any)}
@@ -639,6 +640,22 @@ export default function MyShopScreen() {
                   <Video size={18} color={Colors.white} />
                   <Text style={styles.liveButtonText}>LIVE</Text>
                 </LinearGradient>
+              </TouchableOpacity>
+            )}
+
+            {/* Message si Agora non disponible */}
+            {!editMode && !isAgoraAvailable && __DEV__ && (
+              <TouchableOpacity
+                style={styles.liveButtonDisabled}
+                onPress={() => Alert.alert(
+                  'Live Shopping',
+                  'Le streaming live nécessite un build natif.\n\nCommande: eas build --profile development',
+                  [{ text: 'OK' }]
+                )}
+                activeOpacity={0.8}
+              >
+                <Video size={18} color={Colors.textMuted} />
+                <Text style={styles.liveButtonTextDisabled}>LIVE (Build EAS)</Text>
               </TouchableOpacity>
             )}
 
@@ -1199,6 +1216,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  liveButtonDisabled: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.backgroundLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  liveButtonTextDisabled: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
   },
 
   // Mode édition
