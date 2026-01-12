@@ -28,8 +28,10 @@ type Order = {
   created_at: string;
   total_amount: number;
   status: string;
-  shipping_address: string;
-  user_id: string;
+  buyer_id: string;
+  delivery_address: string | null;
+  delivery_city: string | null;
+  delivery_phone: string | null;
   order_items: OrderItem[];
   profile: {
     full_name: string | null;
@@ -55,6 +57,38 @@ export default function SellerOrdersScreen() {
         return;
       }
 
+      // Vérifier le profil vendeur
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('is_seller, subscription_plan, shop_name')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError) throw profileError;
+
+      // Vérification Niveau 1: Est-ce un vendeur?
+      if (!profile?.is_seller) {
+        Alert.alert(
+          'Accès refusé',
+          'Cette page est réservée aux vendeurs.',
+          [{ text: 'OK', onPress: () => router.replace('/(tabs)/profile') }]
+        );
+        return;
+      }
+
+      // Vérification Niveau 2: A-t-il un abonnement?
+      if (!profile.subscription_plan) {
+        Alert.alert(
+          'Abonnement requis',
+          'Souscrivez à un plan pour gérer vos ventes et recevoir des commandes.',
+          [
+            { text: 'Plus tard', style: 'cancel', onPress: () => router.back() },
+            { text: 'S\'abonner', onPress: () => router.push('/seller/subscription-plans') }
+          ]
+        );
+        return;
+      }
+
       // First, get all order_items for this seller's products
       const { data: orderItems, error: itemsError } = await supabase
         .from('order_items')
@@ -70,8 +104,10 @@ export default function SellerOrdersScreen() {
             created_at,
             total_amount,
             status,
-            shipping_address,
-            user_id
+            buyer_id,
+            delivery_address,
+            delivery_city,
+            delivery_phone
           )
         `)
         .eq('product.seller_id', user.id);
@@ -89,7 +125,7 @@ export default function SellerOrdersScreen() {
           const { data: profileData } = await supabase
             .from('profiles')
             .select('full_name, phone')
-            .eq('id', item.order.user_id)
+            .eq('id', item.order.buyer_id)
             .single();
 
           ordersMap.set(orderId, {
@@ -243,16 +279,21 @@ export default function SellerOrdersScreen() {
           <Text style={styles.customerName}>
             {item.profile?.full_name || 'Client'}
           </Text>
-          {item.profile?.phone && (
+          {item.delivery_phone && (
             <View style={styles.infoRow}>
               <Phone size={14} color="#6B7280" />
-              <Text style={styles.infoText}>{item.profile.phone}</Text>
+              <Text style={styles.infoText}>{item.delivery_phone}</Text>
             </View>
           )}
-          <View style={styles.infoRow}>
-            <MapPin size={14} color="#6B7280" />
-            <Text style={styles.infoText}>{item.shipping_address}</Text>
-          </View>
+          {item.delivery_address && (
+            <View style={styles.infoRow}>
+              <MapPin size={14} color="#6B7280" />
+              <Text style={styles.infoText}>
+                {item.delivery_address}
+                {item.delivery_city ? `, ${item.delivery_city}` : ''}
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.itemsSection}>

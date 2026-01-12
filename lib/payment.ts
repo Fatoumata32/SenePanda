@@ -233,6 +233,11 @@ async function processPayment(
     })
     .eq('id', paymentId);
 
+  // Create order if payment succeeded and metadata includes product info
+  if (success && request.metadata?.product_id) {
+    await createOrderFromPayment(paymentId, request);
+  }
+
   return {
     success,
     transactionId: success ? paymentId : undefined,
@@ -241,6 +246,91 @@ async function processPayment(
       ? 'Paiement effectué avec succès'
       : 'Le paiement a échoué. Veuillez réessayer.',
   };
+}
+
+/**
+ * Create order from successful payment
+ */
+async function createOrderFromPayment(
+  paymentId: string,
+  request: PaymentRequest
+): Promise<void> {
+  try {
+    const metadata = request.metadata || {};
+    const quantity = metadata.quantity || 1;
+    const unitPrice = metadata.unit_price || request.amount;
+    const subtotal = unitPrice * quantity;
+
+    // Get product details to find seller_id
+    const { data: product } = await supabase
+      .from('products')
+      .select('seller_id')
+      .eq('id', metadata.product_id)
+      .single();
+
+    if (!product) {
+      console.error('Product not found for order creation');
+      return;
+    }
+
+    // Get payment details for user_id
+    const { data: payment } = await supabase
+      .from('payments')
+      .select('user_id')
+      .eq('id', paymentId)
+      .single();
+
+    if (!payment) {
+      console.error('Payment not found for order creation');
+      return;
+    }
+
+    // Calculate pricing
+    const fees = request.amount - subtotal;
+    const discountAmount = 0; // TODO: Calculate if discount was applied
+
+    // Create order
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .insert({
+        user_id: payment.user_id,
+        seller_id: product.seller_id,
+        live_session_id: metadata.live_session_id || null,
+        product_id: metadata.product_id,
+        product_title: request.description.replace('Achat Live: ', ''),
+        product_image: metadata.product_image || null,
+        quantity,
+        unit_price: unitPrice,
+        subtotal,
+        discount_amount: discountAmount,
+        fees,
+        total_amount: request.amount,
+        currency: request.currency,
+        payment_id: paymentId,
+        payment_method: request.method,
+        payment_status: 'completed',
+        purchase_type: metadata.purchase_type || 'live_shopping',
+        status: 'confirmed',
+        metadata: {
+          ...metadata,
+          payment_description: request.description,
+        },
+      })
+      .select()
+      .single();
+
+    if (orderError) {
+      console.error('Error creating order:', orderError);
+      return;
+    }
+
+    console.log('✅ Order created successfully:', order.order_number);
+
+    // TODO: Send notification to seller
+    // TODO: Send confirmation email/SMS to buyer
+  } catch (error) {
+    console.error('Error in createOrderFromPayment:', error);
+  }
 }
 
 /**

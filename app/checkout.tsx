@@ -12,15 +12,18 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, MapPin, CreditCard, Smartphone, CheckCircle } from 'lucide-react-native';
+import { ArrowLeft, MapPin, CreditCard, Smartphone, CheckCircle, Coins, Gift } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCart } from '@/contexts/CartContext';
 import { Colors } from '@/constants/Colors';
 import WavePaymentButton from '@/components/payment/WavePaymentButton';
+import CoinRedemption from '@/components/checkout/CoinRedemption';
+import { useCoinBalance, COINS_TO_FCFA_RATE } from '@/hooks/useCoinBalance';
 
 export default function CheckoutScreen() {
   const router = useRouter();
   const { cartItems, cartTotal, clearCart } = useCart();
+  const { balance, spendCoins, addCoins } = useCoinBalance();
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -31,6 +34,10 @@ export default function CheckoutScreen() {
   const [phone, setPhone] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'wave' | 'cash_on_delivery'>('wave');
+  
+  // Coin discount state
+  const [coinDiscount, setCoinDiscount] = useState(0);
+  const [coinsUsed, setCoinsUsed] = useState(0);
 
   useEffect(() => {
     loadUserInfo();
@@ -76,7 +83,21 @@ export default function CheckoutScreen() {
 
   const shippingCost = cartTotal > 25000 ? 0 : 2500;
   const tax = cartTotal * 0.1; // 10% tax
-  const total = cartTotal + shippingCost + tax;
+  const subtotalBeforeDiscount = cartTotal + shippingCost + tax;
+  const total = Math.max(0, subtotalBeforeDiscount - coinDiscount);
+  
+  // Calculate coins earned from this purchase (1 coin per 1000 FCFA)
+  const coinsEarned = Math.floor(total / 1000);
+
+  const handleCoinDiscountApplied = (discount: number, coins: number) => {
+    setCoinDiscount(discount);
+    setCoinsUsed(coins);
+  };
+
+  const handleCoinDiscountRemoved = () => {
+    setCoinDiscount(0);
+    setCoinsUsed(0);
+  };
 
   const handleCheckout = async () => {
     if (!fullName.trim()) {
@@ -100,6 +121,21 @@ export default function CheckoutScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Non authentifié');
 
+      // Si des coins sont utilisés, les dépenser d'abord
+      if (coinsUsed > 0) {
+        const spendSuccess = await spendCoins(
+          coinsUsed,
+          '', // L'ID de commande sera mis à jour après
+          `Réduction de ${coinDiscount.toLocaleString()} FCFA sur commande`
+        );
+        
+        if (!spendSuccess) {
+          Alert.alert('Erreur', 'Impossible d\'utiliser vos Panda Coins. Veuillez réessayer.');
+          setProcessing(false);
+          return;
+        }
+      }
+
       // Utiliser la fonction SQL pour créer la commande à partir du panier
       const { error: orderError } = await supabase
         .rpc('create_order_from_cart', {
@@ -116,14 +152,33 @@ export default function CheckoutScreen() {
 
       if (orderError) throw orderError;
 
+      // Gagner des coins pour cet achat (1 coin par 1000 FCFA dépensés)
+      if (coinsEarned > 0) {
+        await addCoins(
+          coinsEarned,
+          'purchase',
+          `Achat de ${total.toLocaleString()} FCFA`
+        );
+      }
+
       // Le panier a été vidé automatiquement par la fonction SQL
       await clearCart();
 
+      // Message de succès avec info sur les coins
+      let successMessage = paymentMethod === 'wave'
+        ? 'Votre commande a été créée. Procédez au paiement Wave pour la confirmer.'
+        : 'Votre commande a été passée avec succès.';
+      
+      if (coinDiscount > 0) {
+        successMessage += `\n\n🪙 ${coinsUsed} coins utilisés (-${coinDiscount.toLocaleString()} FCFA)`;
+      }
+      if (coinsEarned > 0) {
+        successMessage += `\n\n🎉 +${coinsEarned} Panda Coins gagnés!`;
+      }
+
       Alert.alert(
         'Commande réussie! 🎉',
-        paymentMethod === 'wave'
-          ? 'Votre commande a été créée. Procédez au paiement Wave pour la confirmer.'
-          : 'Votre commande a été passée avec succès. Vous recevrez une confirmation par email.',
+        successMessage,
         [
           {
             text: 'Voir mes commandes',
@@ -216,6 +271,15 @@ export default function CheckoutScreen() {
               <Text style={styles.priceLabel}>Taxes (10%)</Text>
               <Text style={styles.priceValue}>{Math.round(tax).toLocaleString()} FCFA</Text>
             </View>
+            {coinDiscount > 0 && (
+              <View style={styles.priceRow}>
+                <View style={styles.discountLabel}>
+                  <Coins size={14} color="#059669" />
+                  <Text style={styles.discountText}>Réduction Panda Coins</Text>
+                </View>
+                <Text style={styles.discountValue}>-{coinDiscount.toLocaleString()} FCFA</Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.totalRow}>
@@ -224,7 +288,25 @@ export default function CheckoutScreen() {
               {Math.round(total).toLocaleString()} FCFA
             </Text>
           </View>
+
+          {/* Coins earned info */}
+          {coinsEarned > 0 && (
+            <View style={styles.coinsEarnedBox}>
+              <Gift size={16} color="#F59E0B" />
+              <Text style={styles.coinsEarnedText}>
+                Vous gagnerez +{coinsEarned} Panda Coins avec cette commande!
+              </Text>
+            </View>
+          )}
         </View>
+
+        {/* Coin Redemption Section */}
+        <CoinRedemption
+          orderTotal={subtotalBeforeDiscount}
+          onDiscountApplied={handleCoinDiscountApplied}
+          onDiscountRemoved={handleCoinDiscountRemoved}
+          disabled={processing}
+        />
 
         {/* Shipping Information */}
         <View style={styles.section}>
@@ -562,6 +644,36 @@ const styles = StyleSheet.create({
   },
   halfWidth: {
     flex: 1,
+  },
+  discountLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  discountText: {
+    fontSize: 14,
+    color: '#059669',
+    fontWeight: '500',
+  },
+  discountValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  coinsEarnedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF3C7',
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 12,
+  },
+  coinsEarnedText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400E',
+    fontWeight: '500',
   },
   paymentOption: {
     backgroundColor: Colors.white,

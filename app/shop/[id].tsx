@@ -31,17 +31,59 @@ export default function ShopPage() {
     }
   }, [id]);
 
-  const loadShopData = async () => {
+  // Synchronisation en temps réel des produits
+  useEffect(() => {
+    if (!id) return;
+
+    const productsChannel = supabase
+      .channel(`shop-products-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'products',
+          filter: `seller_id=eq.${id}`,
+        },
+        (payload) => {
+          console.log('Product changed:', payload);
+          // Recharger les produits quand un changement arrive
+          loadShopData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(productsChannel);
+    };
+  }, [id]);
+
+  const loadShopData = async (retryCount = 0) => {
     try {
       setLoading(true);
 
-      // Charger les infos de la boutique
-      const { data: shopData, error: shopError } = await supabase
+      // Charger les infos de la boutique (chercher d'abord avec is_seller = true)
+      let { data: shopData, error: shopError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', id)
         .eq('is_seller', true)
         .maybeSingle();
+
+      // Si introuvable avec is_seller = true, essayer sans ce filtre (peut-être juste créée)
+      if (!shopData && !shopError) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+
+        if (profileData && profileData.shop_name) {
+          // Le profil existe et a un shop_name, c'est une boutique valide
+          shopData = profileData;
+        }
+        shopError = profileError;
+      }
 
       if (shopError) {
         console.error('Error loading shop:', shopError);
@@ -49,6 +91,11 @@ export default function ShopPage() {
       }
 
       if (!shopData) {
+        // Retry une fois après 1 seconde si c'est la première tentative
+        if (retryCount < 1) {
+          setTimeout(() => loadShopData(retryCount + 1), 1000);
+          return;
+        }
         console.warn('Shop not found with id:', id);
         setShop(null);
         setProducts([]);

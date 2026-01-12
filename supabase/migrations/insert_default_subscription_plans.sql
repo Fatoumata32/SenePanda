@@ -1,13 +1,14 @@
 -- ============================================
 -- Migration: Insertion des plans d'abonnement par défaut
 -- Date: 2025-11-30
--- Description: Crée les 4 plans d'abonnement (Free, Starter, Pro, Premium)
+-- Description: Crée les 4 plans (Free + 3 payants: Starter, Pro, Premium)
+-- Le plan Free est pour les nouveaux utilisateurs mais n'est pas affiché à la vente
 -- ============================================
 
 -- Supprimer les anciens plans (pour éviter les doublons)
 TRUNCATE TABLE subscription_plans CASCADE;
 
--- Insérer les 4 plans d'abonnement
+-- Insérer les 4 plans d'abonnement (1 gratuit + 3 payants)
 INSERT INTO subscription_plans (
   plan_type,
   name,
@@ -28,15 +29,15 @@ INSERT INTO subscription_plans (
   display_order,
   is_active
 ) VALUES
-  -- Plan Gratuit
+  -- Plan Gratuit (pour les nouveaux utilisateurs, non affiché à la vente)
   (
     'free',
     'Gratuit',
-    'Pour débuter votre activité',
+    'Pour découvrir la plateforme',
     0,
     0,
     'FCFA',
-    10,
+    5,
     15.00,
     0,
     false,
@@ -46,7 +47,7 @@ INSERT INTO subscription_plans (
     false,
     false,
     false,
-    1,
+    0,
     true
   ),
   -- Plan Starter
@@ -67,7 +68,7 @@ INSERT INTO subscription_plans (
     true,
     false,
     false,
-    2,
+    1,
     true
   ),
   -- Plan Pro
@@ -88,7 +89,7 @@ INSERT INTO subscription_plans (
     true,
     true,
     true,
-    3,
+    2,
     true
   ),
   -- Plan Premium
@@ -109,7 +110,7 @@ INSERT INTO subscription_plans (
     true,
     true,
     true,
-    4,
+    3,
     true
   );
 

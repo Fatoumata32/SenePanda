@@ -164,18 +164,19 @@ export class NavigationService {
       // Si une redirection est enregistrée, y aller
       const redirect = this.getAndClearRedirect();
       if (redirect) {
-        // Si le rôle n'est pas sélectionné et la route le nécessite, aller à role-selection
+        // Si le rôle n'est pas sélectionné, le définir automatiquement
         if (!roleSelected && this.requiresRoleSelection(redirect)) {
-          this.goToRoleSelection();
-        } else {
-          router.replace(redirect as any);
+          await AsyncStorage.setItem('user_preferred_role', 'buyer');
         }
+        router.replace(redirect as any);
         return;
       }
 
       // Sinon, logique par défaut
       if (!roleSelected) {
-        this.goToRoleSelection();
+        // Définir 'buyer' comme rôle par défaut
+        await AsyncStorage.setItem('user_preferred_role', 'buyer');
+        this.goToHome();
       } else {
         this.goToHome();
       }
@@ -223,12 +224,11 @@ export class NavigationService {
         return false;
       }
 
-      // Si le rôle n'est pas sélectionné et la route le nécessite
+      // Si le rôle n'est pas sélectionné, le définir automatiquement
       if (!roleSelected && this.requiresRoleSelection(currentPath)) {
-        if (!currentPath.includes('role-selection')) {
-          this.goToRoleSelection();
-          return false;
-        }
+        // Définir 'buyer' comme rôle par défaut
+        await AsyncStorage.setItem('user_preferred_role', 'buyer');
+        // Continuer sur la route demandée
       }
 
       // Si sur role-selection avec un rôle déjà sélectionné, rediriger

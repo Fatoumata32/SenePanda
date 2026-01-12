@@ -1,24 +1,8 @@
 // Configuration Agora pour le Live Shopping
-// IMPORTANT : Remplacez ces valeurs par vos vraies clés Agora
+// ⚠️ DEPRECATED: Utiliser ZEGOCLOUD à la place (voir lib/zegoConfig.ts)
 
-// Détection de la disponibilité d'Agora
-let AgoraEngine: any = null;
-let isAgoraAvailable = false;
-
-try {
-  // Essayer d'importer Agora (fonctionne uniquement avec build natif)
-  AgoraEngine = require('react-native-agora').default;
-  isAgoraAvailable = true;
-  console.log('✅ Agora SDK available');
-} catch (e) {
-  console.warn('⚠️ Agora SDK not available - Live streaming disabled in Expo Go');
-  console.log('ℹ️ Build with EAS to enable live streaming: eas build --profile development');
-}
-
-export { AgoraEngine, isAgoraAvailable };
-
-export const AGORA_APP_ID = 'c1a1a6f975c84c8fb781485a24933e9d'; // App ID Agora configuré
-export const AGORA_APP_CERTIFICATE = 'YOUR_AGORA_APP_CERTIFICATE'; // À remplacer
+export const AGORA_APP_ID = 'c1a1a6f975c84c8fb781485a24933e9d'; // App ID Agora (legacy)
+export const AGORA_APP_CERTIFICATE = 'ae54b69729dd48ebbd7b064acd5ec0de'; // Primary Certificate (legacy)
 
 // Pour obtenir un App ID gratuit :
 // 1. Créer un compte sur https://console.agora.io/
@@ -51,7 +35,12 @@ export const generateAgoraToken = async (
 
 // Configuration des canaux
 export const getLiveChannelName = (sessionId: string) => {
-  return `live_${sessionId}`;
+  const raw = String(sessionId || '');
+  // Agora rejette certains caractères (ex: '-') selon SDK/config.
+  // On garde seulement [A-Za-z0-9_] et on limite la longueur.
+  const cleaned = raw.replace(/[^A-Za-z0-9_]/g, '');
+  const suffix = cleaned.length > 0 ? cleaned : 'unknown';
+  return `live_${suffix}`.slice(0, 64);
 };
 
 // Configuration vidéo

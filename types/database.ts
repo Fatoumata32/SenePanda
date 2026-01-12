@@ -63,6 +63,7 @@ export type Product = {
   seller_id: string;
   category_id: string | null;
   title: string;
+  name?: string | null;
   description: string | null;
   price: number;
   currency: string;
@@ -70,9 +71,14 @@ export type Product = {
   images: string[] | null;
   video_url?: string | null;
   stock: number;
+  condition?: string | null;
   is_active: boolean;
-  average_rating: number;
-  total_reviews: number;
+  average_rating?: number;
+  total_reviews?: number;
+  views_count?: number;
+  discount_percentage?: number;
+  has_discount?: boolean;
+  original_price?: number;
   // Champs de recommandation (optionnels)
   view_count?: number;
   click_count?: number;

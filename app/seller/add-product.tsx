@@ -296,6 +296,7 @@ export default function AddProductScreen() {
 
       const { data: newProduct, error } = await supabase.from('products').insert({
         seller_id: user.id,
+        name: title.trim(), // Nom du produit
         title: title.trim(),
         description: description.trim() || null,
         price: priceNum,

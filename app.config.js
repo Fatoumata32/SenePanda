@@ -1,4 +1,11 @@
+// Charger les variables d'environnement depuis .env.local en priorité, puis .env
+require('dotenv').config({ path: '.env.local' });
 require('dotenv').config();
+
+// Vérifier que les variables sont bien chargées
+console.log('🔍 Vérification des variables d\'environnement:');
+console.log('EXPO_PUBLIC_SUPABASE_URL:', process.env.EXPO_PUBLIC_SUPABASE_URL ? '✅ Définie' : '❌ Manquante');
+console.log('EXPO_PUBLIC_SUPABASE_ANON_KEY:', process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ? '✅ Définie' : '❌ Manquante');
 
 module.exports = {
   expo: {
@@ -12,7 +19,7 @@ module.exports = {
     splash: {
       image: "./assets/images/splash-icon.png",
       resizeMode: "contain",
-      backgroundColor: "#FEF7E6"
+      backgroundColor: "#FDB913"
     },
     newArchEnabled: false,
     ios: {
@@ -20,6 +27,7 @@ module.exports = {
       icon: "./assets/images/icon.png",
       bundleIdentifier: "com.senepanda.app",
       infoPlist: {
+        ITSAppUsesNonExemptEncryption: false,
         NSLocationWhenInUseUsageDescription: "SenePanda utilise votre localisation pour vous montrer les produits disponibles près de chez vous.",
         NSLocationAlwaysUsageDescription: "SenePanda utilise votre localisation pour améliorer votre expérience d'achat.",
         NSSpeechRecognitionUsageDescription: "Cette application utilise la reconnaissance vocale pour rechercher des produits.",
@@ -32,7 +40,7 @@ module.exports = {
       package: "com.senepanda.app",
       adaptiveIcon: {
         foregroundImage: "./assets/images/adaptive-icon.png",
-        backgroundColor: "#FEF7E6"
+        backgroundColor: "#FDB913"
       },
       permissions: [
         "ACCESS_COARSE_LOCATION",
@@ -84,6 +92,7 @@ module.exports = {
     extra: {
       EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
       EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
       eas: {
         projectId: "efb67d51-196a-420e-9f69-b9500e680ebc"
       }

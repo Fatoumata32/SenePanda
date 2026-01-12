@@ -269,8 +269,9 @@ export default function ProductDetailScreen() {
             buyer_id: user.id,
             seller_id: product?.seller_id,
             product_id: id as string,
-            last_message: 'Nouvelle conversation',
-            last_message_time: new Date().toISOString(),
+            last_message_at: new Date().toISOString(),
+            buyer_unread_count: 0,
+            seller_unread_count: 0,
           })
           .select('id')
           .single();

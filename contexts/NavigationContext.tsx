@@ -54,12 +54,12 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Récupérer le rôle depuis la base de données
+  // Récupérer le rôle depuis la base de données (vérifie is_seller et subscription_plan)
   const fetchRoleFromDB = async (userId: string): Promise<'buyer' | 'seller' | null> => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('preferred_role')
+        .select('preferred_role, is_seller, subscription_plan')
         .eq('id', userId)
         .single();
 
@@ -68,7 +68,24 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
-      return data?.preferred_role || null;
+      // Priorité: preferred_role > subscription_plan > is_seller > null
+      if (data?.preferred_role) {
+        return data.preferred_role;
+      }
+      
+      // Si l'utilisateur a un abonnement, c'est forcément un vendeur
+      if (data?.subscription_plan && data.subscription_plan !== 'none') {
+        console.log('🏪 Utilisateur détecté comme vendeur via subscription_plan:', data.subscription_plan);
+        return 'seller';
+      }
+      
+      // Si pas de preferred_role mais is_seller = true, c'est un vendeur
+      if (data?.is_seller === true) {
+        console.log('🏪 Utilisateur détecté comme vendeur via is_seller');
+        return 'seller';
+      }
+
+      return null;
     } catch (error) {
       console.error('Error in fetchRoleFromDB:', error);
       return null;
@@ -102,9 +119,27 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
             // Migrer vers la DB
             await setUserRole(roleFromStorage);
           } else {
-            // Aucun rôle sélectionné
-            setUserRoleState(null);
-            setHasRoleSelected(false);
+            // Aucun rôle sélectionné -> Définir "buyer" par défaut automatiquement
+            console.log('🔄 Aucun rôle trouvé, définition automatique de "buyer"');
+            try {
+              // Définir buyer par défaut
+              await AsyncStorage.setItem(ROLE_STORAGE_KEY, 'buyer');
+              setUserRoleState('buyer');
+              setHasRoleSelected(true);
+              
+              // Sauvegarder en DB aussi
+              await supabase
+                .from('profiles')
+                .update({ preferred_role: 'buyer' })
+                .eq('id', user.id);
+              
+              console.log('✅ Rôle "buyer" défini par défaut');
+            } catch (roleError) {
+              console.error('Erreur définition rôle par défaut:', roleError);
+              // En cas d'erreur, définir quand même localement
+              setUserRoleState('buyer');
+              setHasRoleSelected(true);
+            }
           }
         }
       } else {
@@ -143,14 +178,25 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
         if (authenticated && session?.user) {
           // Récupérer le rôle depuis la DB
-          const roleFromDB = await fetchRoleFromDB(session.user.id);
+          let roleFromDB = await fetchRoleFromDB(session.user.id);
+          
+          // Si pas de rôle, définir "buyer" par défaut
+          if (!roleFromDB) {
+            console.log('🔄 [AuthChange] Aucun rôle, définition de "buyer" par défaut');
+            roleFromDB = 'buyer';
+            
+            // Sauvegarder en DB
+            await supabase
+              .from('profiles')
+              .update({ preferred_role: 'buyer' })
+              .eq('id', session.user.id);
+          }
+          
           setUserRoleState(roleFromDB);
-          setHasRoleSelected(!!roleFromDB);
+          setHasRoleSelected(true);
 
           // Synchroniser avec AsyncStorage
-          if (roleFromDB) {
-            await AsyncStorage.setItem(ROLE_STORAGE_KEY, roleFromDB);
-          }
+          await AsyncStorage.setItem(ROLE_STORAGE_KEY, roleFromDB);
         } else {
           setHasRoleSelected(false);
           setUserRoleState(null);

@@ -362,7 +362,8 @@ export default function ShopWizardV2() {
     setSaving(true);
 
     try {
-      const { error } = await supabase
+      // Mise à jour du profil avec is_seller = true
+      const { data, error } = await supabase
         .from('profiles')
         .update({
           shop_name: shopName,
@@ -376,9 +377,16 @@ export default function ShopWizardV2() {
           website_url: website,
           is_seller: true,
         })
-        .eq('id', user?.id);
+        .eq('id', user?.id)
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // Vérifier que la mise à jour a bien été faite
+      if (!data?.is_seller) {
+        throw new Error('Erreur lors de l\'activation du statut vendeur');
+      }
 
       // Animation de succès
       setShowConfetti(true);

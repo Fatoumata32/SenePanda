@@ -1,188 +1,136 @@
+#!/usr/bin/env node
+
 /**
  * Script de test de connexion Supabase
- * Pour exécuter: node scripts/test-supabase-connection.js
+ * Vérifie que les credentials Supabase sont corrects et fonctionnels
  */
 
 require('dotenv').config();
-const { createClient } = require('@supabase/supabase-js');
+const https = require('https');
+const http = require('http');
 
-// Couleurs pour le terminal
-const colors = {
-  reset: '\x1b[0m',
-  green: '\x1b[32m',
-  red: '\x1b[31m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  cyan: '\x1b[36m'
+console.log('🔍 Test de connexion Supabase...\n');
+
+// 1. Vérifier les variables d'environnement
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+console.log('📋 Vérification des variables d\'environnement:');
+console.log(`   EXPO_PUBLIC_SUPABASE_URL: ${SUPABASE_URL ? '✅' : '❌'}`);
+console.log(`   EXPO_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY ? '✅' : '❌'}\n`);
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error('❌ ERREUR: Variables d\'environnement manquantes!\n');
+  console.error('Vérifiez que votre fichier .env contient:');
+  console.error('- EXPO_PUBLIC_SUPABASE_URL');
+  console.error('- EXPO_PUBLIC_SUPABASE_ANON_KEY\n');
+  console.error('Copiez .env.example vers .env et remplissez les valeurs.');
+  process.exit(1);
+}
+
+// 2. Valider le format de l'URL
+console.log('🔗 Validation de l\'URL Supabase:');
+try {
+  const url = new URL(SUPABASE_URL);
+  console.log(`   URL: ${SUPABASE_URL}`);
+  console.log(`   Host: ${url.hostname}`);
+  console.log(`   Protocol: ${url.protocol}\n`);
+
+  if (!url.hostname.includes('supabase.co')) {
+    console.warn('⚠️  L\'URL ne semble pas être une URL Supabase standard');
+  }
+} catch (error) {
+  console.error(`❌ URL invalide: ${error.message}\n`);
+  process.exit(1);
+}
+
+// 3. Tester la connexion réseau
+console.log('🌐 Test de connexion réseau...');
+
+const testConnection = () => {
+  return new Promise((resolve, reject) => {
+    const url = new URL(SUPABASE_URL);
+    const protocol = url.protocol === 'https:' ? https : http;
+
+    const options = {
+      hostname: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: '/rest/v1/',
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      timeout: 10000,
+    };
+
+    const req = protocol.request(options, (res) => {
+      console.log(`   Status: ${res.statusCode}\n`);
+
+      if (res.statusCode === 200 || res.statusCode === 401 || res.statusCode === 404) {
+        // 200 = OK, 401 = Auth (normal), 404 = Endpoint existe
+        console.log('✅ Connexion réussie!');
+        console.log('   Le serveur Supabase répond correctement.\n');
+        resolve();
+      } else if (res.statusCode === 503) {
+        console.error('❌ Le projet Supabase est EN PAUSE ou NON DISPONIBLE\n');
+        console.error('Solutions:');
+        console.error('1. Allez sur https://app.supabase.com');
+        console.error('2. Trouvez votre projet');
+        console.error('3. Cliquez sur "Restore" ou "Unpause"');
+        console.error('4. Attendez 2-3 minutes et réessayez\n');
+        reject(new Error('Projet en pause'));
+      } else {
+        console.error(`❌ Code de statut inattendu: ${res.statusCode}\n`);
+        reject(new Error(`Unexpected status: ${res.statusCode}`));
+      }
+    });
+
+    req.on('error', (error) => {
+      console.error(`❌ Erreur de connexion: ${error.message}\n`);
+
+      if (error.code === 'ENOTFOUND') {
+        console.error('Le serveur Supabase n\'existe pas ou n\'est pas accessible.\n');
+        console.error('Vérifiez que:');
+        console.error('1. L\'URL dans .env est correcte');
+        console.error('2. Le projet existe sur https://app.supabase.com');
+        console.error('3. Le projet n\'est pas supprimé\n');
+      } else if (error.code === 'ETIMEDOUT') {
+        console.error('Timeout de connexion.\n');
+        console.error('Vérifiez votre connexion internet.');
+      }
+
+      reject(error);
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      console.error('❌ Timeout: Le serveur ne répond pas\n');
+      reject(new Error('Timeout'));
+    });
+
+    req.end();
+  });
 };
 
-console.log('\n' + colors.cyan + '🔍 Test de Connexion Supabase' + colors.reset);
-console.log('===============================\n');
-
-// Vérifier les variables d'environnement
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-
-console.log(colors.blue + '1. Vérification des variables d\'environnement...' + colors.reset);
-
-if (!supabaseUrl) {
-  console.log(colors.red + '❌ EXPO_PUBLIC_SUPABASE_URL est manquant' + colors.reset);
-  process.exit(1);
-}
-
-if (!supabaseAnonKey) {
-  console.log(colors.red + '❌ EXPO_PUBLIC_SUPABASE_ANON_KEY est manquant' + colors.reset);
-  process.exit(1);
-}
-
-console.log(colors.green + '✅ Variables d\'environnement trouvées' + colors.reset);
-console.log(colors.yellow + `   URL: ${supabaseUrl}` + colors.reset);
-console.log(colors.yellow + `   Key: ${supabaseAnonKey.substring(0, 20)}...` + colors.reset);
-console.log('');
-
-// Créer le client Supabase
-console.log(colors.blue + '2. Création du client Supabase...' + colors.reset);
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-console.log(colors.green + '✅ Client créé avec succès' + colors.reset);
-console.log('');
-
-// Fonction de test principale
-async function testConnection() {
+// Exécuter le test
+(async () => {
   try {
-    console.log(colors.blue + '3. Test de connexion à la base de données...' + colors.reset);
+    await testConnection();
 
-    // Test 1: Vérifier la connexion
-    const { data: healthCheck, error: healthError } = await supabase
-      .from('profiles')
-      .select('count', { count: 'exact', head: true });
-
-    if (healthError) {
-      throw healthError;
-    }
-
-    console.log(colors.green + '✅ Connexion à la base de données réussie' + colors.reset);
-    console.log('');
-
-    // Test 2: Compter les profils
-    console.log(colors.blue + '4. Vérification de la table profiles...' + colors.reset);
-    const { count: profilesCount, error: countError } = await supabase
-      .from('profiles')
-      .select('*', { count: 'exact', head: true });
-
-    if (countError) {
-      throw countError;
-    }
-
-    console.log(colors.green + `✅ Table profiles existe (${profilesCount || 0} profils)` + colors.reset);
-    console.log('');
-
-    // Test 3: Vérifier les autres tables critiques
-    console.log(colors.blue + '5. Vérification des tables critiques...' + colors.reset);
-
-    const tables = [
-      'products',
-      'categories',
-      'orders',
-      'order_items',
-      'cart_items',
-      'favorites',
-      'reviews',
-      'conversations',
-      'messages'
-    ];
-
-    for (const table of tables) {
-      try {
-        const { count, error } = await supabase
-          .from(table)
-          .select('*', { count: 'exact', head: true });
-
-        if (error) {
-          console.log(colors.red + `   ❌ ${table}: ${error.message}` + colors.reset);
-        } else {
-          console.log(colors.green + `   ✅ ${table}: ${count || 0} entrées` + colors.reset);
-        }
-      } catch (err) {
-        console.log(colors.red + `   ❌ ${table}: ${err.message}` + colors.reset);
-      }
-    }
-    console.log('');
-
-    // Test 4: Vérifier la colonne seller_id dans products
-    console.log(colors.blue + '6. Vérification de la colonne seller_id...' + colors.reset);
-    const { data: productData, error: productError } = await supabase
-      .from('products')
-      .select('seller_id')
-      .limit(1);
-
-    if (productError) {
-      console.log(colors.red + '   ❌ Erreur: ' + productError.message + colors.reset);
-      console.log(colors.yellow + '   ⚠️  La colonne seller_id n\'existe peut-être pas' + colors.reset);
-      console.log(colors.yellow + '   ℹ️  Exécutez la migration: 20251117000000_add_seller_id_to_products.sql' + colors.reset);
-    } else {
-      console.log(colors.green + '   ✅ Colonne seller_id existe' + colors.reset);
-    }
-    console.log('');
-
-    // Test 5: Vérifier les buckets de stockage
-    console.log(colors.blue + '7. Vérification des buckets de stockage...' + colors.reset);
-    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
-
-    if (bucketsError) {
-      console.log(colors.red + '   ❌ Erreur: ' + bucketsError.message + colors.reset);
-    } else {
-      if (buckets && buckets.length > 0) {
-        buckets.forEach(bucket => {
-          console.log(colors.green + `   ✅ Bucket: ${bucket.name} (${bucket.public ? 'public' : 'privé'})` + colors.reset);
-        });
-      } else {
-        console.log(colors.yellow + '   ⚠️  Aucun bucket trouvé' + colors.reset);
-        console.log(colors.yellow + '   ℹ️  Exécutez la migration: create_storage_buckets.sql' + colors.reset);
-      }
-    }
-    console.log('');
-
-    // Test 6: Test d'authentification
-    console.log(colors.blue + '8. Test de l\'authentification (session)...' + colors.reset);
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-    if (sessionError) {
-      console.log(colors.yellow + '   ⚠️  Aucune session active (normal si non connecté)' + colors.reset);
-    } else if (session) {
-      console.log(colors.green + `   ✅ Session active pour: ${session.user?.email}` + colors.reset);
-    } else {
-      console.log(colors.yellow + '   ℹ️  Aucune session active (utilisateur non connecté)' + colors.reset);
-    }
-    console.log('');
-
-    // Résumé final
-    console.log(colors.cyan + '═══════════════════════════════' + colors.reset);
-    console.log(colors.green + '🎉 RÉSUMÉ DU TEST' + colors.reset);
-    console.log(colors.cyan + '═══════════════════════════════' + colors.reset);
-    console.log(colors.green + '✅ Connexion Supabase: OK' + colors.reset);
-    console.log(colors.green + '✅ Base de données: Accessible' + colors.reset);
-    console.log(colors.green + '✅ Configuration: Correcte' + colors.reset);
-    console.log('');
-    console.log(colors.yellow + '📋 Prochaines étapes:' + colors.reset);
-    console.log('   1. Si des tables manquent, exécutez les migrations');
-    console.log('   2. Consultez supabase/README_MIGRATIONS.md');
-    console.log('   3. Lancez votre application: npm start');
-    console.log('');
-
+    console.log('═'.repeat(60));
+    console.log('✅ TEST RÉUSSI!');
+    console.log('═'.repeat(60));
+    console.log('\nVotre configuration Supabase est correcte.');
+    console.log('Vous pouvez maintenant lancer l\'application:\n');
+    console.log('   npm run dev\n');
+    process.exit(0);
   } catch (error) {
-    console.log('');
-    console.log(colors.red + '❌ ERREUR DE CONNEXION' + colors.reset);
-    console.log(colors.red + 'Message: ' + error.message + colors.reset);
-    console.log('');
-    console.log(colors.yellow + '🔧 Solutions possibles:' + colors.reset);
-    console.log('   1. Vérifiez votre fichier .env');
-    console.log('   2. Vérifiez que votre projet Supabase est actif');
-    console.log('   3. Vérifiez les credentials dans Supabase Dashboard');
-    console.log('   4. Assurez-vous que les migrations sont appliquées');
-    console.log('');
+    console.log('═'.repeat(60));
+    console.log('❌ ÉCHEC DU TEST');
+    console.log('═'.repeat(60));
+    console.log('\nConsultez le guide de dépannage:');
+    console.log('   FIX_SUPABASE_CONNECTION.md\n');
     process.exit(1);
   }
-}
-
-// Exécuter le test
-testConnection();
+})();

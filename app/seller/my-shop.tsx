@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   ArrowLeft,
+  ArrowRight,
   Edit3,
   Camera,
   Phone,
@@ -47,7 +48,6 @@ import { useAuth } from '@/providers/AuthProvider';
 import { Product } from '@/types/database';
 import { useProfileSubscriptionSync } from '@/hooks/useProfileSubscriptionSync';
 import { useFocusEffect } from '@react-navigation/native';
-import { isAgoraAvailable } from '@/lib/agoraConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -202,6 +202,11 @@ export default function MyShopScreen() {
       setSelectedColor(shop.theme_color);
       setEditedLogoUrl(shop.logo_url);
 
+      // Charger les couleurs du gradient personnalisé (si disponibles)
+      setPrimaryColor((profile as any).gradient_primary || '#EF4444');
+      setSecondaryColor((profile as any).gradient_secondary || '#DC2626');
+      setGradientAngle((profile as any).gradient_angle || 135);
+
       await loadProducts(user.id);
     } catch (error: any) {
       console.error('Error loading shop:', error);
@@ -305,10 +310,15 @@ export default function MyShopScreen() {
           location: editedLocation.trim(),
           theme_color: selectedColor,
           logo_url: editedLogoUrl,
+          gradient_primary: primaryColor,
+          gradient_secondary: secondaryColor,
+          gradient_angle: gradientAngle,
         })
         .eq('id', user.id);
 
-      if (error?.code === 'PGRST204' && error?.message?.includes('theme_color')) {
+      // Gérer les colonnes manquantes (gradient ou theme_color)
+      if (error?.code === 'PGRST204') {
+        console.log('⚠️ Colonnes gradient non disponibles, sauvegarde sans gradient');
         const result = await supabase
           .from('profiles')
           .update({
@@ -624,8 +634,8 @@ export default function MyShopScreen() {
           </Text>
 
           <View style={styles.headerActions}>
-            {/* Bouton Live - visible uniquement en mode normal ET si Agora disponible */}
-            {!editMode && isAgoraAvailable && (
+            {/* Bouton Live - visible en mode normal */}
+            {!editMode && (
               <TouchableOpacity
                 style={styles.liveButton}
                 onPress={() => router.push('/seller/start-live' as any)}
@@ -640,22 +650,6 @@ export default function MyShopScreen() {
                   <Video size={18} color={Colors.white} />
                   <Text style={styles.liveButtonText}>LIVE</Text>
                 </LinearGradient>
-              </TouchableOpacity>
-            )}
-
-            {/* Message si Agora non disponible */}
-            {!editMode && !isAgoraAvailable && __DEV__ && (
-              <TouchableOpacity
-                style={styles.liveButtonDisabled}
-                onPress={() => Alert.alert(
-                  'Live Shopping',
-                  'Le streaming live nécessite un build natif.\n\nCommande: eas build --profile development',
-                  [{ text: 'OK' }]
-                )}
-                activeOpacity={0.8}
-              >
-                <Video size={18} color={Colors.textMuted} />
-                <Text style={styles.liveButtonTextDisabled}>LIVE (Build EAS)</Text>
               </TouchableOpacity>
             )}
 
@@ -1011,7 +1005,7 @@ export default function MyShopScreen() {
             </View>
           </View>
 
-          {/* Live Shopping - Premium Only - EN STANDBY
+          {/* Live Shopping - Premium Only */}
           {profileSubscription?.subscription_plan === 'premium' && (
             <TouchableOpacity
               style={styles.liveShoppingBanner}
@@ -1065,7 +1059,33 @@ export default function MyShopScreen() {
               </LinearGradient>
             </TouchableOpacity>
           )}
-          */}
+
+          {/* Section Lives */}
+          <View style={styles.viewProductsSection}>
+            <TouchableOpacity
+              style={styles.livesManagementCard}
+              onPress={() => router.push('/seller/my-lives' as any)}
+              activeOpacity={0.7}
+            >
+              <LinearGradient
+                colors={['#FF6B6B', '#FF8C42']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.livesCardGradient}
+              >
+                <View style={styles.livesCardContent}>
+                  <View style={styles.livesCardIcon}>
+                    <Video size={24} color={Colors.white} />
+                  </View>
+                  <View style={styles.livesCardText}>
+                    <Text style={styles.livesCardTitle}>Gérer mes Lives</Text>
+                    <Text style={styles.livesCardSubtitle}>Sessions en direct et programmées</Text>
+                  </View>
+                  <ArrowRight size={20} color={Colors.white} style={styles.livesCardArrow} />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
 
           {/* Section Produits */}
           <View style={styles.viewProductsSection}>
@@ -1075,11 +1095,18 @@ export default function MyShopScreen() {
                 <Text style={styles.viewProductsTitle}>Produits ({products.length})</Text>
               </View>
               <TouchableOpacity
-                style={[styles.addProductButton, { backgroundColor: displayColor }]}
+                style={styles.addProductButton}
                 onPress={() => router.push('/seller/add-product')}
               >
-                <Plus size={18} color={Colors.white} />
-                <Text style={styles.addProductText}>Ajouter</Text>
+                <LinearGradient
+                  colors={['#FF8C42', '#FFD700']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{ flexDirection: 'row', alignItems: 'center', borderRadius: 9999, paddingHorizontal: 16, paddingVertical: 8 }}
+                >
+                  <Plus size={18} color={Colors.white} />
+                  <Text style={styles.addProductText}>Ajouter</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
 
@@ -1127,11 +1154,18 @@ export default function MyShopScreen() {
                 <Text style={styles.viewEmptyText}>Aucun produit</Text>
                 <Text style={styles.viewEmptySubtext}>Ajoutez vos premiers produits</Text>
                 <TouchableOpacity
-                  style={[styles.viewEmptyButton, { backgroundColor: displayColor }]}
+                  style={styles.viewEmptyButton}
                   onPress={() => router.push('/seller/add-product')}
                 >
-                  <Plus size={20} color={Colors.white} />
-                  <Text style={styles.viewEmptyButtonText}>Ajouter un produit</Text>
+                  <LinearGradient
+                    colors={['#FF8C42', '#FFD700']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{ flexDirection: 'row', alignItems: 'center', borderRadius: 9999, paddingHorizontal: 24, paddingVertical: 12 }}
+                  >
+                    <Plus size={20} color={Colors.white} />
+                    <Text style={styles.viewEmptyButtonText}>Ajouter un produit</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
               </View>
             )}
@@ -1147,13 +1181,13 @@ export default function MyShopScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.backgroundLight,
+    backgroundColor: Colors.white,
   },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.backgroundLight,
+    backgroundColor: Colors.white,
   },
   loadingText: {
     marginTop: Spacing.md,
@@ -1216,22 +1250,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.5,
-  },
-  liveButtonDisabled: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.backgroundLight,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  liveButtonTextDisabled: {
-    color: Colors.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
   },
 
   // Mode édition
@@ -1540,7 +1558,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.md,
     overflow: 'hidden',
-    ...Shadows.small,
   },
   previewProductImage: {
     width: '100%',
@@ -1652,6 +1669,8 @@ const styles = StyleSheet.create({
   liveShoppingGradient: {
     padding: Spacing.lg,
     position: 'relative',
+    backgroundColor: '#18181B', // noir profond
+    borderRadius: BorderRadius.xl,
   },
   liveNewBadge: {
     position: 'absolute',
@@ -1706,7 +1725,7 @@ const styles = StyleSheet.create({
   liveShoppingTitle: {
     fontSize: Typography.fontSize.xl,
     fontWeight: '800',
-    color: Colors.white,
+    color: '#FFF',
     marginBottom: 4,
     textShadowColor: 'rgba(0, 0, 0, 0.2)',
     textShadowOffset: { width: 0, height: 1 },
@@ -1714,7 +1733,7 @@ const styles = StyleSheet.create({
   },
   liveShoppingSubtitle: {
     fontSize: Typography.fontSize.sm,
-    color: Colors.white,
+    color: '#E5E7EB',
     opacity: 0.95,
     marginBottom: Spacing.sm,
     lineHeight: 18,
@@ -1731,11 +1750,11 @@ const styles = StyleSheet.create({
   liveStatValue: {
     fontSize: Typography.fontSize.sm,
     fontWeight: '800',
-    color: Colors.white,
+    color: '#FFD700',
   },
   liveStatLabel: {
     fontSize: 9,
-    color: Colors.white,
+    color: '#E5E7EB',
     opacity: 0.85,
     marginTop: 2,
   },
@@ -1781,6 +1800,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.full,
+    overflow: 'hidden',
   },
   addProductText: {
     fontSize: Typography.fontSize.sm,
@@ -1802,7 +1822,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.xl,
     overflow: 'hidden',
-    ...Shadows.small,
   },
   viewProductImage: {
     width: '100%',
@@ -1886,6 +1905,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.full,
     marginTop: Spacing.lg,
+    overflow: 'hidden',
   },
   viewEmptyButtonText: {
     fontSize: Typography.fontSize.base,
@@ -2001,5 +2021,46 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.base,
     fontWeight: '600',
     color: Colors.textMuted,
+  },
+  // Lives Management Card
+  livesManagementCard: {
+    marginBottom: Spacing.lg,
+  },
+  livesCardGradient: {
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    ...Shadows.large,
+    backgroundColor: '#18181B', // noir profond
+  },
+  livesCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  livesCardIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  livesCardText: {
+    flex: 1,
+  },
+  livesCardTitle: {
+    fontSize: Typography.fontSize.lg,
+    fontWeight: '700',
+    color: '#FFF',
+    marginBottom: 4,
+  },
+  livesCardSubtitle: {
+    fontSize: Typography.fontSize.sm,
+    color: '#E5E7EB',
+    opacity: 0.9,
+  },
+  livesCardArrow: {
+    opacity: 0.8,
   },
 });

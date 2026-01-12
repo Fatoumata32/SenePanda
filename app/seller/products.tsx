@@ -8,10 +8,11 @@ import {
   Alert,
   ActivityIndicator,
   Image} from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Product } from '@/types/database';
-import { Plus, Package, Edit, Trash2, Eye, EyeOff, ArrowLeft, Store, Lock, Crown } from 'lucide-react-native';
+import { Plus, Package, Edit, Trash2, Eye, EyeOff, ArrowLeft, Store, Lock, Crown, Tag } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSubscriptionAccess } from '@/hooks/useSubscriptionAccess';
 import ActivateShopBanner from '@/components/ActivateShopBanner';
@@ -35,6 +36,13 @@ export default function SellerProductsScreen() {
   useEffect(() => {
     loadProducts();
   }, []);
+
+  // Rafraîchir la liste quand on revient sur cette page (après édition par exemple)
+  useFocusEffect(
+    useCallback(() => {
+      loadProducts();
+    }, [])
+  );
 
   // L'accès est maintenant géré automatiquement via hasAccess
   // Le plan FREE a accès avec des limites (5 produits max)
@@ -144,8 +152,17 @@ export default function SellerProductsScreen() {
 
   const renderProduct = ({ item }: { item: Product }) => (
     <View style={styles.productCard}>
+      {/* Badge de réduction sur l'image */}
       {item.image_url ? (
-        <Image source={{ uri: item.image_url }} style={styles.productImage} />
+        <View style={styles.imageContainer}>
+          <Image source={{ uri: item.image_url }} style={styles.productImage} />
+          {item.has_discount && item.discount_percent && (
+            <View style={styles.discountBadgeOnImage}>
+              <Tag size={12} color="#FFFFFF" />
+              <Text style={styles.discountBadgeText}>-{item.discount_percent}%</Text>
+            </View>
+          )}
+        </View>
       ) : (
         <View style={styles.placeholderImage}>
           <Package size={32} color="#9CA3AF" />
@@ -164,9 +181,28 @@ export default function SellerProductsScreen() {
           </View>
         </View>
 
-        <Text style={styles.productPrice}>
-          {item.price.toLocaleString()} {item.currency}
-        </Text>
+        {/* Prix avec indication de réduction */}
+        <View style={styles.priceContainer}>
+          {item.has_discount && item.original_price ? (
+            <>
+              <Text style={styles.originalPrice}>
+                {item.original_price.toLocaleString()} {item.currency}
+              </Text>
+              <Text style={styles.productPriceDiscounted}>
+                {item.price.toLocaleString()} {item.currency}
+              </Text>
+              <View style={styles.savingsBadge}>
+                <Text style={styles.savingsText}>
+                  Économie: {(item.original_price - item.price).toLocaleString()} {item.currency}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <Text style={styles.productPrice}>
+              {item.price.toLocaleString()} {item.currency}
+            </Text>
+          )}
+        </View>
         <Text style={styles.productStock}>Stock: {item.stock}</Text>
 
         <View style={styles.productActions}>
@@ -388,10 +424,37 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
+  imageContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 200,
+  },
   productImage: {
     width: '100%',
     height: 200,
     backgroundColor: '#F3F4F6',
+  },
+  discountBadgeOnImage: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  discountBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
   placeholderImage: {
     width: '100%',
@@ -433,11 +496,40 @@ const styles = StyleSheet.create({
   inactiveText: {
     color: '#991B1B',
   },
+  priceContainer: {
+    marginBottom: 4,
+  },
+  originalPrice: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    textDecorationLine: 'line-through',
+    marginBottom: 4,
+  },
   productPrice: {
     fontSize: 20,
     fontWeight: '700',
     color: '#D97706',
     marginBottom: 4,
+  },
+  productPriceDiscounted: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#16A34A',
+    marginBottom: 4,
+  },
+  savingsBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  savingsText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#15803D',
   },
   productStock: {
     fontSize: 14,

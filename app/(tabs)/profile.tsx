@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Image,
   Modal,
   TextInput,
   Dimensions,
   Animated,
 } from 'react-native';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -22,26 +19,12 @@ import {
   LogOut,
   ShoppingBag,
   Settings,
-  Award,
-  CreditCard,
-  Info,
-  ChevronRight,
-  ChevronDown,
-  ChevronUp,
-  Camera,
-  X,
-  Sun,
-  Moon,
-  Shield,
-  FileText,
-  Trash2,
   Crown,
   Gift,
   Star,
   Heart,
   Phone,
   Mail,
-  MapPin,
   Copy,
   Edit3,
   Package,
@@ -54,78 +37,70 @@ import {
   Facebook,
   Instagram,
   Twitter,
-  ExternalLink,
   Store,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Camera,
+  X,
+  Shield,
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useNavigation as useNavigationContext } from '@/contexts/NavigationContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Speech from 'expo-speech';
 import * as ImagePicker from 'expo-image-picker';
 import * as ClipboardLib from 'expo-clipboard';
-import { Colors } from '@/constants/Colors';
-import { Profile } from '@/types/database';
-import {
-  validateUsername,
-  validatePhoneNumber,
-} from '@/lib/validation';
 import TeardropAvatar from '@/components/TeardropAvatar';
-import { useSubscriptionSync } from '@/hooks/useSubscriptionSync';
-import { useProfileSubscriptionSync } from '@/hooks/useProfileSubscriptionSync';
 import { useFocusEffect } from '@react-navigation/native';
+import SettingsModal from '@/components/profile/SettingsModal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useCoinBalance } from '@/hooks/useCoinBalance';
+import { Profile } from '@/types/database';
+import { validateUsername, validatePhoneNumber } from '@/lib/validation';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // Fonction pour générer un avatar unique par utilisateur
 const getDefaultAvatar = (userId: string) => {
-  // Utiliser UI Avatars comme fallback (plus fiable sur les émulateurs)
   return `https://ui-avatars.com/api/?name=${userId.substring(0, 2)}&size=256&background=random&color=fff&bold=true`;
 };
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { isDark, setThemeMode, themeMode } = useTheme();
-  const { userRole, setUserRole } = useNavigationContext();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
-  // Stats dynamiques
+  // PandaCoins
+  const { balance: coinBalance, loading: coinsLoading, refresh: refreshCoins } = useCoinBalance();
+
+  // Stats
   const [totalOrders, setTotalOrders] = useState(0);
-  const [totalSales, setTotalSales] = useState(0); // Commandes reçues (ventes)
+  const [totalSales, setTotalSales] = useState(0);
   const [totalProducts, setTotalProducts] = useState(0);
   const [totalReviews, setTotalReviews] = useState(0);
 
-  // Abonnement avec synchronisation en temps réel (ancien système)
-  const { subscription: realtimeSubscription, isActive: isSubscriptionActive, refresh: refreshSubscription } = useSubscriptionSync(user?.id);
-
-  // Synchronisation du profil (nouveau système)
-  const {
-    subscription: profileSubscription,
-    isActive: profileIsActive,
-    daysRemaining: profileDaysRemaining,
-    refresh: refreshProfileSubscription
-  } = useProfileSubscriptionSync(user?.id);
-
-  const [currentPlan, setCurrentPlan] = useState<string>('starter');
-  const [planName, setPlanName] = useState<string>('Starter');
-  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<string>('free');
+  const [planName, setPlanName] = useState<string>('Gratuit');
 
   // Menu déroulant pour les commandes (vendeur)
   const [ordersMenuExpanded, setOrdersMenuExpanded] = useState(false);
 
   // Modals
-  const [achievementsModalVisible, setAchievementsModalVisible] = useState(false);
-  const [paymentsModalVisible, setPaymentsModalVisible] = useState(false);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [informationModalVisible, setInformationModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
-  const [subscriptionModalVisible, setSubscriptionModalVisible] = useState(false);
   const [pointsModalVisible, setPointsModalVisible] = useState(false);
   const [avatarZoomModalVisible, setAvatarZoomModalVisible] = useState(false);
 
-  // Animation pour le zoom
+  // Animation
   const scaleAnim = useState(new Animated.Value(1))[0];
+
+  // Sécurité - Code PIN
+  const [pinEnabled, setPinEnabled] = useState(false);
 
   // Edit form
   const [editFirstName, setEditFirstName] = useState('');
@@ -133,7 +108,7 @@ export default function ProfileScreen() {
   const [editPhone, setEditPhone] = useState('');
 
   const themeColors = useMemo(() => ({
-    background: isDark ? '#111827' : '#F0F9FF',
+    background: isDark ? '#111827' : '#FFF8F0',
     card: isDark ? '#1F2937' : '#FFFFFF',
     text: isDark ? '#F9FAFB' : '#1F2937',
     textSecondary: isDark ? '#D1D5DB' : '#6B7280',
@@ -155,11 +130,6 @@ export default function ProfileScreen() {
         red: isDark ? '#7F1D1D' : '#FEE2E2',
       }
     },
-    planBadge: {
-      blue: isDark ? '#1E3A8A' : '#DBEAFE',
-      yellow: isDark ? '#78350F' : '#FEF3C7',
-      purple: isDark ? '#581C87' : '#F3E8FF',
-    },
     infoBadge: {
       blue: isDark ? '#1E3A8A' : '#DBEAFE',
       purple: isDark ? '#581C87' : '#F3E8FF',
@@ -170,26 +140,38 @@ export default function ProfileScreen() {
   }), [isDark]);
 
   const userInitials = useMemo(() => {
+    if (profile?.first_name && profile?.last_name) {
+      return (profile.first_name[0] + profile.last_name[0]).toUpperCase();
+    }
+
     const fullName = profile?.full_name || profile?.username || 'User';
     const names = fullName.split(' ');
     if (names.length >= 2) {
       return (names[0][0] + names[1][0]).toUpperCase();
     }
     return fullName.substring(0, 2).toUpperCase();
-  }, [profile?.full_name, profile?.username]);
+  }, [profile?.first_name, profile?.last_name, profile?.full_name, profile?.username]);
 
   useEffect(() => {
     checkUser();
+    
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          fetchProfile(session.user.id);
-          fetchStats(session.user.id);
+      async (event, session) => {
+        if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+        } else if (session?.user) {
+          setUser(session.user);
+          await fetchProfile(session.user.id);
+          await fetchStats(session.user.id);
         }
       }
     );
-    return () => subscription.unsubscribe();
+    
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -198,41 +180,11 @@ export default function ProfileScreen() {
     }
   }, [user, loading, router]);
 
-  // Effet pour synchroniser avec profileSubscription (nouveau système)
-  useEffect(() => {
-    if (profileSubscription) {
-      console.log('🔄 Mise à jour du profil depuis profileSubscription:', profileSubscription);
-
-      setCurrentPlan(profileSubscription.subscription_plan || 'free');
-      setDaysRemaining(profileSubscription.days_remaining);
-
-      // Mettre à jour le nom du plan
-      const planNames: Record<string, string> = {
-        free: 'Gratuit',
-        starter: 'Starter',
-        pro: 'Pro',
-        premium: 'Premium'
-      };
-      setPlanName(planNames[profileSubscription.subscription_plan] || 'Gratuit');
-
-      // Mettre à jour le profil local si nécessaire
-      if (profile && profile.subscription_plan !== profileSubscription.subscription_plan) {
-        setProfile({
-          ...profile,
-          subscription_plan: profileSubscription.subscription_plan,
-        });
-      }
-    }
-  }, [profileSubscription]);
-
-  // Recharger le profil quand l'utilisateur revient sur cette page
   useFocusEffect(
     useCallback(() => {
-      console.log('📱 Page profil active - Rechargement des données...');
       if (user?.id) {
         fetchProfile(user.id);
         fetchStats(user.id);
-        refreshProfileSubscription();
       }
     }, [user?.id])
   );
@@ -244,11 +196,65 @@ export default function ProfileScreen() {
       if (user) {
         await fetchProfile(user.id);
         await fetchStats(user.id);
+        await loadPinStatus();
       }
     } catch (error) {
       console.error('Error checking user:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPinStatus = async () => {
+    try {
+      const pinStatus = await AsyncStorage.getItem('pin_enabled');
+      setPinEnabled(pinStatus === 'true');
+    } catch (error) {
+      console.error('Error loading PIN status:', error);
+    }
+  };
+
+  const handleTogglePin = async () => {
+    try {
+      const newStatus = !pinEnabled;
+
+      if (newStatus) {
+        Alert.alert(
+          'Activer le code PIN',
+          'Vous allez être redirigé pour configurer votre code PIN de sécurité.',
+          [
+            { text: 'Annuler', style: 'cancel' },
+            {
+              text: 'Continuer',
+              onPress: () => {
+                setSettingsModalVisible(false);
+                router.push('/settings/setup-pin' as any);
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Désactiver le code PIN',
+          'Êtes-vous sûr de vouloir désactiver la protection par code PIN ?',
+          [
+            { text: 'Annuler', style: 'cancel' },
+            {
+              text: 'Désactiver',
+              style: 'destructive',
+              onPress: async () => {
+                await AsyncStorage.removeItem('pin_enabled');
+                await AsyncStorage.removeItem('user_pin');
+                setPinEnabled(false);
+                Alert.alert('Code PIN désactivé', 'La protection par code PIN a été désactivée.');
+              }
+            }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Error toggling PIN:', error);
+      Alert.alert('Erreur', 'Impossible de modifier le paramètre du code PIN.');
     }
   };
 
@@ -265,59 +271,44 @@ export default function ProfileScreen() {
       if (data) {
         setAvatarUri(data.avatar_url || getDefaultAvatar(userId));
 
-        // Charger les informations d'abonnement (seulement si plan payant)
-        const plan = data.subscription_plan || 'starter';
-        if (plan !== 'free') {
-          setCurrentPlan(plan);
+        const plan = data.subscription_plan || 'free';
+        setCurrentPlan(plan);
 
-          // Mapping des noms de plans
-          const planNames: Record<string, string> = {
-            starter: 'Starter',
-            pro: 'Pro',
-            premium: 'Premium'
-          };
-          setPlanName(planNames[plan] || 'Starter');
-
-          // Calculer les jours restants si abonné
-          if (data.subscription_expires_at) {
-            const expiresAt = new Date(data.subscription_expires_at);
-            const now = new Date();
-            const diffTime = expiresAt.getTime() - now.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            setDaysRemaining(diffDays > 0 ? diffDays : 0);
-          } else {
-            setDaysRemaining(null);
-          }
-        }
+        const planNames: Record<string, string> = {
+          free: 'Gratuit',
+          starter: 'Starter',
+          pro: 'Pro',
+          premium: 'Premium'
+        };
+        setPlanName(planNames[plan] || 'Gratuit');
       } else {
         setAvatarUri(getDefaultAvatar(userId));
+        setCurrentPlan('free');
+        setPlanName('Gratuit');
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
+      setAvatarUri(getDefaultAvatar(userId));
     }
   };
 
   const fetchStats = async (userId: string) => {
     try {
-      // Récupérer le nombre de commandes passées (achats)
       const { count: ordersCount } = await supabase
         .from('orders')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId);
 
-      // Récupérer le nombre de commandes reçues (ventes) - pour les vendeurs
       const { count: salesCount } = await supabase
         .from('order_items')
         .select('*', { count: 'exact', head: true })
         .eq('seller_id', userId);
 
-      // Récupérer le nombre de produits vendus (si vendeur)
       const { count: productsCount } = await supabase
         .from('products')
         .select('*', { count: 'exact', head: true })
         .eq('seller_id', userId);
 
-      // Récupérer le nombre d'avis laissés
       const { count: reviewsCount } = await supabase
         .from('reviews')
         .select('*', { count: 'exact', head: true })
@@ -390,7 +381,6 @@ export default function ProfileScreen() {
     try {
       setSaving(true);
 
-      // Validation
       const firstNameValidation = validateUsername(editFirstName);
       if (!firstNameValidation.isValid) {
         Alert.alert('Erreur', firstNameValidation.errors.join(', '));
@@ -442,9 +432,12 @@ export default function ProfileScreen() {
           text: 'Déconnexion',
           style: 'destructive',
           onPress: async () => {
+            await AsyncStorage.removeItem('pin_enabled');
+            await AsyncStorage.removeItem('user_pin');
             const { error } = await supabase.auth.signOut();
             if (error) Alert.alert('Erreur', error.message);
             setProfile(null);
+            setUser(null);
           },
         },
       ]
@@ -463,14 +456,13 @@ export default function ProfileScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primaryOrange} />
+          <ActivityIndicator size="large" color={themeColors.text} />
         </View>
       </SafeAreaView>
     );
   }
 
-  const totalPoints = profile?.panda_coins || 0;
-  const referralPoints = (profile?.total_referrals || 0) * 50;
+  const totalPoints = coinBalance?.points || 0;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background }]}>
@@ -501,7 +493,6 @@ export default function ProfileScreen() {
                 <Text style={styles.avatarText}>{userInitials}</Text>
               </TeardropAvatar>
 
-              {/* Badge d'abonnement ou bouton caméra */}
               {currentPlan && currentPlan !== 'free' && currentPlan !== 'starter' ? (
                 <LinearGradient
                   colors={
@@ -543,16 +534,12 @@ export default function ProfileScreen() {
               {profile?.full_name || 'Utilisateur'}
             </Text>
           </View>
-          <Text style={[styles.userHandle, { color: themeColors.textSecondary }]}>
-            @{profile?.username || 'username'}
-          </Text>
 
-          {/* Bouton Modifier */}
           <TouchableOpacity
             style={[styles.editProfileButton, { backgroundColor: themeColors.card }]}
             onPress={openEditModal}>
-            <Edit3 size={16} color={Colors.primaryOrange} />
-            <Text style={[styles.editProfileText, { color: Colors.primaryOrange }]}>
+            <Edit3 size={16} color={themeColors.text} />
+            <Text style={[styles.editProfileText, { color: themeColors.text }]}>
               Modifier le profil
             </Text>
           </TouchableOpacity>
@@ -562,19 +549,19 @@ export default function ProfileScreen() {
         <View style={styles.statsContainer}>
           <TouchableOpacity
             style={styles.statItem}
-            onPress={() => router.push('/orders')}>
-            <Text style={[styles.statNumber, { color: themeColors.text }]}>{totalOrders}</Text>
-            <View style={[styles.statBadge, { backgroundColor: themeColors.statBadge.blue }]}>
-              <Text style={[styles.statLabel, { color: themeColors.text }]}>Commandes</Text>
+            onPress={() => setPointsModalVisible(true)}>
+            <Text style={[styles.statNumber, { color: themeColors.text }]}>{totalPoints}</Text>
+            <View style={[styles.statBadge, { backgroundColor: themeColors.statBadge.yellow }]}>
+              <Text style={[styles.statLabel, { color: themeColors.text }]}>Points</Text>
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.statItem}
-            onPress={() => setPointsModalVisible(true)}>
-            <Text style={[styles.statNumber, { color: themeColors.text }]}>{totalPoints}</Text>
-            <View style={[styles.statBadge, { backgroundColor: themeColors.statBadge.yellow }]}>
-              <Text style={[styles.statLabel, { color: themeColors.text }]}>Points</Text>
+            onPress={() => router.push('/orders')}>
+            <Text style={[styles.statNumber, { color: themeColors.text }]}>{totalOrders}</Text>
+            <View style={[styles.statBadge, { backgroundColor: themeColors.statBadge.blue }]}>
+              <Text style={[styles.statLabel, { color: themeColors.text }]}>Commandes</Text>
             </View>
           </TouchableOpacity>
 
@@ -630,7 +617,6 @@ export default function ProfileScreen() {
             }
           />
 
-          {/* Menu Commandes - avec sous-menu pour vendeurs */}
           {profile?.is_seller ? (
             <View>
               <MenuItem
@@ -715,19 +701,6 @@ export default function ProfileScreen() {
             themeColors={themeColors}
           />
 
-          {/* Mode développeur - Test de localisation */}
-          {__DEV__ && (
-            <MenuItem
-              icon={<MapPin size={24} color={themeColors.menuIcon.text} />}
-              label="🧪 Test Géolocalisation"
-              onPress={() => {
-                router.push('/test-location');
-                Speech.speak('Test de localisation', { language: 'fr-FR' });
-              }}
-              backgroundColor="#9333EA"
-              themeColors={themeColors}
-            />
-          )}
 
           <MenuItem
             icon={<LogOut size={24} color={themeColors.menuIcon.text} />}
@@ -740,13 +713,13 @@ export default function ProfileScreen() {
         </View>
 
         {/* Vendeur Section */}
-        {profile?.is_seller && (
+        {(profile?.is_seller || profile?.subscription_plan) && (
           <View style={styles.sellerSection}>
             <TouchableOpacity
               style={[styles.sellerCard, { backgroundColor: themeColors.card, marginBottom: 12 }]}
               onPress={() => router.push('/seller/my-shop')}>
               <LinearGradient
-                colors={['#8B5CF6', '#7C3AED']}
+                colors={['#10B981', '#059669']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.sellerGradient}>
@@ -782,7 +755,7 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {!profile?.is_seller && (
+        {!profile?.is_seller && !profile?.subscription_plan && (
           <TouchableOpacity
             style={[styles.sellerCard, { backgroundColor: themeColors.card }]}
             onPress={() => router.push('/seller/setup')}>
@@ -804,7 +777,7 @@ export default function ProfileScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Points Modal (avec Récompenses intégrées) */}
+      {/* Points Modal */}
       <Modal
         visible={pointsModalVisible}
         transparent
@@ -813,7 +786,7 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: themeColors.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: themeColors.border }]}>
-              <Text style={[styles.modalTitle, { color: themeColors.text }]}>Mes Points & Récompenses</Text>
+              <Text style={[styles.modalTitle, { color: themeColors.text }]}>Mes Panda Coins 🐼</Text>
               <TouchableOpacity onPress={() => setPointsModalVisible(false)}>
                 <X size={24} color={themeColors.textSecondary} />
               </TouchableOpacity>
@@ -824,6 +797,50 @@ export default function ProfileScreen() {
                 <Sparkles size={40} color="#F59E0B" />
                 <Text style={[styles.pointsTotal, { color: themeColors.text }]}>{totalPoints}</Text>
                 <Text style={[styles.pointsLabel, { color: themeColors.textSecondary }]}>Panda Coins disponibles</Text>
+                
+                <View style={styles.conversionInfo}>
+                  <Text style={styles.conversionText}>💡 1 coin = 5 FCFA de réduction au checkout</Text>
+                </View>
+              </View>
+
+              <View style={styles.earnCoinsSection}>
+                <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
+                  Comment gagner des coins ?
+                </Text>
+                <View style={styles.earnMethodsList}>
+                  <View style={styles.earnMethod}>
+                    <View style={[styles.earnMethodIcon, { backgroundColor: '#FEF3C7' }]}>
+                      <ShoppingBag size={18} color="#F59E0B" />
+                    </View>
+                    <Text style={styles.earnMethodText}>1 coin / 1000 FCFA d'achat</Text>
+                  </View>
+                  <View style={styles.earnMethod}>
+                    <View style={[styles.earnMethodIcon, { backgroundColor: '#DBEAFE' }]}>
+                      <MessageCircle size={18} color="#3B82F6" />
+                    </View>
+                    <Text style={styles.earnMethodText}>+50 coins par avis</Text>
+                  </View>
+                  <View style={styles.earnMethod}>
+                    <View style={[styles.earnMethodIcon, { backgroundColor: '#D1FAE5' }]}>
+                      <Gift size={18} color="#10B981" />
+                    </View>
+                    <Text style={styles.earnMethodText}>+200 coins par parrainage</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.coinsActionButtons}>
+                {/* Boutique Récompenses supprimée */}
+                
+                <TouchableOpacity 
+                  style={styles.coinsActionSecondary}
+                  onPress={() => {
+                    setPointsModalVisible(false);
+                    router.push('/rewards');
+                  }}>
+                  <TrendingUp size={20} color="#F59E0B" />
+                  <Text style={styles.coinsActionSecondaryText}>Voir l'historique</Text>
+                </TouchableOpacity>
               </View>
 
               <Text style={[styles.sectionTitle, { color: themeColors.text, marginTop: 20, marginBottom: 12 }]}>
@@ -832,327 +849,44 @@ export default function ProfileScreen() {
 
               <View style={styles.rewardsList}>
                 <RewardItem
-                  icon={<Gift size={24} color={isDark ? '#C084FC' : '#8B5CF6'} />}
+                  icon={<Gift size={24} color={themeColors.text} />}
                   name="Bon d'achat 5000 FCFA"
                   description="Valable sur tous les produits"
-                  cost="500 pts"
+                  cost="2200 pts"
                   bgColor={themeColors.statBadge.purple}
                   themeColors={themeColors}
                 />
                 <RewardItem
-                  icon={<Star size={24} color={isDark ? '#34D399' : '#059669'} />}
+                  icon={<Star size={24} color={themeColors.text} />}
                   name="Livraison gratuite"
-                  description="1 mois de livraison offerte"
-                  cost="300 pts"
+                  description="Prochaine commande"
+                  cost="750 pts"
                   bgColor={themeColors.statBadge.green}
                   themeColors={themeColors}
                 />
                 <RewardItem
-                  icon={<Crown size={24} color={isDark ? '#FBBF24' : '#D97706'} />}
-                  name="Badge Premium"
-                  description="Accès premium 3 mois"
+                  icon={<Crown size={24} color={themeColors.text} />}
+                  name="Réduction 10%"
+                  description="Sur votre prochaine commande"
                   cost="1000 pts"
                   bgColor={themeColors.statBadge.yellow}
                   themeColors={themeColors}
                 />
                 <RewardItem
-                  icon={<Heart size={24} color={isDark ? '#60A5FA' : '#2563EB'} />}
-                  name="Don à une association"
-                  description="Conversion en don caritatif"
-                  cost="100 pts"
+                  icon={<Heart size={24} color={themeColors.text} />}
+                  name="Réduction 5%"
+                  description="Sur votre prochaine commande"
+                  cost="500 pts"
                   bgColor={themeColors.statBadge.blue}
                   themeColors={themeColors}
                 />
               </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Subscription Modal */}
-      <Modal
-        visible={subscriptionModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSubscriptionModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: themeColors.card }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: themeColors.border }]}>
-              <Text style={[styles.modalTitle, { color: themeColors.text }]}>Abonnement Premium</Text>
-              <TouchableOpacity onPress={() => setSubscriptionModalVisible(false)}>
-                <X size={24} color={themeColors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={[styles.subscriptionIntro, { color: themeColors.textSecondary }]}>
-                Choisissez votre plan et profitez d'avantages exclusifs
-              </Text>
-
-              <View style={styles.subscriptionPlans}>
-                {/* Plan Starter - 3000F */}
-                <TouchableOpacity style={[styles.planCard, { backgroundColor: themeColors.background }]}>
-                  <View style={[styles.planBadge, { backgroundColor: themeColors.planBadge.blue }]}>
-                    <Star size={18} color={isDark ? '#60A5FA' : '#3B82F6'} />
-                    <Text style={[styles.planBadgeText, { color: themeColors.text }]}>Starter</Text>
-                  </View>
-                  <Text style={[styles.planPrice, { color: themeColors.text }]}>3000 FCFA</Text>
-                  <Text style={[styles.planPeriod, { color: themeColors.textSecondary }]}>par mois</Text>
-                  <View style={styles.planFeatures}>
-                    <PlanFeature text="20 produits maximum" themeColors={themeColors} />
-                    <PlanFeature text="5 photos par produit" themeColors={themeColors} />
-                    <PlanFeature text="Commission 12%" themeColors={themeColors} />
-                    <PlanFeature text="Support par email" themeColors={themeColors} />
-                  </View>
-                  <TouchableOpacity style={styles.selectPlanButton}>
-                    <LinearGradient
-                      colors={['#3B82F6', '#2563EB']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.selectPlanGradient}>
-                      <Text style={styles.selectPlanText}>Choisir</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </TouchableOpacity>
-
-                {/* Plan Pro - 5000F */}
-                <TouchableOpacity style={[styles.planCard, styles.planCardPopular, { backgroundColor: themeColors.background }]}>
-                  <View style={styles.popularBadge}>
-                    <Text style={styles.popularBadgeText}>POPULAIRE</Text>
-                  </View>
-                  <View style={[styles.planBadge, { backgroundColor: themeColors.planBadge.yellow }]}>
-                    <Crown size={18} color={isDark ? '#FBBF24' : '#F59E0B'} />
-                    <Text style={[styles.planBadgeText, { color: themeColors.text }]}>Pro</Text>
-                  </View>
-                  <Text style={[styles.planPrice, { color: themeColors.text }]}>5000 FCFA</Text>
-                  <Text style={[styles.planPeriod, { color: themeColors.textSecondary }]}>par mois</Text>
-                  <View style={styles.planFeatures}>
-                    <PlanFeature text="100 produits maximum" themeColors={themeColors} />
-                    <PlanFeature text="10 photos par produit" themeColors={themeColors} />
-                    <PlanFeature text="Commission 8%" themeColors={themeColors} />
-                    <PlanFeature text="Support prioritaire" themeColors={themeColors} />
-                    <PlanFeature text="Badge Pro" themeColors={themeColors} />
-                  </View>
-                  <TouchableOpacity style={styles.selectPlanButton}>
-                    <LinearGradient
-                      colors={['#F59E0B', '#D97706']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.selectPlanGradient}>
-                      <Text style={styles.selectPlanText}>Choisir</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </TouchableOpacity>
-
-                {/* Plan Premium - 15000F */}
-                <TouchableOpacity style={[styles.planCard, { backgroundColor: themeColors.background }]}>
-                  <View style={[styles.planBadge, { backgroundColor: themeColors.planBadge.purple }]}>
-                    <Sparkles size={18} color={isDark ? '#C084FC' : '#8B5CF6'} />
-                    <Text style={[styles.planBadgeText, { color: themeColors.text }]}>Premium</Text>
-                  </View>
-                  <Text style={[styles.planPrice, { color: themeColors.text }]}>15000 FCFA</Text>
-                  <Text style={[styles.planPeriod, { color: themeColors.textSecondary }]}>par mois</Text>
-                  <View style={styles.planFeatures}>
-                    <PlanFeature text="Produits illimités" themeColors={themeColors} />
-                    <PlanFeature text="20 photos par produit" themeColors={themeColors} />
-                    <PlanFeature text="Commission 5%" themeColors={themeColors} />
-                    <PlanFeature text="Support dédié 24/7" themeColors={themeColors} />
-                    <PlanFeature text="Badge Premium" themeColors={themeColors} />
-                    <PlanFeature text="Analytics avancés" themeColors={themeColors} />
-                  </View>
-                  <TouchableOpacity style={styles.selectPlanButton}>
-                    <LinearGradient
-                      colors={['#8B5CF6', '#7C3AED']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.selectPlanGradient}>
-                      <Text style={styles.selectPlanText}>Choisir</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Settings Modal */}
-      <Modal
-        visible={settingsModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSettingsModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: themeColors.card }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: themeColors.border }]}>
-              <Text style={[styles.modalTitle, { color: themeColors.text }]}>Paramètres</Text>
-              <TouchableOpacity onPress={() => setSettingsModalVisible(false)}>
-                <X size={24} color={themeColors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.settingsSection}>
-                <Text style={[styles.settingsSectionTitle, { color: themeColors.textSecondary }]}>Préférences d'interface</Text>
-
-                <TouchableOpacity
-                  style={[
-                    styles.settingsItem,
-                    { backgroundColor: themeColors.background },
-                    userRole === 'buyer' && styles.settingsItemSelected
-                  ]}
-                  onPress={async () => {
-                    try {
-                      await setUserRole('buyer');
-                      Alert.alert(
-                        'Rôle modifié',
-                        'Vous utilisez maintenant l\'interface acheteur.',
-                        [
-                          {
-                            text: 'OK',
-                            onPress: () => {
-                              setSettingsModalVisible(false);
-                              router.replace('/' as any);
-                            }
-                          }
-                        ]
-                      );
-                    } catch (error) {
-                      Alert.alert('Erreur', 'Impossible de changer de rôle');
-                    }
-                  }}>
-                  <ShoppingBag size={20} color={userRole === 'buyer' ? '#D97706' : themeColors.textSecondary} />
-                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Mode Acheteur</Text>
-                  {userRole === 'buyer' && (
-                    <View style={styles.checkIcon}>
-                      <Text style={styles.checkText}>✓</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.settingsItem,
-                    { backgroundColor: themeColors.background },
-                    userRole === 'seller' && styles.settingsItemSelected
-                  ]}
-                  onPress={async () => {
-                    try {
-                      await setUserRole('seller');
-                      Alert.alert(
-                        'Rôle modifié',
-                        'Vous utilisez maintenant l\'interface vendeur.',
-                        [
-                          {
-                            text: 'OK',
-                            onPress: () => {
-                              setSettingsModalVisible(false);
-                              router.replace('/seller/my-shop' as any);
-                            }
-                          }
-                        ]
-                      );
-                    } catch (error) {
-                      Alert.alert('Erreur', 'Impossible de changer de rôle');
-                    }
-                  }}>
-                  <Store size={20} color={userRole === 'seller' ? '#D97706' : themeColors.textSecondary} />
-                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Mode Vendeur</Text>
-                  {userRole === 'seller' && (
-                    <View style={styles.checkIcon}>
-                      <Text style={styles.checkText}>✓</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.settingsSection}>
-                <Text style={[styles.settingsSectionTitle, { color: themeColors.textSecondary }]}>Apparence</Text>
-
-                <TouchableOpacity
-                  style={[
-                    styles.settingsItem,
-                    { backgroundColor: themeColors.background },
-                    themeMode === 'light' && styles.settingsItemSelected
-                  ]}
-                  onPress={() => setThemeMode('light')}>
-                  <Sun size={20} color={themeMode === 'light' ? '#D97706' : themeColors.textSecondary} />
-                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Mode clair</Text>
-                  {themeMode === 'light' && (
-                    <View style={styles.checkIcon}>
-                      <Text style={styles.checkText}>✓</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.settingsItem,
-                    { backgroundColor: themeColors.background },
-                    themeMode === 'dark' && styles.settingsItemSelected
-                  ]}
-                  onPress={() => setThemeMode('dark')}>
-                  <Moon size={20} color={themeMode === 'dark' ? '#D97706' : themeColors.textSecondary} />
-                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Mode sombre</Text>
-                  {themeMode === 'dark' && (
-                    <View style={styles.checkIcon}>
-                      <Text style={styles.checkText}>✓</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.settingsItem,
-                    { backgroundColor: themeColors.background },
-                    themeMode === 'system' && styles.settingsItemSelected
-                  ]}
-                  onPress={() => setThemeMode('system')}>
-                  <Settings size={20} color={themeMode === 'system' ? '#D97706' : themeColors.textSecondary} />
-                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Automatique</Text>
-                  {themeMode === 'system' && (
-                    <View style={styles.checkIcon}>
-                      <Text style={styles.checkText}>✓</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.settingsSection}>
-                <Text style={[styles.settingsSectionTitle, { color: themeColors.textSecondary }]}>Confidentialité & Légal</Text>
-
-                <TouchableOpacity
-                  style={[styles.settingsItem, { backgroundColor: themeColors.background }]}
-                  onPress={() => {
-                    setSettingsModalVisible(false);
-                    router.push('/settings/privacy');
-                  }}>
-                  <Shield size={20} color="#8B5CF6" />
-                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Confidentialité</Text>
-                  <ChevronRight size={18} color={themeColors.textSecondary} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.settingsItem, { backgroundColor: themeColors.background }]}
-                  onPress={() => {
-                    setSettingsModalVisible(false);
-                    router.push('/settings/terms');
-                  }}>
-                  <FileText size={20} color="#3B82F6" />
-                  <Text style={[styles.settingsText, { color: themeColors.text }]}>Conditions d'utilisation</Text>
-                  <ChevronRight size={18} color={themeColors.textSecondary} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.settingsItem, { backgroundColor: themeColors.background }]}
-                  onPress={() => {
-                    setSettingsModalVisible(false);
-                    router.push('/settings/delete-account');
-                  }}>
-                  <Trash2 size={20} color="#EF4444" />
-                  <Text style={[styles.settingsText, { color: '#EF4444' }]}>Supprimer mon compte</Text>
-                  <ChevronRight size={18} color={themeColors.textSecondary} />
-                </TouchableOpacity>
+              
+              <View style={styles.checkoutReminder}>
+                <Sparkles size={16} color="#D97706" />
+                <Text style={styles.checkoutReminderText}>
+                  Utilisez vos coins directement au checkout pour des réductions instantanées!
+                </Text>
               </View>
             </ScrollView>
           </View>
@@ -1176,7 +910,6 @@ export default function ProfileScreen() {
 
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.infoSection}>
-                {/* Section Contact */}
                 <View style={[styles.supportSectionHeader, { borderBottomColor: themeColors.border }]}>
                   <MessageCircle size={20} color="#F59E0B" />
                   <Text style={[styles.supportSectionTitle, { color: themeColors.text }]}>
@@ -1185,35 +918,34 @@ export default function ProfileScreen() {
                 </View>
 
                 <InfoItem
-                  icon={<Phone size={20} color={isDark ? '#34D399' : '#10B981'} />}
+                  icon={<Phone size={20} color="#10B981" />}
                   label="Service Client"
                   value="+221 77 123 45 67"
                   bgColor={themeColors.infoBadge.green}
                   themeColors={themeColors}
                 />
                 <InfoItem
-                  icon={<Phone size={20} color={isDark ? '#34D399' : '#10B981'} />}
+                  icon={<Phone size={20} color="#10B981" />}
                   label="Support Technique"
                   value="+221 78 987 65 43"
                   bgColor={themeColors.infoBadge.green}
                   themeColors={themeColors}
                 />
                 <InfoItem
-                  icon={<Mail size={20} color={isDark ? '#60A5FA' : '#3B82F6'} />}
+                  icon={<Mail size={20} color="#3B82F6" />}
                   label="Email"
                   value="support@senepanda.com"
                   bgColor={themeColors.infoBadge.blue}
                   themeColors={themeColors}
                 />
                 <InfoItem
-                  icon={<Mail size={20} color={isDark ? '#60A5FA' : '#3B82F6'} />}
+                  icon={<Mail size={20} color="#3B82F6" />}
                   label="Email Commercial"
                   value="contact@senepanda.com"
                   bgColor={themeColors.infoBadge.blue}
                   themeColors={themeColors}
                 />
 
-                {/* Section Réseaux Sociaux */}
                 <View style={[styles.supportSectionHeader, { borderBottomColor: themeColors.border }]}>
                   <Star size={20} color="#F59E0B" />
                   <Text style={[styles.supportSectionTitle, { color: themeColors.text }]}>
@@ -1222,28 +954,27 @@ export default function ProfileScreen() {
                 </View>
 
                 <InfoItem
-                  icon={<Facebook size={20} color={isDark ? '#60A5FA' : '#1877F2'} />}
+                  icon={<Facebook size={20} color="#1877F2" />}
                   label="Facebook"
                   value="@SenePanda"
                   bgColor={themeColors.infoBadge.blue}
                   themeColors={themeColors}
                 />
                 <InfoItem
-                  icon={<Instagram size={20} color={isDark ? '#F472B6' : '#E4405F'} />}
+                  icon={<Instagram size={20} color="#E4405F" />}
                   label="Instagram"
                   value="@senepanda_official"
                   bgColor={themeColors.infoBadge.pink}
                   themeColors={themeColors}
                 />
                 <InfoItem
-                  icon={<Twitter size={20} color={isDark ? '#60A5FA' : '#1DA1F2'} />}
+                  icon={<Twitter size={20} color="#1DA1F2" />}
                   label="Twitter / X"
                   value="@SenePanda"
                   bgColor={themeColors.infoBadge.blue}
                   themeColors={themeColors}
                 />
 
-                {/* Section Horaires */}
                 <View style={[styles.supportSectionHeader, { borderBottomColor: themeColors.border }]}>
                   <Clock size={20} color="#F59E0B" />
                   <Text style={[styles.supportSectionTitle, { color: themeColors.text }]}>
@@ -1263,7 +994,6 @@ export default function ProfileScreen() {
                   </Text>
                 </View>
 
-                {/* Note */}
                 <View style={[styles.supportNote, { backgroundColor: isDark ? '#1F2937' : '#FFF7ED' }]}>
                   <Headphones size={18} color="#F59E0B" />
                   <Text style={[styles.supportNoteText, { color: themeColors.textSecondary }]}>
@@ -1391,6 +1121,23 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Settings Modal */}
+      <SettingsModal
+        visible={settingsModalVisible}
+        onClose={() => setSettingsModalVisible(false)}
+        onOpenSubscription={() => router.push('/seller/subscription-plans')}
+        onOpenPrivacy={() => router.push('/settings/privacy')}
+        onOpenTerms={() => router.push('/settings/terms')}
+        onOpenDeleteAccount={() => router.push('/settings/delete-account')}
+        onSignOut={handleSignOut}
+        isPremium={currentPlan !== 'free' && currentPlan !== 'starter'}
+        themeMode={themeMode}
+        setThemeMode={setThemeMode}
+        pinEnabled={pinEnabled}
+        onTogglePin={handleTogglePin}
+        themeColors={themeColors}
+      />
     </SafeAreaView>
   );
 }
@@ -1469,15 +1216,6 @@ function InfoItem({
   );
 }
 
-function PlanFeature({ text, themeColors }: { text: string; themeColors: any }) {
-  return (
-    <View style={styles.planFeatureItem}>
-      <Check size={16} color="#10B981" />
-      <Text style={[styles.planFeatureText, { color: themeColors.textSecondary }]}>{text}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1507,22 +1245,6 @@ const styles = StyleSheet.create({
   avatarContainer: {
     position: 'relative',
     marginBottom: 16,
-  },
-  avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
-  },
-  avatarPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
   },
   avatarText: {
     fontSize: 40,
@@ -1591,25 +1313,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
   },
-  subscriptionBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  subscriptionBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-  },
   subscriptionBadgeSmall: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1623,10 +1326,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,
-  },
-  userHandle: {
-    fontSize: 14,
-    marginBottom: 16,
   },
   editProfileButton: {
     flexDirection: 'row',
@@ -1709,86 +1408,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
-  subscriptionCard: {
-    marginHorizontal: Math.min(20, SCREEN_WIDTH * 0.05),
-    marginTop: 20,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
-    maxWidth: 600,
-    alignSelf: 'center',
-    width: '100%',
-  },
-  subscriptionGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Math.min(20, SCREEN_WIDTH * 0.05),
-    gap: Math.min(16, SCREEN_WIDTH * 0.04),
-    flexWrap: 'wrap',
-  },
-  subscriptionIconContainer: {
-    width: Math.min(56, SCREEN_WIDTH * 0.14),
-    height: Math.min(56, SCREEN_WIDTH * 0.14),
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  subscriptionInfo: {
-    flex: 1,
-    minWidth: 150,
-  },
-  subscriptionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-    flexWrap: 'wrap',
-  },
-  subscriptionLabel: {
-    fontSize: Math.min(12, SCREEN_WIDTH * 0.03),
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.8)',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  premiumBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    borderRadius: 12,
-  },
-  premiumBadgeText: {
-    fontSize: Math.min(10, SCREEN_WIDTH * 0.025),
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  subscriptionPlan: {
-    fontSize: Math.min(24, SCREEN_WIDTH * 0.06),
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  subscriptionDays: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  subscriptionDaysText: {
-    fontSize: Math.min(13, SCREEN_WIDTH * 0.0325),
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.9)',
-  },
-  subscriptionChevron: {
-    opacity: 0.6,
-  },
   sellerSection: {
     marginHorizontal: 20,
     marginTop: 20,
@@ -1859,6 +1478,98 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginTop: 8,
   },
+  conversionInfo: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginTop: 16,
+  },
+  conversionText: {
+    fontSize: 13,
+    color: '#92400E',
+    fontWeight: '500',
+  },
+  earnCoinsSection: {
+    marginBottom: 20,
+  },
+  earnMethodsList: {
+    gap: 10,
+  },
+  earnMethod: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  earnMethodIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  earnMethodText: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  coinsActionButtons: {
+    gap: 10,
+    marginBottom: 20,
+  },
+  coinsActionPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#F59E0B',
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  coinsActionPrimaryText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  coinsActionSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#FEF3C7',
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  coinsActionSecondaryText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#D97706',
+  },
+  checkoutReminder: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FFFBEB',
+    padding: 14,
+    borderRadius: 12,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  checkoutReminderText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 18,
+  },
   rewardsList: {
     gap: 12,
   },
@@ -1890,95 +1601,6 @@ const styles = StyleSheet.create({
   rewardCost: {
     fontSize: 16,
     fontWeight: '700',
-  },
-  paymentSection: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  walletCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    padding: 20,
-    borderRadius: 16,
-  },
-  walletTitle: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  walletAmount: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  referralCodeBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderRadius: 12,
-  },
-  referralCode: {
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: 2,
-  },
-  copyButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  referralHint: {
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  settingsSection: {
-    marginBottom: 24,
-  },
-  settingsSectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 12,
-  },
-  settingsItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  settingsText: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  settingsItemSelected: {
-    backgroundColor: '#FEF3C7',
-    borderWidth: 1,
-    borderColor: '#D97706',
-  },
-  checkIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#D97706',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
   },
   infoSection: {
     gap: 16,
@@ -2072,92 +1694,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  subscriptionIntro: {
-    fontSize: 15,
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
-  },
-  subscriptionPlans: {
-    gap: 20,
-    marginBottom: 24,
-  },
-  planCard: {
-    padding: 20,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  planCardPopular: {
-    borderColor: '#F59E0B',
-    position: 'relative',
-  },
-  popularBadge: {
-    position: 'absolute',
-    top: -12,
-    right: 20,
-    backgroundColor: '#F59E0B',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  popularBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  planBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginBottom: 16,
-  },
-  planBadgeText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  planPrice: {
-    fontSize: 32,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  planPeriod: {
-    fontSize: 14,
-    marginBottom: 20,
-  },
-  planFeatures: {
-    gap: 12,
-    marginBottom: 20,
-  },
-  planFeatureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  planFeatureText: {
-    fontSize: 14,
-    flex: 1,
-  },
-  selectPlanButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  selectPlanGradient: {
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectPlanText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  // Sous-menu styles
   subMenuContainer: {
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -2195,7 +1731,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
-  // Avatar Zoom Modal styles
   avatarZoomOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.95)',

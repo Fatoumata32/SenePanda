@@ -377,17 +377,6 @@ export default function ChatScreen() {
           console.log('New message received:', payload);
           const newMsg = payload.new as Message;
 
-          // Check if message already exists (avoid duplicates)
-          setMessages((prev) => {
-            const exists = prev.some(m => m.id === newMsg.id);
-            if (exists) {
-              console.log('Message already exists, skipping duplicate');
-              return prev;
-            }
-
-            return prev;
-          });
-
           // Get sender profile for the new message
           const { data: senderProfile } = await supabase
             .from('profiles')
@@ -401,15 +390,18 @@ export default function ChatScreen() {
             sender_avatar: senderProfile?.avatar_url,
           };
 
+          // Add message only if it doesn't exist (avoid duplicates)
           setMessages((prev) => {
-            // Check again if message already exists
             const exists = prev.some(m => m.id === formattedMsg.id);
             if (exists) {
+              console.log('Message already exists, skipping duplicate');
               return prev;
             }
+            console.log('Adding new message to chat');
             return [formattedMsg, ...prev];
           });
 
+          // Mark as read if received from other user
           if (newMsg.sender_id !== user.id) {
             markMessagesAsRead();
           }
@@ -563,6 +555,10 @@ export default function ChatScreen() {
   };
 
   const sendMessage = async (content: string) => {
+    if (isBlocked) {
+      Alert.alert('Action impossible', 'Cet utilisateur est bloqué.');
+      return;
+    }
     if (!user || !content.trim()) {
       console.log('Cannot send: no user or empty content');
       return;
@@ -984,8 +980,8 @@ export default function ChatScreen() {
 
     try {
       const { data, error } = await supabase.rpc('is_user_blocked', {
-        p_blocker_id: user.id,
-        p_blocked_id: otherUser.id,
+        p_user_id: user.id,
+        p_blocked_user_id: otherUser.id,
       });
 
       if (!error) {
@@ -1016,9 +1012,8 @@ export default function ChatScreen() {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
               const { data, error } = await supabase.rpc('block_user', {
-                p_blocker_id: user.id,
-                p_blocked_id: otherUser.id,
-                p_reason: null,
+                p_user_id: user.id,
+                p_blocked_user_id: otherUser.id,
               });
 
               if (error) throw error;
@@ -1031,6 +1026,8 @@ export default function ChatScreen() {
               } else {
                 Alert.alert('Erreur', data.message);
               }
+
+              await checkIfBlocked();
             } catch (error: any) {
               console.error('Error blocking user:', error);
               Alert.alert('Erreur', error.message || 'Impossible de bloquer cet utilisateur');
@@ -1062,8 +1059,8 @@ export default function ChatScreen() {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
               const { data, error } = await supabase.rpc('unblock_user', {
-                p_blocker_id: user.id,
-                p_blocked_id: otherUser.id,
+                p_user_id: user.id,
+                p_blocked_user_id: otherUser.id,
               });
 
               if (error) throw error;
@@ -1076,6 +1073,8 @@ export default function ChatScreen() {
               } else {
                 Alert.alert('Erreur', data.message);
               }
+
+              await checkIfBlocked();
             } catch (error: any) {
               console.error('Error unblocking user:', error);
               Alert.alert('Erreur', error.message || 'Impossible de débloquer cet utilisateur');
@@ -1428,7 +1427,11 @@ export default function ChatScreen() {
         {/* Input container */}
         {!isRecording && (
           <View style={[styles.inputContainer, { backgroundColor: currentTheme.inputBg, borderTopColor: currentTheme.border }]}>
-            {uploadingMedia ? (
+            {isBlocked ? (
+              <View style={styles.blockedChatNotice}>
+                <Text style={[styles.blockedChatNoticeText, { color: currentTheme.textSecondary }]}>Utilisateur bloqué</Text>
+              </View>
+            ) : uploadingMedia ? (
               <View style={styles.uploadingContainer}>
                 <ActivityIndicator size="small" color={currentTheme.accent} />
                 <Text style={[styles.uploadingText, { color: currentTheme.textSecondary }]}>Envoi en cours...</Text>
@@ -2024,6 +2027,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 6,
     elevation: 4,
+  },
+  blockedChatNotice: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  blockedChatNoticeText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   imageButton: {
     padding: 8,

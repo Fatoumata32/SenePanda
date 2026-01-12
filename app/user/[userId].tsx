@@ -184,8 +184,8 @@ export default function UserProfileScreen() {
 
     try {
       const { data, error } = await supabase.rpc('is_user_blocked', {
-        p_blocker_id: user.id,
-        p_blocked_id: userId,
+        p_user_id: user.id,
+        p_blocked_user_id: userId,
       });
 
       if (!error) {
@@ -213,18 +213,21 @@ export default function UserProfileScreen() {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
               const { data, error } = await supabase.rpc('block_user', {
-                p_blocker_id: user.id,
-                p_blocked_id: userId,
-                p_reason: null,
+                p_user_id: user.id,
+                p_blocked_user_id: userId,
               });
 
               if (error) throw error;
 
-              if (data.success) {
+              if (data?.success) {
                 setIsBlocked(true);
                 Alert.alert('Succès', 'Utilisateur bloqué');
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              } else {
+                Alert.alert('Erreur', data?.message || 'Impossible de bloquer cet utilisateur');
               }
+
+              await checkIfBlocked();
             } catch (error: any) {
               Alert.alert('Erreur', error.message);
             } finally {
@@ -244,17 +247,21 @@ export default function UserProfileScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
       const { data, error } = await supabase.rpc('unblock_user', {
-        p_blocker_id: user.id,
-        p_blocked_id: userId,
+        p_user_id: user.id,
+        p_blocked_user_id: userId,
       });
 
       if (error) throw error;
 
-      if (data.success) {
+      if (data?.success) {
         setIsBlocked(false);
         Alert.alert('Succès', 'Utilisateur débloqué');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        Alert.alert('Erreur', data?.message || 'Impossible de débloquer cet utilisateur');
       }
+
+      await checkIfBlocked();
     } catch (error: any) {
       Alert.alert('Erreur', error.message);
     } finally {

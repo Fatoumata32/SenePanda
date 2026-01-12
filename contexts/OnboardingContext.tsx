@@ -148,15 +148,16 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       console.log('[OnboardingContext] 📝 Onboarding status in storage:', value);
       setIsOnboardingComplete(value === 'true');
 
-      // Auto-start onboarding if not completed
-      if (value !== 'true') {
-        console.log('[OnboardingContext] ⏱️ Auto-starting in 1s...');
-        setTimeout(() => {
-          startOnboarding();
-        }, 1000);
-      } else {
-        console.log('[OnboardingContext] ✅ Onboarding already completed');
-      }
+      // Auto-start désactivé - l'utilisateur doit lancer manuellement depuis les paramètres
+      // if (value !== 'true') {
+      //   console.log('[OnboardingContext] ⏱️ Auto-starting in 1s...');
+      //   setTimeout(() => {
+      //     startOnboarding();
+      //   }, 1000);
+      // } else {
+      //   console.log('[OnboardingContext] ✅ Onboarding already completed');
+      // }
+      console.log('[OnboardingContext] ℹ️ Auto-start disabled. Use Settings to start tutorial.');
     } catch (error) {
       console.error('[OnboardingContext] ❌ Error checking onboarding status:', error);
     }

@@ -1,0 +1,56 @@
+# Fichiers à exclure des builds EAS
+# Cela réduit la taille de l'archive et accélère l'upload
+
+# Documentation
+*.md
+docs/
+GUIDE_*.md
+FIX_*.md
+TECHNICAL_*.md
+MIGRATION_*.md
+AMELIORATIONS_*.md
+ZEGOCLOUD_*.md
+IMPLEMENTATION_*.md
+ACTIVATION_*.md
+LIVE_*.md
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+build-log.txt
+build-final.log
+
+# Tests
+__tests__/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Images temporaires (WhatsApp screenshots)
+WhatsApp*.jpeg
+WhatsApp*.jpg
+WhatsApp*.png
+
+# Cache
+.expo/
+.expo-shared/
+dist/
+dist-test/
+
+# Scripts de développement
+scripts/show-migration-sql.js
+scripts/create-sample-users.js
+scripts/link-profiles-to-users.js
+
+# Node modules sera géré par EAS
+# node_modules/

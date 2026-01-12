@@ -121,7 +121,7 @@ export default function WavePaymentSimulator({
                 <View style={styles.detailsCard}>
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Montant</Text>
-                    <Text style={styles.detailValue}>{amount.toLocaleString()} FCFA</Text>
+                    <Text style={styles.detailValue}>{(amount || 0).toLocaleString()} FCFA</Text>
                   </View>
                   <View style={[styles.detailRow, styles.detailRowBorder]}>
                     <Text style={styles.detailLabel}>Numéro</Text>
@@ -198,7 +198,7 @@ export default function WavePaymentSimulator({
                 </View>
                 <Text style={styles.successTitle}>Paiement réussi !</Text>
                 <Text style={styles.successSubtitle}>
-                  Votre paiement de {amount.toLocaleString()} FCFA a été validé avec succès.
+                  Votre paiement de {(amount || 0).toLocaleString()} FCFA a été validé avec succès.
                 </Text>
                 <Text style={styles.successInfo}>
                   Votre abonnement est maintenant actif ! 🎉

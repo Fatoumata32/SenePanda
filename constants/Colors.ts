@@ -114,6 +114,14 @@ export const Typography = {
     semibold: '600' as const,
     bold: '700' as const,
   },
+  headingSmall: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+  },
+  bodyMedium: {
+    fontSize: 14,
+    fontWeight: '400' as const,
+  },
 };
 
 export const Spacing = {

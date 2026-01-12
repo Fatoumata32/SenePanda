@@ -1,11 +1,16 @@
 {
   "cli": {
-    "version": ">= 7.8.0"
+    "version": ">= 7.8.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://inhzfdujhuihtuykmwm.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImluaHpmZHVmamh1aWh0dXlrd213Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAyMDIxMzksImV4cCI6MjA3NTc3ODEzOX0.UexWMIDnDYXcqHqzWY0NywMWHgt1_fZahWXqsD352_U"
+      },
       "android": {
         "gradleCommand": ":app:assembleDebug",
         "buildType": "apk"
@@ -16,6 +21,10 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://inhzfdujhuihtuykmwm.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImluaHpmZHVmamh1aWh0dXlrd213Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAyMDIxMzksImV4cCI6MjA3NTc3ODEzOX0.UexWMIDnDYXcqHqzWY0NywMWHgt1_fZahWXqsD352_U"
+      },
       "android": {
         "buildType": "apk",
         "image": "latest"
@@ -26,6 +35,10 @@
     },
     "preview-simple": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://inhzfdujhuihtuykmwm.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImluaHpmZHVmamh1aWh0dXlrd213Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAyMDIxMzksImV4cCI6MjA3NTc3ODEzOX0.UexWMIDnDYXcqHqzWY0NywMWHgt1_fZahWXqsD352_U"
+      },
       "android": {
         "buildType": "apk",
         "withoutCredentials": true,
@@ -33,11 +46,23 @@
       }
     },
     "production": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://inhzfdujhuihtuykmwm.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImluaHpmZHVmamh1aWh0dXlrd213Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAyMDIxMzksImV4cCI6MjA3NTc3ODEzOX0.UexWMIDnDYXcqHqzWY0NywMWHgt1_fZahWXqsD352_U"
+      },
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "image": "ubuntu-22.04-jdk-17-ndk-r26b"
       },
       "ios": {
         "buildConfiguration": "Release"
+      }
+    },
+    "production-aab": {
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle"
       }
     }
   },

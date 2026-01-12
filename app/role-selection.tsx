@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Animated,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -21,25 +22,79 @@ export default function RoleSelectionScreen() {
   const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<'buyer' | 'seller' | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true); // Vérification initiale
   const [fadeAnim] = useState(new Animated.Value(0));
 
   useEffect(() => {
-    // Vérifier si l'utilisateur est connecté
-    checkUserSession();
-
-    // Animation d'entrée
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
-
-    // Message vocal de bienvenue
-    Speech.speak(
-      'Bienvenue! Souhaitez-vous utiliser l\'application en tant qu\'acheteur ou vendeur?',
-      { language: 'fr-FR', rate: 0.9 }
-    );
+    // Cette page n'est plus utilisée - rediriger directement vers home
+    redirectToHome();
   }, []);
+
+  const redirectToHome = async () => {
+    try {
+      // Vérifier la session
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        // Pas de session, rediriger vers l'inscription
+        router.replace('/simple-auth');
+        return;
+      }
+
+      // Définir un rôle par défaut si nécessaire
+      const existingRole = await AsyncStorage.getItem('user_preferred_role');
+      if (!existingRole) {
+        await AsyncStorage.setItem('user_preferred_role', 'buyer');
+        
+        // Mettre à jour le profil
+        await supabase
+          .from('profiles')
+          .update({ preferred_role: 'buyer' })
+          .eq('id', session.user.id);
+      }
+
+      // Rediriger vers home
+      console.log('✅ Redirection directe vers home (page role-selection désactivée)');
+      router.replace('/(tabs)/home');
+    } catch (error) {
+      console.error('Error in redirectToHome:', error);
+      // Rediriger vers home quand même
+      router.replace('/(tabs)/home');
+    }
+  };
+
+  const checkExistingRole = async () => {
+    try {
+      const existingRole = await AsyncStorage.getItem('user_preferred_role');
+      if (existingRole) {
+        // Un rôle existe déjà, rediriger vers home
+        console.log('✅ Rôle déjà défini:', existingRole);
+        router.replace('/(tabs)/home');
+        return;
+      }
+
+      // Pas de rôle, continuer avec la sélection
+      setChecking(false);
+      checkUserSession();
+
+      // Animation d'entrée
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }).start();
+
+      // Message vocal de bienvenue
+      Speech.speak(
+        'Bienvenue! Souhaitez-vous utiliser l\'application en tant qu\'acheteur ou vendeur?',
+        { language: 'fr-FR', rate: 0.9 }
+      );
+    } catch (error) {
+      console.error('Error checking existing role:', error);
+      setChecking(false);
+      checkUserSession();
+    }
+  };
 
   const checkUserSession = async () => {
     try {
@@ -157,6 +212,17 @@ export default function RoleSelectionScreen() {
       setLoading(false);
     }
   };
+
+  // Afficher un loader pendant la vérification
+  if (checking) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.content}>
+          <ActivityIndicator size="large" color="#FF8C42" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>

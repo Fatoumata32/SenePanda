@@ -1,0 +1,58 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="#FDB913" rx="180"/>
+
+  <!-- Panda S Shape - Body (Black curve forming S) -->
+  <path d="M 512 200 C 400 200 320 280 320 380 C 320 480 400 520 512 560 C 624 600 704 640 704 740 C 704 840 624 920 512 920"
+        stroke="#3C3C3B"
+        stroke-width="180"
+        stroke-linecap="round"
+        fill="none"/>
+
+  <!-- White overlay for panda belly -->
+  <ellipse cx="512" cy="380" rx="120" ry="140" fill="white"/>
+  <ellipse cx="512" cy="740" rx="120" ry="140" fill="white"/>
+
+  <!-- Panda Head -->
+  <circle cx="512" cy="320" r="160" fill="white"/>
+
+  <!-- Left Ear -->
+  <circle cx="420" cy="240" r="70" fill="#3C3C3B"/>
+
+  <!-- Right Ear -->
+  <circle cx="604" cy="240" r="70" fill="#3C3C3B"/>
+
+  <!-- Left Eye Patch -->
+  <ellipse cx="460" cy="310" rx="45" ry="55" fill="#3C3C3B"/>
+
+  <!-- Right Eye Patch -->
+  <ellipse cx="564" cy="310" rx="45" ry="55" fill="#3C3C3B"/>
+
+  <!-- Left Eye -->
+  <circle cx="460" cy="315" r="15" fill="white"/>
+  <circle cx="465" cy="310" r="8" fill="white"/>
+
+  <!-- Right Eye -->
+  <circle cx="564" cy="315" r="15" fill="white"/>
+  <circle cx="569" cy="310" r="8" fill="white"/>
+
+  <!-- Nose -->
+  <ellipse cx="512" cy="360" rx="25" ry="20" fill="#3C3C3B"/>
+
+  <!-- Smile -->
+  <path d="M 475 380 Q 512 395 549 380"
+        stroke="#3C3C3B"
+        stroke-width="8"
+        stroke-linecap="round"
+        fill="none"/>
+
+  <!-- Shopping bag accent (small icon) -->
+  <g transform="translate(720, 180)">
+    <rect x="0" y="20" width="80" height="90" rx="8" fill="#F59E0B" stroke="#3C3C3B" stroke-width="6"/>
+    <path d="M 20 20 Q 20 -10 40 -10 Q 60 -10 60 20"
+          stroke="#3C3C3B"
+          stroke-width="6"
+          fill="none"
+          stroke-linecap="round"/>
+  </g>
+</svg>

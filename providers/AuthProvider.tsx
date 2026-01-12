@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode, useCallback,
 import { Session, User, AuthChangeEvent } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { Profile } from '@/types/database';
+import { attemptAutoLogin } from '@/lib/secureAuth';
 
 type AuthContextType = {
   user: User | null;
@@ -72,11 +73,38 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const initializeAuth = async () => {
       try {
-        // Get initial session
+        // 1. Vérifier s'il y a déjà une session active
         const { data: { session: initialSession } } = await supabase.auth.getSession();
 
         if (!isMounted) return;
 
+        // 2. Si pas de session, tenter l'auto-login
+        if (!initialSession) {
+          console.log('🔄 Pas de session active, tentative auto-login...');
+          const autoLoginSuccess = await attemptAutoLogin();
+
+          if (autoLoginSuccess) {
+            // Re-récupérer la session après auto-login
+            const { data: { session: newSession } } = await supabase.auth.getSession();
+            if (!isMounted) return;
+
+            setSession(newSession);
+            setUser(newSession?.user ?? null);
+
+            if (newSession?.user?.id) {
+              const profileData = await fetchProfile(newSession.user.id);
+              if (isMounted) {
+                setProfile(profileData);
+              }
+            }
+            setLoading(false);
+            return;
+          } else {
+            console.log('⚠️ Auto-login échoué ou désactivé');
+          }
+        }
+
+        // 3. Session existante ou auto-login échoué
         setSession(initialSession);
         setUser(initialSession?.user ?? null);
 
@@ -128,10 +156,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const signOut = useCallback(async () => {
     try {
+      // Supprimer les credentials sauvegardés
+      const { clearCredentials } = await import('@/lib/secureAuth');
+      await clearCredentials();
+
+      // Déconnexion Supabase
       await supabase.auth.signOut();
       setUser(null);
       setSession(null);
       setProfile(null);
+      console.log('✅ Déconnexion complète');
     } catch (error) {
       console.error('Error signing out:', error);
       throw error;

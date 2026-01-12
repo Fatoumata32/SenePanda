@@ -6,12 +6,14 @@ import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import PandaLogo from '@/components/PandaLogo';
 import { AuthProvider } from '@/providers/AuthProvider';
+import { FirebaseProvider } from '@/providers/FirebaseProvider';
 import { NavigationProvider } from '@/contexts/NavigationContext';
 import { CartProvider } from '@/contexts/CartContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { OnboardingProvider } from '@/contexts/OnboardingContext';
+import { CoinsProvider } from '@/contexts/CoinsContext';
 import { AuthGuard } from '@/components/AuthGuard';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { RoleRedirect } from '@/components/RoleRedirect';
@@ -21,6 +23,7 @@ import OnboardingScreen, { ONBOARDING_COMPLETED_KEY } from '@/components/Onboard
 import OfflineBanner from '@/components/OfflineBanner';
 import SubscriptionNotificationListener from '@/components/SubscriptionNotificationListener';
 import DailyLoginTracker from '@/components/DailyLoginTracker';
+import CoinNotificationToast from '@/components/rewards/CoinNotificationToast';
 import { OnboardingTooltip } from '@/components/onboarding';
 
 export default function RootLayout() {
@@ -137,29 +140,34 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <AuthProvider>
-          <NavigationProvider>
-            <CartProvider>
-              <NotificationProvider>
-                <ToastProvider>
-                  <OnboardingProvider>
-                    <AuthGuard>
-                      <RoleRedirect>
-                        <Stack screenOptions={{ headerShown: false }} />
-                        <PrivacyPolicyModal />
-                        <OfflineBanner />
-                        <SubscriptionNotificationListener />
-                        <DailyLoginTracker />
-                        <OnboardingTooltip />
-                        <StatusBar style="auto" />
-                      </RoleRedirect>
-                    </AuthGuard>
-                  </OnboardingProvider>
-                </ToastProvider>
-              </NotificationProvider>
-            </CartProvider>
-          </NavigationProvider>
-        </AuthProvider>
+        <FirebaseProvider>
+          <AuthProvider>
+            <CoinsProvider>
+              <NavigationProvider>
+                <CartProvider>
+                  <NotificationProvider>
+                    <ToastProvider>
+                      <OnboardingProvider>
+                        <AuthGuard>
+                          <RoleRedirect>
+                            <Stack screenOptions={{ headerShown: false }} />
+                            <PrivacyPolicyModal />
+                            <OfflineBanner />
+                            <SubscriptionNotificationListener />
+                            <DailyLoginTracker />
+                            <CoinNotificationToast />
+                            <OnboardingTooltip />
+                            <StatusBar style="auto" />
+                          </RoleRedirect>
+                        </AuthGuard>
+                      </OnboardingProvider>
+                    </ToastProvider>
+                  </NotificationProvider>
+                </CartProvider>
+              </NavigationProvider>
+            </CoinsProvider>
+          </AuthProvider>
+        </FirebaseProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

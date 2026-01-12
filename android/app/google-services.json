@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "683631459302",
+    "project_id": "educ-app-ea92d",
+    "storage_bucket": "educ-app-ea92d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:683631459302:android:3a3ea067cfa14c3058b427",
+        "android_client_info": {
+          "package_name": "com.senepanda.com"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "683631459302-sbtvlo7hfbtlgehr77thf6rhiaq8apd7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCabVD_zdKtJXP1mCECDbHc8iJ5LGFN_mk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "683631459302-sbtvlo7hfbtlgehr77thf6rhiaq8apd7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

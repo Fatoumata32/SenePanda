@@ -20,6 +20,7 @@ import {
   Trash2,
   LogOut,
   ChevronRight,
+  Lock,
 } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
 
@@ -51,6 +52,8 @@ interface SettingsModalProps {
   isPremium: boolean;
   themeMode: ThemeMode;
   setThemeMode: (mode: ThemeMode) => void;
+  pinEnabled: boolean;
+  onTogglePin: () => void;
   themeColors: {
     card: string;
     text: string;
@@ -71,6 +74,8 @@ export default function SettingsModal({
   isPremium,
   themeMode,
   setThemeMode,
+  pinEnabled,
+  onTogglePin,
   themeColors,
 }: SettingsModalProps) {
   const router = useRouter();
@@ -177,6 +182,55 @@ export default function SettingsModal({
                   themeMode === 'system' && styles.settingsTextSelected
                 ]}>Automatique (système)</Text>
                 {themeMode === 'system' && (
+                  <View style={styles.checkIcon}>
+                    <Text style={styles.checkText}>✓</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Sécurité */}
+            <View style={styles.settingsSection}>
+              <Text style={[styles.settingsSectionTitle, { color: themeColors.textSecondary }]}>Sécurité</Text>
+
+              {/* Sécurité & Connexion */}
+              <TouchableOpacity
+                style={[styles.settingsItem, { backgroundColor: themeColors.background }]}
+                onPress={() => {
+                  onClose();
+                  router.push('/settings/security');
+                }}>
+                <Shield size={20} color={Colors.primaryOrange} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingsText, { color: themeColors.text }]}>
+                    Sécurité & Connexion
+                  </Text>
+                  <Text style={[styles.settingsSubtext, { color: themeColors.textSecondary }]}>
+                    Auto-login, biométrie, code PIN
+                  </Text>
+                </View>
+                <ChevronRight size={18} color={themeColors.textSecondary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.settingsItem,
+                  { backgroundColor: themeColors.background },
+                  pinEnabled && styles.settingsItemSelected
+                ]}
+                onPress={onTogglePin}>
+                <Lock size={20} color={pinEnabled ? '#D97706' : themeColors.textSecondary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[
+                    styles.settingsText,
+                    { color: themeColors.text },
+                    pinEnabled && styles.settingsTextSelected
+                  ]}>Code PIN à la connexion</Text>
+                  <Text style={[styles.settingsSubtext, { color: themeColors.textSecondary }]}>
+                    {pinEnabled ? 'Activé - Protégez votre compte' : 'Désactivé - Aucune protection supplémentaire'}
+                  </Text>
+                </View>
+                {pinEnabled && (
                   <View style={styles.checkIcon}>
                     <Text style={styles.checkText}>✓</Text>
                   </View>
@@ -293,6 +347,12 @@ const styles = StyleSheet.create({
     ...DesignTokens.typography.body,
     color: DesignTokens.colors.text.primary,
     fontWeight: '600',
+  },
+  settingsSubtext: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: DesignTokens.colors.text.secondary,
+    marginTop: 4,
   },
   settingsItemSelected: {
     backgroundColor: '#FEF3C7',

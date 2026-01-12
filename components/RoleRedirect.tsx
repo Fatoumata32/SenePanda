@@ -1,22 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigation as useNavigationContext } from '@/contexts/NavigationContext';
-import { useRouter, useSegments, usePathname } from 'expo-router';
-import RoleSelectionScreen from './RoleSelectionScreen';
+import { useRouter, usePathname } from 'expo-router';
 
 /**
- * Composant qui gère la redirection automatique basée sur le rôle
- * Affiche l'écran de sélection de rôle si nécessaire
- *
- * Logique simple:
- * - Affiche l'écran de sélection si pas de rôle
- * - Redirection UNIQUEMENT à la connexion initiale
- * - Permet la navigation libre entre toutes les pages après
+ * Composant qui gère la redirection automatique après connexion
+ * 
+ * Logique simplifiée:
+ * - Plus de page de sélection de rôle
+ * - Redirection directe vers home après connexion
+ * - Si pas de rôle, définir "buyer" par défaut
  */
 export function RoleRedirect({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, hasRoleSelected, userRole, setUserRole, isLoading } = useNavigationContext();
   const router = useRouter();
   const pathname = usePathname();
-  const [showRoleSelection, setShowRoleSelection] = useState(false);
   const [hasRedirected, setHasRedirected] = useState(false);
 
   useEffect(() => {
@@ -24,61 +21,37 @@ export function RoleRedirect({ children }: { children: React.ReactNode }) {
 
     // L'utilisateur est authentifié
     if (isAuthenticated) {
-      // Vérifier si le rôle est sélectionné
+      // Si pas de rôle sélectionné, définir "buyer" par défaut automatiquement
       if (!hasRoleSelected || !userRole) {
-        // Afficher l'écran de sélection de rôle
-        setShowRoleSelection(true);
-      } else {
-        // Le rôle est sélectionné
-        setShowRoleSelection(false);
-
-        // Redirection UNIQUEMENT si on vient de se connecter et qu'on n'a pas encore redirigé
-        if (!hasRedirected && (pathname === '/' || pathname === '/(tabs)')) {
-          setHasRedirected(true);
-
-          if (userRole === 'seller') {
-            router.replace('/seller/my-shop' as any);
-          } else {
-            router.replace('/(tabs)' as any);
+        // Définir buyer par défaut sans afficher l'écran de sélection
+        setUserRole('buyer').then(() => {
+          console.log('✅ Rôle buyer défini par défaut');
+          // Rediriger vers home
+          if (!hasRedirected) {
+            setHasRedirected(true);
+            router.replace('/(tabs)/home' as any);
           }
+        }).catch((error) => {
+          console.error('Erreur définition rôle:', error);
+          // Rediriger quand même vers home
+          if (!hasRedirected) {
+            setHasRedirected(true);
+            router.replace('/(tabs)/home' as any);
+          }
+        });
+      } else {
+        // Le rôle est déjà sélectionné - rediriger vers home si nécessaire
+        if (!hasRedirected && (pathname === '/' || pathname === '/(tabs)' || pathname === '/role-selection')) {
+          setHasRedirected(true);
+          router.replace('/(tabs)/home' as any);
         }
-        // Sinon, laisser l'utilisateur naviguer librement
       }
     } else {
-      // Non authentifié, ne pas afficher la sélection de rôle
-      setShowRoleSelection(false);
+      // Non authentifié
       setHasRedirected(false);
     }
   }, [isAuthenticated, hasRoleSelected, userRole, isLoading, pathname, hasRedirected]);
 
-  const handleRoleSelected = async (role: 'buyer' | 'seller') => {
-    try {
-      // Sauvegarder le rôle
-      await setUserRole(role);
-
-      // Masquer l'écran de sélection
-      setShowRoleSelection(false);
-
-      // Marquer comme redirigé
-      setHasRedirected(true);
-
-      // Rediriger vers l'interface appropriée
-      if (role === 'seller') {
-        router.replace('/seller/my-shop' as any);
-      } else {
-        router.replace('/(tabs)' as any);
-      }
-    } catch (error) {
-      console.error('Error handling role selection:', error);
-      // Gérer l'erreur (afficher un toast, etc.)
-    }
-  };
-
-  // Afficher l'écran de sélection de rôle si nécessaire
-  if (showRoleSelection) {
-    return <RoleSelectionScreen onRoleSelected={handleRoleSelected} />;
-  }
-
-  // Sinon, afficher le contenu normal
+  // Toujours afficher le contenu normal (plus d'écran de sélection)
   return <>{children}</>;
 }

@@ -17,11 +17,23 @@ import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { SubscriptionPlan, SubscriptionPlanType, Profile } from '@/types/database';
 import { Ionicons, MaterialIcons, FontAwesome5, Feather } from '@expo/vector-icons';
-import { useSubscriptionSync } from '@/hooks/useSubscriptionSync';
 import { useProfileSubscriptionSync } from '@/hooks/useProfileSubscriptionSync';
 import WavePaymentSimulator from '@/components/payment/WavePaymentSimulator';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Utilitaire sécurisé pour l'affichage des nombres
+function safeToLocaleString(val: any) {
+  if (val === null || val === undefined) return '';
+  try {
+    if (typeof val === 'number') return val.toLocaleString();
+    const num = Number(val);
+    if (!isNaN(num)) return num.toLocaleString();
+    return '';
+  } catch {
+    return '';
+  }
+}
 
 // Mapping des icônes pour chaque plan
 const planIcons: Record<SubscriptionPlanType, { name: string; type: any }> = {
@@ -57,10 +69,7 @@ export default function SubscriptionPlansScreen() {
   const [currentPlan, setCurrentPlan] = useState<SubscriptionPlanType>('free');
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
 
-  // Hook de synchronisation en temps réel (ancien système user_subscriptions)
-  const { subscription, isActive, refresh: refreshSubscription } = useSubscriptionSync(user?.id);
-
-  // Hook de synchronisation du profil (nouveau système - colonnes dans profiles)
+  // Système unique : basé sur profiles.subscription_plan
   const {
     subscription: profileSubscription,
     isActive: profileIsActive,
@@ -108,11 +117,11 @@ export default function SubscriptionPlansScreen() {
 
   // Recharger les données quand l'abonnement change (en temps réel)
   useEffect(() => {
-    if (isActive) {
+    if (profileIsActive) {
       console.log('🔄 Abonnement activé - rechargement des données');
       loadData();
     }
-  }, [isActive]);
+  }, [profileIsActive]);
 
   const loadData = async () => {
     try {
@@ -300,6 +309,7 @@ export default function SubscriptionPlansScreen() {
         .from('profiles')
         .update({
           subscription_plan: selectedPlan.plan_type,
+          subscription_status: 'active',
           subscription_expires_at: expiresAt.toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -332,7 +342,6 @@ export default function SubscriptionPlansScreen() {
       setTimeout(async () => {
         console.log('🔄 Rechargement des données pour synchronisation complète...');
         await loadData();
-        await refreshSubscription();
         await refreshProfileSubscription();
         setShowPaymentModal(false);
 
@@ -371,6 +380,7 @@ export default function SubscriptionPlansScreen() {
         .from('profiles')
         .update({
           subscription_plan: selectedPlan.plan_type,
+          subscription_status: 'active',
           subscription_expires_at: expiresAt.toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -402,7 +412,6 @@ export default function SubscriptionPlansScreen() {
 
       // Recharger les données pour synchroniser avec la base
       await loadData();
-      await refreshSubscription();
       await refreshProfileSubscription();
 
       // Afficher un message de succès avec redirection
@@ -531,7 +540,7 @@ export default function SubscriptionPlansScreen() {
               <View>
                 <View style={styles.priceRow}>
                   <Text style={styles.priceAmount}>
-                    {price.toLocaleString()}
+                    {safeToLocaleString(price)}
                   </Text>
                   <View>
                     <Text style={styles.priceCurrency}>{plan.currency}</Text>
@@ -543,7 +552,7 @@ export default function SubscriptionPlansScreen() {
                 {savings > 0 && (
                   <View style={styles.savingsBadge}>
                     <Text style={styles.savingsText}>
-                      Économisez {savings.toLocaleString()} {plan.currency}
+                      Économisez {safeToLocaleString(savings)} {plan.currency}
                     </Text>
                   </View>
                 )}
@@ -734,11 +743,11 @@ export default function SubscriptionPlansScreen() {
                   <Text style={styles.planSummaryTotalLabel}>Total</Text>
                   <View style={styles.totalContainer}>
                     <Text style={styles.planSummaryTotalValue}>
-                      {price.toLocaleString()} {selectedPlan.currency}
+                      {safeToLocaleString(price)} {selectedPlan.currency}
                     </Text>
                     {savings > 0 && (
                       <Text style={styles.savingsSmall}>
-                        -{savings.toLocaleString()} {selectedPlan.currency}
+                        -{safeToLocaleString(savings)} {selectedPlan.currency}
                       </Text>
                     )}
                   </View>
@@ -905,7 +914,7 @@ export default function SubscriptionPlansScreen() {
                   <View style={[styles.confirmRow, styles.confirmRowTotal]}>
                     <Text style={styles.confirmLabelTotal}>Montant:</Text>
                     <Text style={styles.confirmValueTotal}>
-                      {(billingPeriod === 'monthly' ? selectedPlan.price_monthly : (selectedPlan.price_yearly || selectedPlan.price_monthly * 10)).toLocaleString()} {selectedPlan.currency}
+                      {safeToLocaleString(billingPeriod === 'monthly' ? selectedPlan.price_monthly : (selectedPlan.price_yearly || selectedPlan.price_monthly * 12))} {selectedPlan.currency}
                     </Text>
                   </View>
                 </View>

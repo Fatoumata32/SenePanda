@@ -28,12 +28,12 @@ export default function IndexScreen() {
       }
 
       // Connecté → Vérifier si le rôle a été sélectionné
-      const role = await AsyncStorage.getItem('user_preferred_role');
+      let role = await AsyncStorage.getItem('user_preferred_role');
 
       if (!role) {
-        // Connecté mais pas de rôle → Aller à la sélection du rôle
-        router.replace('/role-selection');
-        return;
+        // Pas de rôle → Définir 'buyer' par défaut
+        await AsyncStorage.setItem('user_preferred_role', 'buyer');
+        role = 'buyer';
       }
 
       // Connecté avec un rôle → Aller à l'application (page d'accueil)

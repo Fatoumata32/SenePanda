@@ -86,13 +86,70 @@ export default function MessagesScreen() {
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
-        .rpc('get_conversations_with_details', {
-          p_user_id: user.id,
-        });
+      // Charger les conversations directement sans RPC
+      const { data: convos, error } = await supabase
+        .from('conversations')
+        .select(`
+          id,
+          buyer_id,
+          seller_id,
+          product_id,
+          last_message_at,
+          buyer_unread_count,
+          seller_unread_count,
+          products (
+            title,
+            image_url
+          )
+        `)
+        .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
+        .order('last_message_at', { ascending: false });
 
       if (error) throw error;
-      setConversations(data || []);
+
+      // Récupérer les derniers messages
+      const conversationIds = convos?.map(c => c.id) || [];
+      const { data: messages } = await supabase
+        .from('messages')
+        .select('conversation_id, content, created_at')
+        .in('conversation_id', conversationIds)
+        .order('created_at', { ascending: false });
+
+      // Transformer les données
+      const formattedConvos: ConversationDetail[] = await Promise.all(
+        (convos || []).map(async (convo: any) => {
+          const otherUserId = convo.buyer_id === user.id ? convo.seller_id : convo.buyer_id;
+          const isSeller = convo.seller_id === user.id;
+
+          // Récupérer les infos de l'autre utilisateur
+          const { data: otherUser } = await supabase
+            .from('profiles')
+            .select('full_name, avatar_url')
+            .eq('id', otherUserId)
+            .single();
+
+          // Trouver le dernier message
+          const lastMsg = messages?.find(m => m.conversation_id === convo.id);
+
+          return {
+            conversation_id: convo.id,
+            other_user_id: otherUserId,
+            other_user_name: otherUser?.full_name || 'Utilisateur',
+            other_user_avatar: otherUser?.avatar_url,
+            is_seller: isSeller,
+            product_id: convo.product_id,
+            product_title: convo.products?.title,
+            product_image: convo.products?.image_url,
+            last_message: lastMsg?.content || null,
+            last_message_at: convo.last_message_at,
+            unread_count: isSeller ? convo.seller_unread_count : convo.buyer_unread_count,
+            other_user_online: false,
+            other_user_last_seen: null,
+          };
+        })
+      );
+
+      setConversations(formattedConvos);
     } catch (error) {
       console.error('Error loading conversations:', error);
     } finally {

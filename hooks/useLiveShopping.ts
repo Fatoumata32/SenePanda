@@ -29,12 +29,14 @@ export interface LiveChatMessage {
   live_session_id: string;
   user_id: string;
   user_name?: string;
-  user_avatar?: string;
+  user_avatar?: string | null;
   message: string;
   message_type: 'text' | 'reaction' | 'system' | 'product_highlight';
-  product_id?: string;
-  is_pinned: boolean;
+  product_id?: string | null;
+  is_pinned?: boolean;
+  is_deleted?: boolean;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface LiveReaction {
@@ -63,6 +65,7 @@ export function useLiveShopping(sessionId?: string) {
   const [session, setSession] = useState<LiveSession | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   const fetchSession = useCallback(async () => {
     if (!sessionId) return;
@@ -85,14 +88,17 @@ export function useLiveShopping(sessionId?: string) {
 
       if (fetchError) throw fetchError;
 
-      setSession({
+      const sessionData = {
         ...data,
         seller_name: data.profiles?.shop_name,
         seller_avatar: data.profiles?.avatar_url,
-      });
+      };
+
+      console.log('✅ Session chargée:', sessionData.id, 'Statut:', sessionData.status);
+      setSession(sessionData);
     } catch (err: any) {
       setError(err.message);
-      console.error('Error fetching live session:', err);
+      console.error('❌ Error fetching live session:', err);
     } finally {
       setIsLoading(false);
     }
@@ -100,13 +106,51 @@ export function useLiveShopping(sessionId?: string) {
 
   const startSession = async (sessionId: string) => {
     try {
-      const { error } = await supabase.rpc('start_live_session', {
-        session_id: sessionId
-      });
+      console.log('🚀 Démarrage du live session:', sessionId);
 
-      if (error) throw error;
+      // Mise à jour directe du statut (contournement du bug RPC)
+      const { data: updatedData, error: updateError } = await supabase
+        .from('live_sessions')
+        .update({
+          status: 'live',
+          started_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sessionId)
+        .select(`
+          *,
+          profiles!seller_id (
+            shop_name,
+            avatar_url
+          )
+        `)
+        .single();
+
+      if (updateError) {
+        console.error('❌ Erreur mise à jour session:', updateError);
+        throw updateError;
+      }
+
+      console.log('✅ Session mise à jour à LIVE:', updatedData?.status);
+
+      // Mettre à jour directement l'état local avec les données retournées
+      if (updatedData) {
+        const sessionData = {
+          ...updatedData,
+          seller_name: updatedData.profiles?.shop_name,
+          seller_avatar: updatedData.profiles?.avatar_url,
+        };
+        setSession(sessionData as any);
+        console.log('✅ Session state local mis à jour:', sessionData.status);
+      }
+
+      // Attendre 500ms pour que la BDD se synchronise
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Rafraîchir depuis la BDD
       await fetchSession();
     } catch (err: any) {
+      console.error('❌ Erreur dans startSession:', err.message);
       setError(err.message);
       throw err;
     }
@@ -114,9 +158,15 @@ export function useLiveShopping(sessionId?: string) {
 
   const endSession = async (sessionId: string) => {
     try {
-      const { error } = await supabase.rpc('end_live_session', {
-        session_id: sessionId
-      });
+      // Mise à jour directe au lieu d'utiliser RPC
+      const { error } = await supabase
+        .from('live_sessions')
+        .update({
+          status: 'ended',
+          ended_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sessionId);
 
       if (error) throw error;
       await fetchSession();
@@ -127,9 +177,51 @@ export function useLiveShopping(sessionId?: string) {
   };
 
   useEffect(() => {
-    if (sessionId) {
-      fetchSession();
-    }
+    if (!sessionId) return;
+
+    fetchSession();
+
+    // S'abonner aux changements de statut de la session avec un nom unique
+    const channelName = `live-session-hook-${sessionId}-${Date.now()}`;
+    channelRef.current = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'live_sessions',
+          filter: `id=eq.${sessionId}`,
+        },
+        async (payload) => {
+          // Vérifier que c'est bien la session qu'on attend
+          if ((payload.new as any).id !== sessionId) {
+            console.log('⚠️ [HOOK] Reçu update d\'une autre session, ignoré:', (payload.new as any).id);
+            return;
+          }
+          
+          console.log('📡 Session mise à jour:', payload.new);
+          // Mettre à jour la session avec les nouvelles données
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('shop_name, avatar_url')
+            .eq('id', (payload.new as any).seller_id)
+            .single();
+
+          setSession({
+            ...(payload.new as any),
+            seller_name: profile?.shop_name,
+            seller_avatar: profile?.avatar_url,
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
+    };
   }, [sessionId, fetchSession]);
 
   return {
@@ -164,8 +256,8 @@ export function useLiveChat(sessionId: string) {
         `)
         .eq('live_session_id', sessionId)
         .eq('is_deleted', false)
-        .order('created_at', { ascending: true })
-        .limit(100);
+        .order('created_at', { ascending: false })
+        .limit(50);
 
       if (error) throw error;
 
@@ -173,7 +265,7 @@ export function useLiveChat(sessionId: string) {
         ...msg,
         user_name: msg.profiles?.full_name || 'Anonyme',
         user_avatar: msg.profiles?.avatar_url,
-      }));
+      })).reverse(); // Inverser pour avoir l'ordre chronologique
 
       setMessages(formattedMessages);
     } catch (error) {
@@ -187,8 +279,28 @@ export function useLiveChat(sessionId: string) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
 
+    // Ajouter le message de manière optimiste (avant la confirmation serveur)
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMessage: LiveChatMessage = {
+      id: tempId,
+      live_session_id: sessionId,
+      user_id: user.id,
+      message,
+      message_type: (messageType as LiveChatMessage['message_type']) || 'text',
+      product_id: productId || null,
+      user_name: 'Vous', // Sera remplacé par le vrai nom
+      user_avatar: null,
+      is_deleted: false,
+      is_pinned: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // Ajouter immédiatement le message optimiste à la liste
+    setMessages((prev) => [...prev, optimisticMessage]);
+
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('live_chat_messages')
         .insert({
           live_session_id: sessionId,
@@ -196,19 +308,31 @@ export function useLiveChat(sessionId: string) {
           message,
           message_type: messageType,
           product_id: productId,
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // Remplacer le message optimiste par le message réel
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === tempId ? { ...optimisticMessage, id: data.id } : msg))
+      );
     } catch (error) {
       console.error('Error sending message:', error);
+      // Retirer le message optimiste en cas d'erreur
+      setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
       throw error;
     }
   };
 
   useEffect(() => {
+    if (!sessionId) return;
+
     fetchMessages();
 
     // S'abonner aux nouveaux messages
+    console.log(`💬 [useLiveChat] Abonnement au canal live-chat:${sessionId}`);
     channelRef.current = supabase
       .channel(`live-chat:${sessionId}`)
       .on(
@@ -220,6 +344,8 @@ export function useLiveChat(sessionId: string) {
           filter: `live_session_id=eq.${sessionId}`,
         },
         async (payload) => {
+          console.log('💬 [useLiveChat] Nouveau message reçu:', payload.new);
+
           // Récupérer les infos utilisateur
           const { data: profile } = await supabase
             .from('profiles')
@@ -233,10 +359,24 @@ export function useLiveChat(sessionId: string) {
             user_avatar: profile?.avatar_url,
           };
 
-          setMessages((prev) => [...prev, newMessage]);
+          console.log('💬 [useLiveChat] Message formaté:', newMessage);
+
+          setMessages((prev) => {
+            // Éviter les doublons
+            if (prev.find(m => m.id === newMessage.id)) {
+              console.log('⚠️ [useLiveChat] Message dupliqué ignoré:', newMessage.id);
+              return prev;
+            }
+            // Limiter à 50 messages pour les performances
+            const updated = [...prev, newMessage];
+            console.log(`✅ [useLiveChat] Messages mis à jour: ${updated.length} messages`);
+            return updated.slice(-50);
+          });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`📡 [useLiveChat] Statut du canal:`, status);
+      });
 
     return () => {
       if (channelRef.current) {
@@ -281,6 +421,8 @@ export function useLiveReactions(sessionId: string) {
   };
 
   useEffect(() => {
+    if (!sessionId) return;
+
     // S'abonner aux nouvelles réactions
     channelRef.current = supabase
       .channel(`live-reactions:${sessionId}`)
@@ -329,10 +471,16 @@ export function useLiveViewers(sessionId: string, autoJoin: boolean = true) {
     if (!user) return;
 
     try {
-      await supabase.rpc('record_live_view', {
-        session_id: sessionId,
-        viewer_user_id: user.id
-      });
+      // Enregistrer ou mettre à jour la vue
+      await supabase
+        .from('live_viewers')
+        .upsert({
+          live_session_id: sessionId,
+          user_id: user.id,
+          joined_at: new Date().toISOString(),
+        }, {
+          onConflict: 'live_session_id,user_id'
+        });
     } catch (error) {
       console.error('Error joining live:', error);
     }
@@ -340,12 +488,18 @@ export function useLiveViewers(sessionId: string, autoJoin: boolean = true) {
 
   const updateViewerCount = useCallback(async () => {
     try {
-      const { data, error } = await supabase.rpc('update_viewer_count', {
-        session_id: sessionId
-      });
+      // Compter les spectateurs actifs (dans les 30 dernières secondes)
+      const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
 
-      if (!error && data !== null) {
-        setViewerCount(data);
+      const { count, error } = await supabase
+        .from('live_viewers')
+        .select('*', { count: 'exact', head: true })
+        .eq('live_session_id', sessionId)
+        .gte('joined_at', thirtySecondsAgo)
+        .is('left_at', null);
+
+      if (!error && count !== null) {
+        setViewerCount(count);
       }
     } catch (error) {
       console.error('Error updating viewer count:', error);
@@ -353,6 +507,8 @@ export function useLiveViewers(sessionId: string, autoJoin: boolean = true) {
   }, [sessionId]);
 
   useEffect(() => {
+    if (!sessionId) return;
+
     if (autoJoin) {
       joinLive();
     }
@@ -384,6 +540,7 @@ export function useLiveViewers(sessionId: string, autoJoin: boolean = true) {
 export function useLiveFeaturedProducts(sessionId: string) {
   const [products, setProducts] = useState<LiveFeaturedProduct[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   const fetchProducts = useCallback(async () => {
     setIsLoading(true);
@@ -411,6 +568,7 @@ export function useLiveFeaturedProducts(sessionId: string) {
         product_price: item.products?.price,
       }));
 
+      console.log(`🛍️ [useLiveFeaturedProducts] Produits chargés: ${formattedProducts.length} produits`);
       setProducts(formattedProducts);
     } catch (error) {
       console.error('Error fetching featured products:', error);
@@ -420,8 +578,107 @@ export function useLiveFeaturedProducts(sessionId: string) {
   }, [sessionId]);
 
   useEffect(() => {
+    if (!sessionId) return;
+
     fetchProducts();
-  }, [fetchProducts]);
+
+    // S'abonner aux changements sur les produits en vedette
+    console.log(`🛍️ [useLiveFeaturedProducts] Abonnement aux produits du live: ${sessionId}`);
+    channelRef.current = supabase
+      .channel(`live-products:${sessionId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'live_featured_products',
+          filter: `live_session_id=eq.${sessionId}`,
+        },
+        async (payload) => {
+          console.log('🛍️ [useLiveFeaturedProducts] Produit mis à jour:', payload.new);
+          // Recharger tous les produits pour avoir les dernières données
+          await fetchProducts();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'live_featured_products',
+          filter: `live_session_id=eq.${sessionId}`,
+        },
+        async (payload) => {
+          console.log('🛍️ [useLiveFeaturedProducts] Nouveau produit ajouté:', payload.new);
+          await fetchProducts();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'live_featured_products',
+          filter: `live_session_id=eq.${sessionId}`,
+        },
+        async (payload) => {
+          console.log('🛍️ [useLiveFeaturedProducts] Produit retiré:', payload.old);
+          await fetchProducts();
+        }
+      )
+      .subscribe((status) => {
+        console.log(`📡 [useLiveFeaturedProducts] Statut du canal:`, status);
+      });
+
+    // S'abonner aussi aux changements dans la table products pour détecter les mises à jour de prix
+    // On doit d'abord récupérer les IDs des produits concernés
+    const setupProductsSubscription = async () => {
+      const { data: featuredProducts } = await supabase
+        .from('live_featured_products')
+        .select('product_id')
+        .eq('live_session_id', sessionId)
+        .eq('is_active', true);
+
+      if (featuredProducts && featuredProducts.length > 0) {
+        const productIds = featuredProducts.map(p => p.product_id);
+        console.log(`🛍️ [useLiveFeaturedProducts] Abonnement aux produits IDs:`, productIds);
+
+        // S'abonner aux changements sur ces produits spécifiques
+        const productsChannel = supabase
+          .channel(`live-products-data:${sessionId}`)
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'products',
+            },
+            async (payload) => {
+              // Vérifier si le produit mis à jour fait partie des produits en vedette
+              if (productIds.includes(payload.new.id)) {
+                console.log('💰 [useLiveFeaturedProducts] Prix produit mis à jour:', payload.new);
+                console.log('💰 Nouveau prix:', payload.new.price);
+                // Recharger tous les produits pour afficher le nouveau prix
+                await fetchProducts();
+              }
+            }
+          )
+          .subscribe((status) => {
+            console.log(`📡 [useLiveFeaturedProducts] Statut canal produits:`, status);
+          });
+
+        return productsChannel;
+      }
+    };
+
+    setupProductsSubscription();
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
+    };
+  }, [sessionId, fetchProducts]);
 
   return {
     products,
@@ -440,12 +697,40 @@ export function useActiveLiveSessions(limit: number = 20) {
   const fetchSessions = useCallback(async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase.rpc('get_active_live_sessions', {
-        limit_count: limit
-      });
+      console.log('🔍 [useLiveShopping] Début fetch sessions, client Supabase:', supabase ? 'Initialisé' : 'Non initialisé');
 
-      if (error) throw error;
-      setSessions(data || []);
+      // Requête directe au lieu d'utiliser une fonction RPC qui n'existe peut-être pas
+      const { data, error } = await supabase
+        .from('live_sessions')
+        .select(`
+          *,
+          profiles!seller_id (
+            full_name,
+            avatar_url
+          )
+        `)
+        .eq('status', 'live')
+        .order('started_at', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error('❌ [useLiveShopping] Erreur Supabase:', error);
+        throw error;
+      }
+
+      const formattedSessions = (data || []).map((session: any) => ({
+        ...session,
+        seller_name: session.profiles?.full_name || 'Vendeur',
+        seller_avatar: session.profiles?.avatar_url,
+        viewer_count: session.viewers_count || 0,
+        peak_viewer_count: session.max_viewers || 0,
+        total_views: session.viewers_count || 0,
+        total_sales: session.total_sales || 0,
+        total_orders: 0,
+        chat_enabled: true,
+      }));
+
+      setSessions(formattedSessions);
     } catch (error) {
       console.error('Error fetching active sessions:', error);
     } finally {

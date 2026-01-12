@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Store, ShoppingBag, Search, Bell, ShoppingCart } from 'lucide-react-native';
+import { Store, ShoppingBag, Search, Bell, ShoppingCart, Video } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { Category } from '@/types/database';
 import CategoryChip from '@/components/CategoryChip';
@@ -18,6 +18,7 @@ import FlashDeals from '@/components/FlashDeals';
 import RecommendedProductGrid from '@/components/RecommendedProductGrid';
 import SortSelector from '@/components/SortSelector';
 import PCCarousel from '@/components/PCCarousel';
+import ActiveLiveSessions from '@/components/ActiveLiveSessions';
 import WaveDivider from '@/components/WaveDivider';
 import PandaLogo from '@/components/PandaLogo';
 import { useRouter } from 'expo-router';
@@ -29,6 +30,7 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import useProductRecommendations, { SortOption } from '@/hooks/useProductRecommendations';
 import * as Haptics from 'expo-haptics';
 import { OnboardingDebugButton } from '@/components/onboarding/OnboardingDebugButton';
+import { useDebounce, profileCache } from '@/lib/performance';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -36,8 +38,8 @@ export default function HomeScreen() {
   const { cartItems } = useCart();
   const { unreadCount: notificationCount, refreshCount: refreshNotifications } = useNotifications();
 
-  // Theme colors
-  const themeColors = {
+  // Theme colors - Memoized pour éviter recalcul à chaque render
+  const themeColors = useMemo(() => ({
     background: isDark ? '#111827' : Colors.white,
     card: isDark ? '#1F2937' : Colors.white,
     text: isDark ? '#F9FAFB' : Colors.dark,
@@ -46,7 +48,7 @@ export default function HomeScreen() {
     border: isDark ? '#374151' : '#E5E7EB',
     searchBg: isDark ? '#374151' : Colors.backgroundLight,
     inputBg: isDark ? '#1F2937' : Colors.white,
-  };
+  }), [isDark]);
 
   // États locaux
   const [categories, setCategories] = useState<Category[]>([]);
@@ -56,14 +58,15 @@ export default function HomeScreen() {
   const [userShop, setUserShop] = useState<any>(null);
   const [sortOption] = useState<SortOption>('smart');
 
+  // Debounce search query pour réduire les re-renders
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
   // Utiliser le hook de recommandation pour les produits
   const {
     products,
     loading,
     refreshing,
     refresh: refreshProducts,
-    recordView,
-    recordClick,
     changeSortOption,
     currentSortOption,
   } = useProductRecommendations({
@@ -81,16 +84,36 @@ export default function HomeScreen() {
     checkUserProfile();
   }, []);
 
-  const checkUserProfile = async () => {
+  const checkUserProfile = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        // Récupérer le profil
+        // Vérifier le cache d'abord
+        const cachedProfile = profileCache.get(user.id);
+        if (cachedProfile) {
+          setUserProfile(cachedProfile);
+          if (cachedProfile?.is_seller) {
+            const { data: shop } = await supabase
+              .from('shops')
+              .select('id, name')
+              .eq('seller_id', user.id)
+              .maybeSingle();
+            setUserShop(shop);
+          }
+          return;
+        }
+
+        // Récupérer le profil si pas en cache
         const { data: profile } = await supabase
           .from('profiles')
           .select('is_seller')
           .eq('id', user.id)
           .maybeSingle();
+
+        // Sauvegarder en cache
+        if (profile) {
+          profileCache.set(user.id, profile);
+        }
         setUserProfile(profile);
 
         // Si c'est un vendeur, vérifier s'il a une boutique
@@ -106,7 +129,7 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Error checking user profile:', error);
     }
-  };
+  }, []);
 
   const handleSellPress = useCallback(() => {
     if (userShop || userProfile?.is_seller) {
@@ -137,10 +160,11 @@ export default function HomeScreen() {
     refreshNotifications();
   }, [refreshProducts, refreshNotifications]);
 
+  // Utiliser debouncedSearchQuery au lieu de searchQuery pour filtrer
   const filteredProducts = useMemo(() =>
     products.filter((product) =>
-      product.title.toLowerCase().includes(searchQuery.toLowerCase())
-    ), [products, searchQuery]
+      product.title.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
+    ), [products, debouncedSearchQuery]
   );
 
   const handleCategorySelect = useCallback((categoryId: string | null) => {
@@ -155,6 +179,11 @@ export default function HomeScreen() {
   const navigateToNotifications = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push('/notifications');
+  }, [router]);
+
+  const navigateToLives = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push('/(tabs)/lives');
   }, [router]);
 
   const handleBuyPress = useCallback(() => {
@@ -183,15 +212,25 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              {/* Icônes Notifications et Panier */}
+              {/* Icônes Lives, Notifications et Panier */}
               <View style={styles.headerActions}>
                 <TouchableOpacity
+                  onPress={navigateToLives}
+                  style={[styles.iconButton, { backgroundColor: '#FEF3C7' }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Lives Shopping"
+                >
+                  <Video size={20} color="#F59E0B" />
+                  <View style={styles.liveDot} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
                   onPress={navigateToNotifications}
-                  style={[styles.iconButton, { backgroundColor: '#DCFCE7' }]}
+                  style={[styles.iconButton, { backgroundColor: '#FEF3C7' }]}
                   accessibilityRole="button"
                   accessibilityLabel={`Notifications - ${notificationCount} non lues`}
                 >
-                  <Bell size={20} color="#16A34A" />
+                  <Bell size={20} color="#F59E0B" />
                   {notificationCount > 0 && (
                     <View style={styles.badge}>
                       <Text style={styles.badgeText}>
@@ -203,11 +242,11 @@ export default function HomeScreen() {
 
                 <TouchableOpacity
                   onPress={navigateToCart}
-                  style={[styles.iconButton, { backgroundColor: '#DCFCE7' }]}
+                  style={[styles.iconButton, { backgroundColor: '#FEF3C7' }]}
                   accessibilityRole="button"
                   accessibilityLabel={`Panier avec ${cartItemCount} articles`}
                 >
-                  <ShoppingCart size={20} color="#16A34A" />
+                  <ShoppingCart size={20} color="#F59E0B" />
                   {cartItemCount > 0 && (
                     <View style={styles.badge}>
                       <Text style={styles.badgeText}>{cartItemCount}</Text>
@@ -232,32 +271,28 @@ export default function HomeScreen() {
             <View style={styles.ctaRow}>
               <TouchableOpacity
                 style={styles.ctaHalf}
-                onPress={handleSellPress}
+                onPress={handleBuyPress}
                 activeOpacity={0.9}
                 accessibilityRole="button"
-                accessibilityLabel={userShop ? "Accéder à ma boutique" : "Commencer à vendre"}>
-                <LinearGradient
-                  colors={Gradients.goldOrange.colors}
-                  start={Gradients.goldOrange.start}
-                  end={Gradients.goldOrange.end}
-                  style={styles.ctaHalfButton}>
+                accessibilityLabel="Explorer les produits">
+                <View style={styles.ctaHalfSolid}>
                   <View style={styles.ctaButtonContent}>
-                    <Store size={18} color={Colors.white} strokeWidth={2} />
-                    <Text style={styles.ctaHalfText}>{userShop ? 'Ma Boutique' : 'Vendre'}</Text>
+                    <ShoppingBag size={18} color={Colors.white} strokeWidth={2} />
+                    <Text style={styles.ctaHalfText}>Acheter</Text>
                   </View>
-                </LinearGradient>
+                </View>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.ctaHalf}
-                onPress={handleBuyPress}
+                onPress={handleSellPress}
                 activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel="Explorer les produits">
+                accessibilityLabel={userShop ? "Accéder à ma boutique" : "Commencer à vendre"}>
                 <View style={styles.ctaHalfOutline}>
                   <View style={styles.ctaButtonContent}>
-                    <ShoppingBag size={18} color={Colors.primaryOrange} strokeWidth={2} />
-                    <Text style={styles.ctaHalfTextOutline}>Acheter</Text>
+                    <Store size={18} color="#6B7280" strokeWidth={2} />
+                    <Text style={styles.ctaHalfTextOutline}>{userShop ? 'Ma Boutique' : 'Vendre'}</Text>
                   </View>
                 </View>
               </TouchableOpacity>
@@ -274,6 +309,22 @@ export default function HomeScreen() {
           variant="smooth"
           animated={true}
         />
+      </View>
+
+      {/* Search Section - Compact */}
+      <View style={[styles.searchSectionCompact, { backgroundColor: themeColors.searchBg }]}>
+        <View style={[styles.searchInputWrapper, { backgroundColor: themeColors.inputBg }]}>
+          <View style={styles.searchIconCircle}>
+            <Search size={18} color={Colors.white} />
+          </View>
+          <TextInput
+            style={[styles.searchInput, { color: themeColors.text }]}
+            placeholder="Rechercher des produits..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor={themeColors.textMuted}
+          />
+        </View>
       </View>
 
       {/* Categories Carousel - Compact */}
@@ -302,30 +353,11 @@ export default function HomeScreen() {
         </ScrollView>
       </View>
 
-
-      {/* Search Section - Compact */}
-      <View style={[styles.searchSectionCompact, { backgroundColor: themeColors.searchBg }]}>
-        <View style={[styles.searchInputWrapper, { backgroundColor: themeColors.inputBg }]}>
-          <View style={styles.searchIconCircle}>
-            <Search size={18} color={Colors.white} />
-          </View>
-          <TextInput
-            style={[styles.searchInput, { color: themeColors.text }]}
-            placeholder="Rechercher des produits..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholderTextColor={themeColors.textMuted}
-          />
-        </View>
-      </View>
+      {/* Active Live Sessions */}
+      <ActiveLiveSessions />
 
       {/* Flash Deals Section */}
       <FlashDeals />
-
-      {/* Products Header - Compact */}
-      <View style={[styles.productsHeaderCompact, { backgroundColor: themeColors.background }]}>
-        <Text style={[styles.miniSectionTitle, { color: themeColors.text }]}>Nouveautés</Text>
-      </View>
     </View>
   );
 
@@ -441,6 +473,17 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  liveDot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+    borderWidth: 1.5,
+    borderColor: '#FEE2E2',
+  },
   heroLogoCompact: {
     width: 64,
     height: 64,
@@ -534,12 +577,20 @@ const styles = StyleSheet.create({
     color: Colors.white,
     letterSpacing: 0.5,
   },
+  ctaHalfSolid: {
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.xl,
+    backgroundColor: '#F59E0B',
+    alignItems: 'center',
+    ...Shadows.medium,
+  },
   ctaHalfOutline: {
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.xl,
     borderWidth: 2,
-    borderColor: '#FF8C00',
+    borderColor: '#D1D5DB',
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     alignItems: 'center',
     ...Shadows.small,
@@ -547,7 +598,7 @@ const styles = StyleSheet.create({
   ctaHalfTextOutline: {
     fontSize: Typography.fontSize.base,
     fontWeight: Typography.fontWeight.bold,
-    color: '#FF8C00',
+    color: '#6B7280',
     letterSpacing: 0.5,
   },
 

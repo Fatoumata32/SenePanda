@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -21,9 +22,22 @@ import {
   Phone,
   Crown,
   RefreshCw,
+  TrendingUp,
+  Users,
+  ShoppingBag,
+  DollarSign,
+  Activity,
+  AlertCircle,
+  Zap,
+  BarChart3,
+  Eye,
 } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
+import { speak, announceSuccess, announceError } from '@/lib/voiceGuide';
+import * as Haptics from 'expo-haptics';
+import { statsCache, PerformanceMonitor, useInteractionManager } from '@/lib/performance';
 
 interface SubscriptionRequest {
   id: string;
@@ -39,28 +53,137 @@ interface SubscriptionRequest {
   price_yearly: number;
 }
 
+interface DashboardStats {
+  totalUsers: number;
+  totalSellers: number;
+  totalOrders: number;
+  totalRevenue: number;
+  pendingRequests: number;
+  activeLives: number;
+  newUsersToday: number;
+  ordersToday: number;
+  revenueToday: number;
+  averageOrderValue: number;
+  topSellingProducts: number;
+  activeSubscriptions: number;
+}
+
 export default function AdminDashboardScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [requests, setRequests] = useState<SubscriptionRequest[]>([]);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [stats, setStats] = useState<DashboardStats>({
+    totalUsers: 0,
+    totalSellers: 0,
+    totalOrders: 0,
+    totalRevenue: 0,
+    pendingRequests: 0,
+    activeLives: 0,
+    newUsersToday: 0,
+    ordersToday: 0,
+    revenueToday: 0,
+    averageOrderValue: 0,
+    topSellingProducts: 0,
+    activeSubscriptions: 0,
+  });
 
   useEffect(() => {
-    loadPendingRequests();
+    loadDashboardData();
   }, []);
+
+  const loadDashboardData = async () => {
+    await Promise.all([
+      loadPendingRequests(),
+      loadStats(),
+    ]);
+  };
+
+  const loadStats = async () => {
+    try {
+      // Total users
+      const { count: totalUsers } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true });
+
+      // Total sellers
+      const { count: totalSellers } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_seller', true);
+
+      // Total orders
+      const { count: totalOrders } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true });
+
+      // Active lives
+      const { count: activeLives } = await supabase
+        .from('live_sessions')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'active');
+
+      // New users today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const { count: newUsersToday } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', today.toISOString());
+
+      // Active subscriptions
+      const { count: activeSubscriptions } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .neq('subscription_plan', 'free')
+        .not('subscription_plan', 'is', null);
+
+      // Orders today
+      const { count: ordersToday, data: ordersTodayData } = await supabase
+        .from('orders')
+        .select('total_amount')
+        .gte('created_at', today.toISOString());
+
+      // Calculate revenue today
+      const revenueToday = ordersTodayData?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0;
+
+      // Total revenue
+      const { data: allOrders } = await supabase
+        .from('orders')
+        .select('total_amount');
+
+      const totalRevenue = allOrders?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0;
+      const averageOrderValue = totalOrders && totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+      setStats({
+        totalUsers: totalUsers || 0,
+        totalSellers: totalSellers || 0,
+        totalOrders: totalOrders || 0,
+        totalRevenue,
+        pendingRequests: requests.length,
+        activeLives: activeLives || 0,
+        newUsersToday: newUsersToday || 0,
+        ordersToday: ordersToday || 0,
+        revenueToday,
+        averageOrderValue,
+        topSellingProducts: 0,
+        activeSubscriptions: activeSubscriptions || 0,
+      });
+
+    } catch (error) {
+      console.error('Erreur chargement stats:', error);
+    }
+  };
 
   const loadPendingRequests = async () => {
     try {
-      // Charger depuis la vue pending_subscription_requests
       const { data, error } = await supabase
         .from('pending_subscription_requests')
         .select('*')
         .order('requested_at', { ascending: true });
 
       if (error) {
-        console.error('Erreur vue:', error);
-        // Fallback: charger directement depuis subscription_requests
         const { data: fallbackData, error: fallbackError } = await supabase
           .from('subscription_requests')
           .select(`
@@ -85,7 +208,6 @@ export default function AdminDashboardScreen() {
 
         if (fallbackError) throw fallbackError;
 
-        // Transformer les données
         const transformedData = (fallbackData || []).map((item: any) => ({
           id: item.id,
           user_id: item.user_id,
@@ -106,7 +228,6 @@ export default function AdminDashboardScreen() {
       }
     } catch (error: any) {
       console.error('Erreur chargement demandes:', error);
-      Alert.alert('Erreur', 'Impossible de charger les demandes');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -125,24 +246,27 @@ export default function AdminDashboardScreen() {
           onPress: async () => {
             try {
               setProcessingId(request.id);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-              // Appeler la fonction approve_subscription_request
               const { data, error } = await supabase.rpc('approve_subscription_request', {
                 p_request_id: request.id,
-                p_admin_id: null, // Pas d'ID admin pour le moment
+                p_admin_id: null,
                 p_admin_notes: 'Approuvé via dashboard admin mobile',
               });
 
               if (error) throw error;
 
               if (data?.success) {
+                await announceSuccess('saved');
+                await speak(`Abonnement ${request.plan_name} activé pour ${request.full_name}`);
                 Alert.alert('Succès', `Abonnement ${request.plan_name} activé pour ${request.full_name}`);
-                loadPendingRequests();
+                loadDashboardData();
               } else {
                 throw new Error(data?.error || 'Erreur inconnue');
               }
             } catch (error: any) {
               console.error('Erreur approbation:', error);
+              await announceError('general');
               Alert.alert('Erreur', error.message || 'Impossible d\'approuver la demande');
             } finally {
               setProcessingId(null);
@@ -165,8 +289,8 @@ export default function AdminDashboardScreen() {
           onPress: async () => {
             try {
               setProcessingId(request.id);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-              // Appeler la fonction reject_subscription_request
               const { data, error } = await supabase.rpc('reject_subscription_request', {
                 p_request_id: request.id,
                 p_admin_id: null,
@@ -176,13 +300,15 @@ export default function AdminDashboardScreen() {
               if (error) throw error;
 
               if (data?.success) {
+                await speak('Demande rejetée');
                 Alert.alert('Demande rejetée', `La demande de ${request.full_name} a été rejetée`);
-                loadPendingRequests();
+                loadDashboardData();
               } else {
                 throw new Error(data?.error || 'Erreur inconnue');
               }
             } catch (error: any) {
               console.error('Erreur rejet:', error);
+              await announceError('general');
               Alert.alert('Erreur', error.message || 'Impossible de rejeter la demande');
             } finally {
               setProcessingId(null);
@@ -223,12 +349,16 @@ export default function AdminDashboardScreen() {
     }
   };
 
+  const formatCurrency = (amount: number) => {
+    return `${amount.toLocaleString()} FCFA`;
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primaryOrange} />
-          <Text style={styles.loadingText}>Chargement des demandes...</Text>
+          <Text style={styles.loadingText}>Chargement du dashboard...</Text>
         </View>
       </SafeAreaView>
     );
@@ -241,113 +371,235 @@ export default function AdminDashboardScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <ArrowLeft size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Administration</Text>
-        <TouchableOpacity onPress={() => loadPendingRequests()} style={styles.refreshButton}>
+        <View>
+          <Text style={styles.headerTitle}>Admin Dashboard</Text>
+          <Text style={styles.headerSubtitle}>Vue d'ensemble de la plateforme</Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => {
+            setRefreshing(true);
+            loadDashboardData();
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+          style={styles.refreshButton}>
           <RefreshCw size={20} color={Colors.primaryOrange} />
         </TouchableOpacity>
       </View>
 
-      {/* Stats */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Clock size={24} color={Colors.warning} />
-          <Text style={styles.statNumber}>{requests.length}</Text>
-          <Text style={styles.statLabel}>En attente</Text>
-        </View>
-      </View>
-
-      {/* Liste des demandes */}
       <ScrollView
         style={styles.content}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              loadPendingRequests();
+              loadDashboardData();
             }}
             colors={[Colors.primaryOrange]}
           />
         }>
-        {requests.length === 0 ? (
+
+        {/* KPI Cards - Ligne 1 */}
+        <View style={styles.kpiRow}>
+          <View style={[styles.kpiCard, styles.kpiCardPrimary]}>
+            <LinearGradient
+              colors={['#3B82F6', '#2563EB']}
+              style={styles.kpiGradient}>
+              <Users size={24} color="#FFFFFF" />
+              <Text style={styles.kpiNumber}>{stats.totalUsers}</Text>
+              <Text style={styles.kpiLabel}>Utilisateurs</Text>
+              {stats.newUsersToday > 0 && (
+                <View style={styles.kpiBadge}>
+                  <TrendingUp size={12} color="#10B981" />
+                  <Text style={styles.kpiBadgeText}>+{stats.newUsersToday}</Text>
+                </View>
+              )}
+            </LinearGradient>
+          </View>
+
+          <View style={[styles.kpiCard, styles.kpiCardSuccess]}>
+            <LinearGradient
+              colors={['#10B981', '#059669']}
+              style={styles.kpiGradient}>
+              <Store size={24} color="#FFFFFF" />
+              <Text style={styles.kpiNumber}>{stats.totalSellers}</Text>
+              <Text style={styles.kpiLabel}>Vendeurs</Text>
+              <View style={styles.kpiBadge}>
+                <Crown size={12} color="#F59E0B" />
+                <Text style={styles.kpiBadgeText}>{stats.activeSubscriptions}</Text>
+              </View>
+            </LinearGradient>
+          </View>
+        </View>
+
+        {/* KPI Cards - Ligne 2 */}
+        <View style={styles.kpiRow}>
+          <View style={[styles.kpiCard, styles.kpiCardWarning]}>
+            <LinearGradient
+              colors={['#F59E0B', '#D97706']}
+              style={styles.kpiGradient}>
+              <ShoppingBag size={24} color="#FFFFFF" />
+              <Text style={styles.kpiNumber}>{stats.totalOrders}</Text>
+              <Text style={styles.kpiLabel}>Commandes</Text>
+              {stats.ordersToday > 0 && (
+                <View style={styles.kpiBadge}>
+                  <Activity size={12} color="#3B82F6" />
+                  <Text style={styles.kpiBadgeText}>+{stats.ordersToday}</Text>
+                </View>
+              )}
+            </LinearGradient>
+          </View>
+
+          <View style={[styles.kpiCard, styles.kpiCardPurple]}>
+            <LinearGradient
+              colors={['#8B5CF6', '#7C3AED']}
+              style={styles.kpiGradient}>
+              <DollarSign size={24} color="#FFFFFF" />
+              <Text style={styles.kpiNumber}>{(stats.totalRevenue / 1000).toFixed(0)}K</Text>
+              <Text style={styles.kpiLabel}>Revenu Total</Text>
+              {stats.revenueToday > 0 && (
+                <View style={styles.kpiBadge}>
+                  <TrendingUp size={12} color="#10B981" />
+                  <Text style={styles.kpiBadgeText}>{(stats.revenueToday / 1000).toFixed(1)}K</Text>
+                </View>
+              )}
+            </LinearGradient>
+          </View>
+        </View>
+
+        {/* Insights rapides */}
+        <View style={styles.insightsContainer}>
+          <Text style={styles.sectionTitle}>Insights Rapides</Text>
+
+          <View style={styles.insightCard}>
+            <View style={styles.insightIcon}>
+              <Zap size={20} color="#F59E0B" />
+            </View>
+            <View style={styles.insightContent}>
+              <Text style={styles.insightTitle}>Lives Actifs</Text>
+              <Text style={styles.insightValue}>{stats.activeLives} en cours</Text>
+            </View>
+            <Eye size={20} color={Colors.textMuted} />
+          </View>
+
+          <View style={styles.insightCard}>
+            <View style={styles.insightIcon}>
+              <BarChart3 size={20} color="#3B82F6" />
+            </View>
+            <View style={styles.insightContent}>
+              <Text style={styles.insightTitle}>Panier Moyen</Text>
+              <Text style={styles.insightValue}>{formatCurrency(stats.averageOrderValue)}</Text>
+            </View>
+            <TrendingUp size={20} color="#10B981" />
+          </View>
+
+          <View style={styles.insightCard}>
+            <View style={styles.insightIcon}>
+              <Clock size={20} color="#EF4444" />
+            </View>
+            <View style={styles.insightContent}>
+              <Text style={styles.insightTitle}>Demandes en Attente</Text>
+              <Text style={styles.insightValue}>{requests.length} demandes</Text>
+            </View>
+            <AlertCircle size={20} color="#EF4444" />
+          </View>
+        </View>
+
+        {/* Demandes d'abonnement */}
+        {requests.length > 0 && (
+          <View style={styles.requestsSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Demandes d'Abonnement</Text>
+              <View style={styles.urgentBadge}>
+                <AlertCircle size={14} color="#EF4444" />
+                <Text style={styles.urgentBadgeText}>{requests.length} à traiter</Text>
+              </View>
+            </View>
+
+            {requests.map((request) => (
+              <View key={request.id} style={styles.requestCard}>
+                {/* Header de la carte */}
+                <View style={styles.cardHeader}>
+                  <View style={[styles.planBadge, { backgroundColor: getPlanColor(request.plan_type) }]}>
+                    <Crown size={14} color={Colors.white} />
+                    <Text style={styles.planBadgeText}>{request.plan_name}</Text>
+                  </View>
+                  <Text style={styles.dateText}>{formatDate(request.requested_at)}</Text>
+                </View>
+
+                {/* Infos utilisateur */}
+                <View style={styles.userInfo}>
+                  <View style={styles.infoRow}>
+                    <User size={16} color={Colors.textMuted} />
+                    <Text style={styles.infoText}>{request.full_name}</Text>
+                  </View>
+                  {request.shop_name && (
+                    <View style={styles.infoRow}>
+                      <Store size={16} color={Colors.textMuted} />
+                      <Text style={styles.infoText}>{request.shop_name}</Text>
+                    </View>
+                  )}
+                  {request.phone && (
+                    <View style={styles.infoRow}>
+                      <Phone size={16} color={Colors.textMuted} />
+                      <Text style={styles.infoText}>{request.phone}</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Prix et période */}
+                <View style={styles.priceContainer}>
+                  <Text style={styles.priceText}>{formatPrice(request)}</Text>
+                  <Text style={styles.periodText}>
+                    {request.billing_period === 'yearly' ? 'Annuel' : 'Mensuel'}
+                  </Text>
+                </View>
+
+                {/* Boutons d'action */}
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity
+                    style={[styles.rejectButton, processingId === request.id && styles.buttonDisabled]}
+                    onPress={() => handleReject(request)}
+                    disabled={processingId === request.id}>
+                    {processingId === request.id ? (
+                      <ActivityIndicator size="small" color={Colors.error} />
+                    ) : (
+                      <>
+                        <XCircle size={18} color={Colors.error} />
+                        <Text style={styles.rejectButtonText}>Rejeter</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.approveButton, processingId === request.id && styles.buttonDisabled]}
+                    onPress={() => handleApprove(request)}
+                    disabled={processingId === request.id}>
+                    {processingId === request.id ? (
+                      <ActivityIndicator size="small" color={Colors.white} />
+                    ) : (
+                      <>
+                        <CheckCircle size={18} color={Colors.white} />
+                        <Text style={styles.approveButtonText}>Approuver</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {requests.length === 0 && (
           <View style={styles.emptyState}>
             <CheckCircle size={64} color={Colors.successGreen} />
             <Text style={styles.emptyTitle}>Tout est à jour !</Text>
             <Text style={styles.emptyText}>Aucune demande d'abonnement en attente</Text>
           </View>
-        ) : (
-          requests.map((request) => (
-            <View key={request.id} style={styles.requestCard}>
-              {/* Header de la carte */}
-              <View style={styles.cardHeader}>
-                <View style={[styles.planBadge, { backgroundColor: getPlanColor(request.plan_type) }]}>
-                  <Crown size={14} color={Colors.white} />
-                  <Text style={styles.planBadgeText}>{request.plan_name}</Text>
-                </View>
-                <Text style={styles.dateText}>{formatDate(request.requested_at)}</Text>
-              </View>
-
-              {/* Infos utilisateur */}
-              <View style={styles.userInfo}>
-                <View style={styles.infoRow}>
-                  <User size={16} color={Colors.textMuted} />
-                  <Text style={styles.infoText}>{request.full_name}</Text>
-                </View>
-                {request.shop_name && (
-                  <View style={styles.infoRow}>
-                    <Store size={16} color={Colors.textMuted} />
-                    <Text style={styles.infoText}>{request.shop_name}</Text>
-                  </View>
-                )}
-                {request.phone && (
-                  <View style={styles.infoRow}>
-                    <Phone size={16} color={Colors.textMuted} />
-                    <Text style={styles.infoText}>{request.phone}</Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Prix et période */}
-              <View style={styles.priceContainer}>
-                <Text style={styles.priceText}>{formatPrice(request)}</Text>
-                <Text style={styles.periodText}>
-                  {request.billing_period === 'yearly' ? 'Annuel' : 'Mensuel'}
-                </Text>
-              </View>
-
-              {/* Boutons d'action */}
-              <View style={styles.actionButtons}>
-                <TouchableOpacity
-                  style={[styles.rejectButton, processingId === request.id && styles.buttonDisabled]}
-                  onPress={() => handleReject(request)}
-                  disabled={processingId === request.id}>
-                  {processingId === request.id ? (
-                    <ActivityIndicator size="small" color={Colors.error} />
-                  ) : (
-                    <>
-                      <XCircle size={18} color={Colors.error} />
-                      <Text style={styles.rejectButtonText}>Rejeter</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.approveButton, processingId === request.id && styles.buttonDisabled]}
-                  onPress={() => handleApprove(request)}
-                  disabled={processingId === request.id}>
-                  {processingId === request.id ? (
-                    <ActivityIndicator size="small" color={Colors.white} />
-                  ) : (
-                    <>
-                      <CheckCircle size={18} color={Colors.white} />
-                      <Text style={styles.approveButtonText}>Approuver</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))
         )}
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -386,39 +638,132 @@ const styles = StyleSheet.create({
     fontWeight: Typography.fontWeight.bold,
     color: Colors.textPrimary,
   },
+  headerSubtitle: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
   refreshButton: {
     padding: Spacing.sm,
   },
-  statsContainer: {
+  content: {
+    flex: 1,
+  },
+  kpiRow: {
     flexDirection: 'row',
-    padding: Spacing.lg,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
     gap: Spacing.md,
   },
-  statCard: {
+  kpiCard: {
     flex: 1,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    ...Shadows.medium,
+  },
+  kpiCardPrimary: {},
+  kpiCardSuccess: {},
+  kpiCardWarning: {},
+  kpiCardPurple: {},
+  kpiGradient: {
     padding: Spacing.lg,
     alignItems: 'center',
-    ...Shadows.small,
   },
-  statNumber: {
-    fontSize: Typography.fontSize['3xl'],
+  kpiNumber: {
+    fontSize: 32,
     fontWeight: Typography.fontWeight.bold,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
     marginTop: Spacing.sm,
   },
-  statLabel: {
+  kpiLabel: {
+    fontSize: Typography.fontSize.xs,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: Spacing.xs,
+  },
+  kpiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    marginTop: Spacing.sm,
+  },
+  kpiBadgeText: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: Typography.fontWeight.bold,
+    color: '#FFFFFF',
+  },
+  insightsContainer: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xl,
+  },
+  sectionTitle: {
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.md,
+  },
+  insightCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    marginBottom: Spacing.sm,
+    ...Shadows.small,
+  },
+  insightIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.backgroundLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  insightContent: {
+    flex: 1,
+  },
+  insightTitle: {
     fontSize: Typography.fontSize.sm,
     color: Colors.textSecondary,
   },
-  content: {
-    flex: 1,
+  insightValue: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.bold,
+    color: Colors.textPrimary,
+    marginTop: 2,
+  },
+  requestsSection: {
     paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xl,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  urgentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+  },
+  urgentBadgeText: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: Typography.fontWeight.bold,
+    color: '#EF4444',
   },
   emptyState: {
     alignItems: 'center',
     paddingVertical: Spacing['3xl'],
+    paddingHorizontal: Spacing.lg,
   },
   emptyTitle: {
     fontSize: Typography.fontSize.xl,
@@ -430,6 +775,7 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.base,
     color: Colors.textSecondary,
     marginTop: Spacing.sm,
+    textAlign: 'center',
   },
   requestCard: {
     backgroundColor: Colors.white,

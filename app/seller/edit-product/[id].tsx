@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,13 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Animated,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { Category, Product } from '@/types/database';
-import { ArrowLeft, Camera, X, Plus, Package, Save } from 'lucide-react-native';
+import { ArrowLeft, Camera, X, Plus, Package, Save, Tag } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { pickImageFromGallery, takePhoto as capturePhoto, uploadProductImage } from '@/lib/image-upload';
 
@@ -30,6 +32,13 @@ export default function EditProductScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [imageUris, setImageUris] = useState<string[]>([]);
   const [imageUrlInput, setImageUrlInput] = useState('');
+
+  // États pour la réduction par pourcentage
+  const [originalPrice, setOriginalPrice] = useState('');
+  const [discountPercent, setDiscountPercent] = useState('');
+
+  // Animation pour le prix
+  const priceAnimation = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     loadCategories();
@@ -76,6 +85,12 @@ export default function EditProductScreen() {
       setStock(data.stock.toString());
       setSelectedCategory(data.category_id);
       setImageUris(data.images || [data.image_url]);
+
+      // Charger les données de réduction si elles existent
+      if (data.has_discount && data.original_price && data.discount_percent) {
+        setOriginalPrice(data.original_price.toString());
+        setDiscountPercent(data.discount_percent.toString());
+      }
     } catch (error: any) {
       Alert.alert('Erreur', error.message);
       router.back();
@@ -180,6 +195,74 @@ export default function EditProductScreen() {
     );
   };
 
+  // Animer le changement de prix
+  const animatePriceChange = () => {
+    Animated.sequence([
+      Animated.timing(priceAnimation, {
+        toValue: 1.2,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(priceAnimation, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  // Calculer le prix avec réduction
+  const applyDiscount = (percent: string) => {
+    const percentNum = parseFloat(percent);
+    const originalPriceNum = parseFloat(originalPrice || price);
+
+    if (isNaN(percentNum) || isNaN(originalPriceNum)) {
+      return;
+    }
+
+    if (percentNum < 0 || percentNum > 100) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Erreur', 'Le pourcentage doit être entre 0 et 100');
+      return;
+    }
+
+    // Haptic feedback pour succès
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    const discountAmount = (originalPriceNum * percentNum) / 100;
+    const newPrice = originalPriceNum - discountAmount;
+    setPrice(Math.round(newPrice).toString());
+    setDiscountPercent(percent);
+
+    // Animer le changement
+    animatePriceChange();
+
+    // Mémoriser le prix original si ce n'est pas déjà fait
+    if (!originalPrice) {
+      setOriginalPrice(price);
+    }
+  };
+
+  // Appliquer une réduction rapide
+  const applyQuickDiscount = (percent: number) => {
+    // Utiliser le prix actuel comme prix original si pas encore défini
+    if (!originalPrice) {
+      setOriginalPrice(price);
+    }
+    applyDiscount(percent.toString());
+  };
+
+  // Réinitialiser le prix au prix original
+  const resetPrice = () => {
+    if (originalPrice) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setPrice(originalPrice);
+      setDiscountPercent('');
+      setOriginalPrice('');
+      animatePriceChange();
+    }
+  };
+
   const uploadImage = async (uri: string) => {
     if (uri.startsWith('http://') || uri.startsWith('https://')) {
       return uri;
@@ -222,7 +305,8 @@ export default function EditProductScreen() {
       const uploadPromises = imageUris.map(uri => uploadImage(uri));
       const imageUrls = await Promise.all(uploadPromises);
 
-      const { error } = await supabase.from('products').update({
+      // Préparer les données de mise à jour
+      const updateData: any = {
         title: title.trim(),
         description: description.trim() || null,
         price: priceNum,
@@ -231,14 +315,35 @@ export default function EditProductScreen() {
         image_url: imageUrls[0],
         images: imageUrls,
         updated_at: new Date().toISOString(),
-      }).eq('id', id);
+      };
+
+      // Ajouter les champs de réduction si applicable
+      if (discountPercent && originalPrice) {
+        updateData.original_price = parseFloat(originalPrice);
+        updateData.discount_percent = parseInt(discountPercent);
+        updateData.has_discount = true;
+      } else {
+        updateData.original_price = null;
+        updateData.discount_percent = 0;
+        updateData.has_discount = false;
+      }
+
+      const { error } = await supabase.from('products').update(updateData).eq('id', id);
 
       if (error) throw error;
 
-      Alert.alert('Succès!', 'Produit modifié avec succès!', [
+      // Message personnalisé avec info de réduction
+      const successMessage = discountPercent && originalPrice
+        ? `Produit modifié avec succès!\n\nRéduction de ${discountPercent}% appliquée\nNouveau prix: ${parseFloat(price).toLocaleString()} FCFA`
+        : 'Produit modifié avec succès!';
+
+      Alert.alert('Succès!', successMessage, [
         {
           text: 'OK',
-          onPress: () => router.back(),
+          onPress: () => {
+            // Synchronisation automatique : retour avec refresh
+            router.back();
+          },
         },
       ]);
     } catch (error: any) {
@@ -354,15 +459,28 @@ export default function EditProductScreen() {
 
           <View style={styles.row}>
             <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-              <Text style={styles.label}>Prix (FCFA) *</Text>
-              <TextInput
-                style={styles.input}
-                value={price}
-                onChangeText={setPrice}
-                placeholder="25000"
-                keyboardType="numeric"
-                placeholderTextColor="#9CA3AF"
-              />
+              <View style={styles.labelRow}>
+                <Text style={styles.label}>Prix (FCFA) *</Text>
+                {discountPercent && originalPrice && (
+                  <View style={styles.discountBadge}>
+                    <Tag size={12} color="#FFFFFF" />
+                    <Text style={styles.discountBadgeText}>-{discountPercent}%</Text>
+                  </View>
+                )}
+              </View>
+              <Animated.View style={{ transform: [{ scale: priceAnimation }] }}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    discountPercent && originalPrice && styles.inputWithDiscount
+                  ]}
+                  value={price}
+                  onChangeText={setPrice}
+                  placeholder="25000"
+                  keyboardType="numeric"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </Animated.View>
             </View>
 
             <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
@@ -376,6 +494,85 @@ export default function EditProductScreen() {
                 placeholderTextColor="#9CA3AF"
               />
             </View>
+          </View>
+
+          {/* Section Réduction par pourcentage */}
+          <View style={styles.discountSection}>
+            <View style={styles.discountHeader}>
+              <Text style={styles.discountTitle}>💰 Appliquer une réduction</Text>
+              {discountPercent && originalPrice && (
+                <TouchableOpacity onPress={resetPrice} style={styles.resetButton}>
+                  <Text style={styles.resetButtonText}>Réinitialiser</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Boutons de réduction rapide */}
+            <View style={styles.quickDiscountRow}>
+              <TouchableOpacity
+                style={[styles.quickDiscountBtn, discountPercent === '10' && styles.quickDiscountBtnActive]}
+                onPress={() => applyQuickDiscount(10)}
+              >
+                <Text style={[styles.quickDiscountText, discountPercent === '10' && styles.quickDiscountTextActive]}>
+                  -10%
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.quickDiscountBtn, discountPercent === '20' && styles.quickDiscountBtnActive]}
+                onPress={() => applyQuickDiscount(20)}
+              >
+                <Text style={[styles.quickDiscountText, discountPercent === '20' && styles.quickDiscountTextActive]}>
+                  -20%
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.quickDiscountBtn, discountPercent === '30' && styles.quickDiscountBtnActive]}
+                onPress={() => applyQuickDiscount(30)}
+              >
+                <Text style={[styles.quickDiscountText, discountPercent === '30' && styles.quickDiscountTextActive]}>
+                  -30%
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.quickDiscountBtn, discountPercent === '50' && styles.quickDiscountBtnActive]}
+                onPress={() => applyQuickDiscount(50)}
+              >
+                <Text style={[styles.quickDiscountText, discountPercent === '50' && styles.quickDiscountTextActive]}>
+                  -50%
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Champ de réduction personnalisée */}
+            <View style={styles.customDiscountRow}>
+              <View style={styles.customDiscountInput}>
+                <TextInput
+                  style={styles.input}
+                  value={discountPercent}
+                  onChangeText={setDiscountPercent}
+                  placeholder="Réduction personnalisée"
+                  keyboardType="numeric"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+              <TouchableOpacity
+                style={styles.applyDiscountBtn}
+                onPress={() => applyDiscount(discountPercent)}
+              >
+                <Text style={styles.applyDiscountText}>Appliquer %</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Aperçu de la réduction */}
+            {discountPercent && originalPrice && (
+              <View style={styles.discountPreview}>
+                <Text style={styles.discountPreviewLabel}>Prix original:</Text>
+                <Text style={styles.originalPriceText}>{parseFloat(originalPrice).toLocaleString()} FCFA</Text>
+                <Text style={styles.discountAmountText}>-{discountPercent}% = -{Math.round((parseFloat(originalPrice) * parseFloat(discountPercent)) / 100).toLocaleString()} FCFA</Text>
+                <Text style={styles.newPriceLabel}>Nouveau prix:</Text>
+                <Text style={styles.newPriceText}>{parseFloat(price).toLocaleString()} FCFA</Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.inputGroup}>
@@ -572,6 +769,26 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginBottom: 8,
   },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  discountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  discountBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   input: {
     backgroundColor: '#F9FAFB',
     borderRadius: 12,
@@ -581,6 +798,11 @@ const styles = StyleSheet.create({
     color: '#111827',
     borderWidth: 1,
     borderColor: '#E5E7EB',
+  },
+  inputWithDiscount: {
+    borderColor: '#16A34A',
+    borderWidth: 2,
+    backgroundColor: '#F0FDF4',
   },
   textArea: {
     minHeight: 100,
@@ -613,6 +835,120 @@ const styles = StyleSheet.create({
   },
   categoryTextSelected: {
     color: '#D97706',
+  },
+  // Styles pour la section de réduction
+  discountSection: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  discountHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  discountTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  resetButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D97706',
+  },
+  resetButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D97706',
+  },
+  quickDiscountRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  quickDiscountBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D97706',
+    alignItems: 'center',
+  },
+  quickDiscountBtnActive: {
+    backgroundColor: '#D97706',
+  },
+  quickDiscountText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#D97706',
+  },
+  quickDiscountTextActive: {
+    color: '#FFFFFF',
+  },
+  customDiscountRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  customDiscountInput: {
+    flex: 1,
+  },
+  applyDiscountBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#D97706',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  applyDiscountText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  discountPreview: {
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  discountPreviewLabel: {
+    fontSize: 12,
+    color: '#92400E',
+    marginBottom: 4,
+  },
+  originalPriceText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
+    textDecorationLine: 'line-through',
+    marginBottom: 8,
+  },
+  discountAmountText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#DC2626',
+    marginBottom: 8,
+  },
+  newPriceLabel: {
+    fontSize: 12,
+    color: '#92400E',
+    marginBottom: 4,
+  },
+  newPriceText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#16A34A',
   },
   primaryButton: {
     backgroundColor: '#D97706',

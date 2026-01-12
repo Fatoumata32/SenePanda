@@ -25,9 +25,11 @@ type Reward = {
   title: string;
   description: string | null;
   points_cost: number;
-  reward_type: 'discount' | 'free_shipping' | 'voucher';
-  reward_value: number | null;
+  category: 'discount' | 'free_shipping' | 'boost' | 'premium' | 'gift';
+  value: number | null;
+  duration_days: number | null;
   stock: number | null;
+  is_active: boolean;
 };
 
 const LEVEL_CONFIG = {

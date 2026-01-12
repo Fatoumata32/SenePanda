@@ -9,15 +9,13 @@ import MessageIcon from '@/components/icons/MessageIcon';
 import UserIcon from '@/components/icons/UserIcon';
 
 export default function TabLayout() {
-  const { isAuthenticated, hasRoleSelected, isLoading } = useNavigation();
+  const { isAuthenticated, isLoading } = useNavigation();
   const segments = useSegments();
 
   // Vérifier si on est sur une page où on ne veut pas afficher les tabs
   const currentPath = segments.join('/');
   const hideTabBar =
-    isLoading || // Cacher pendant le chargement
-    !isAuthenticated || // Cacher si non connecté
-    currentPath === ''; // Cacher sur la page d'accueil initiale
+    currentPath.includes('orders'); // Cacher uniquement sur la page Mes Achats
 
   const handleTabPress = (e: any, routeName: string) => {
     // La page d'accueil (home) et le profil sont toujours accessibles
@@ -114,6 +112,32 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <UserIcon size={26} color={color} focused={focused} />
           ),
+        }}
+      />
+
+      {/* Cacher les routes qui ne doivent pas apparaître dans les tabs */}
+      <Tabs.Screen
+        name="lives"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="live-viewer"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="orders"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="wishlist"
+        options={{
+          href: null,
         }}
       />
     </Tabs>

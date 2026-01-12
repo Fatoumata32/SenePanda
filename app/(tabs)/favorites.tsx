@@ -161,8 +161,7 @@ export default function FavoritesScreen() {
             *,
             seller:profiles!seller_id(
               id,
-              shop_name,
-              shop_logo_url
+              shop_name
             )
           )
         `)
