@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { supabase } from '@/lib/supabase';
+import auth from '@react-native-firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '@/constants/Colors';
 
@@ -18,10 +18,10 @@ export default function IndexScreen() {
 
   const checkAuthAndRedirect = async () => {
     try {
-      // Vérifier si l'utilisateur est connecté
-      const { data: { user } } = await supabase.auth.getUser();
+      // Vérifier si l'utilisateur est connecté via Firebase Auth
+      const currentUser = auth().currentUser;
 
-      if (!user) {
+      if (!currentUser) {
         // Pas connecté → Aller à la page de connexion
         router.replace('/simple-auth');
         return;

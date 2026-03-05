@@ -1,4 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { 
+  getFirestore, 
+  collection, 
+  query as firestoreQuery, 
+  where, 
+  orderBy, 
+  limit as firestoreLimit, 
+  startAfter, 
+  getDocs 
+} from '@react-native-firebase/firestore';
 import { supabase } from '@/lib/supabase';
 import { Product } from '@/types/database';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -65,7 +75,7 @@ export function useProductRecommendations(
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  const [offset, setOffset] = useState(0);
+  const [lastDoc, setLastDoc] = useState<any>(null); // Pour la pagination Firestore (cursor)
   const [sortOption, setSortOption] = useState<SortOption>(initialSortBy);
   const [userId, setUserId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string>('');
@@ -84,7 +94,7 @@ export function useProductRecommendations(
 
     initSession();
 
-    // Récupérer l'utilisateur connecté
+    // Récupérer l'utilisateur connecté (toujours via Supabase pour l'auth si c'est ce qui est utilisé)
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUserId(user?.id || null);
@@ -102,52 +112,66 @@ export function useProductRecommendations(
     };
   }, []);
 
-  // Fallback pour le chargement des produits - Simple et fiable
-  const fetchProductsFallback = async (reset: boolean, currentOffset: number) => {
+  // Chargement des produits depuis FIRESTORE
+  const fetchProductsFirestore = async (reset: boolean) => {
     try {
-      let query = supabase
-        .from('products')
-        .select('*')
-        .eq('is_active', true)
-        .gt('stock', 0); // Exclure les produits en rupture de stock (stock = 0)
+      const db = getFirestore();
+      const productsRef = collection(db, 'products');
+      
+      let constraints: any[] = [
+        where('is_active', '==', true),
+        where('stock', '>', 0)
+      ];
 
       if (categoryId) {
-        query = query.eq('category_id', categoryId);
+        constraints.push(where('category_id', '==', categoryId));
       }
 
       // Appliquer le tri selon l'option
+      let sortField = 'created_at';
+      let sortDirection: 'asc' | 'desc' = 'desc';
+
       switch (sortOption) {
-        case 'popular':
-        case 'trending':
-        case 'smart':
-        default:
-          // Tri par défaut : plus récents en premier
-          query = query.order('created_at', { ascending: false });
-          break;
-        case 'newest':
-          query = query.order('created_at', { ascending: false });
-          break;
-        case 'rating':
-          query = query.order('created_at', { ascending: false }); // Fallback si average_rating n'existe pas
-          break;
         case 'price_asc':
-          query = query.order('price', { ascending: true });
+          sortField = 'price';
+          sortDirection = 'asc';
           break;
         case 'price_desc':
-          query = query.order('price', { ascending: false });
+          sortField = 'price';
+          sortDirection = 'desc';
+          break;
+        case 'rating':
+          sortField = 'average_rating';
+          sortDirection = 'desc';
+          break;
+        default:
+          sortField = 'created_at';
+          sortDirection = 'desc';
           break;
       }
 
-      query = query.range(currentOffset, currentOffset + limit - 1);
+      constraints.push(orderBy(sortField, sortDirection));
 
-      const { data, error: queryError } = await query;
+      if (!reset && lastDoc) {
+        constraints.push(startAfter(lastDoc));
+      }
 
-      if (queryError) throw queryError;
+      constraints.push(firestoreLimit(limit));
 
-      const newProducts = (data || []).map(p => ({
-        ...p,
-        recommendation_reason: getRecommendationReason(p),
-      }));
+      const q = firestoreQuery(productsRef, ...constraints);
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        if (reset) setProducts([]);
+        setHasMore(false);
+        return;
+      }
+
+      const newProducts = snapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        ...doc.data() as any,
+        recommendation_reason: getRecommendationReason(doc.data()),
+      })) as RecommendedProduct[];
 
       if (reset) {
         setProducts(newProducts);
@@ -156,26 +180,31 @@ export function useProductRecommendations(
       }
 
       setHasMore(newProducts.length >= limit);
-      setOffset(currentOffset + newProducts.length);
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
       setError(null);
-    } catch (err) {
-      console.error('Erreur fallback:', err);
-      setError('Erreur lors du chargement des produits');
+    } catch (err: any) {
+      if (err.code === 'firestore/failed-precondition') {
+        console.warn('⚠️ Index Firestore manquant. Créez-le ici:', 
+          'https://console.firebase.google.com/v1/r/project/senepanda-6f7c5/firestore/indexes?create_composite=ClBwcm9qZWN0cy9zZW5lcGFuZGEtNmY3YzUvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL3Byb2R1Y3RzL2luZGV4ZXMvXxABGg8KC2NhdGVnb3J5X2lkEAEaDQoJaXNfYWN0aXZlEAEaDgoKY3JlYXRlZF9hdBACGgkKBXN0b2NrEAIaDAoIX19uYW1lX18QAg');
+        setError('Index Firestore manquant');
+      } else {
+        console.error('Erreur Firestore:', err);
+        setError('Erreur Firestore');
+      }
     }
   };
 
-  // Récupérer les produits - Utilise directement fetchProductsFallback
+
+
+  // Récupérer les produits - Utilise Firestore avec fallback
   const fetchProducts = useCallback(async (reset = false) => {
     try {
       if (reset) {
         setLoading(true);
-        setOffset(0);
+        setLastDoc(null);
       }
 
-      const currentOffset = reset ? 0 : offset;
-
-      // Utiliser directement le fallback (requête simple et fiable)
-      await fetchProductsFallback(reset, currentOffset);
+      await fetchProductsFirestore(reset);
     } catch (err) {
       console.error('Erreur chargement produits:', err);
       setError('Erreur lors du chargement des produits');
@@ -183,7 +212,7 @@ export function useProductRecommendations(
       setLoading(false);
       setRefreshing(false);
     }
-  }, [categoryId, limit, offset, sortOption]);
+  }, [categoryId, sortOption, lastDoc, limit]);
 
   // Déterminer la raison de recommandation
   const getRecommendationReason = (product: any): string => {
@@ -251,7 +280,7 @@ export function useProductRecommendations(
   const changeSortOption = useCallback((option: SortOption) => {
     if (option !== sortOption) {
       setSortOption(option);
-      setOffset(0);
+      setLastDoc(null);
       setProducts([]);
       setLoading(true);
     }

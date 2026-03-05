@@ -115,6 +115,9 @@ export default function ChooseSubscriptionScreen() {
           .update({
             subscription_plan: 'free',
             subscription_expires_at: null, // Pas d'expiration pour le plan gratuit
+            is_premium: false,
+            is_seller: true,
+            shop_is_active: true,
             updated_at: new Date().toISOString(),
           })
           .eq('id', userId);

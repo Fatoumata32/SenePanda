@@ -1,4 +1,32 @@
 import { supabase } from './supabase';
+import auth from '@react-native-firebase/auth';
+
+/**
+ * Get the current authenticated user (Firebase Auth)
+ * Returns a compatible object with the rest of the app
+ */
+export function getCurrentUser() {
+  const firebaseUser = auth().currentUser;
+  
+  if (!firebaseUser) {
+    return null;
+  }
+
+  return {
+    id: firebaseUser.uid,
+    email: firebaseUser.email,
+    user_metadata: {
+      phone: firebaseUser.phoneNumber,
+    },
+  };
+}
+
+/**
+ * Get the current user ID
+ */
+export function getCurrentUserId(): string | null {
+  return auth().currentUser?.uid || null;
+}
 
 /**
  * Get email from username using PostgreSQL function

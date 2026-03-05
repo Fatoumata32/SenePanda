@@ -10,15 +10,22 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Store, ShoppingBag, Search, Bell, ShoppingCart, Video } from 'lucide-react-native';
-import { supabase } from '@/lib/supabase';
+import { Store, ShoppingBag, Search, Bell, ShoppingCart, Heart } from 'lucide-react-native';
+import { getCurrentUser } from '@/lib/auth-helpers';
+import {
+  getFirestore,
+  collection,
+  query,
+  orderBy,
+  getDocs
+} from '@react-native-firebase/firestore';
 import { Category } from '@/types/database';
 import CategoryChip from '@/components/CategoryChip';
 import FlashDeals from '@/components/FlashDeals';
 import RecommendedProductGrid from '@/components/RecommendedProductGrid';
 import SortSelector from '@/components/SortSelector';
 import PCCarousel from '@/components/PCCarousel';
-import ActiveLiveSessions from '@/components/ActiveLiveSessions';
+
 import WaveDivider from '@/components/WaveDivider';
 import PandaLogo from '@/components/PandaLogo';
 import { useRouter } from 'expo-router';
@@ -86,13 +93,13 @@ export default function HomeScreen() {
 
   const checkUserProfile = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = getCurrentUser();
       if (user) {
         // Vérifier le cache d'abord
         const cachedProfile = profileCache.get(user.id);
         if (cachedProfile) {
           setUserProfile(cachedProfile);
-          if (cachedProfile?.is_seller) {
+          if ((cachedProfile as any)?.is_seller) {
             const { data: shop } = await supabase
               .from('shops')
               .select('id, name')
@@ -131,6 +138,26 @@ export default function HomeScreen() {
     }
   }, []);
 
+  const navigateToNotifications = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push('/notifications');
+  }, [router]);
+
+  const navigateToFavorites = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push('/favorites');
+  }, [router]);
+
+  const navigateToCart = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push('/cart');
+  }, [router]);
+
+  const handleBuyPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push('/explore');
+  }, [router]);
+
   const handleSellPress = useCallback(() => {
     if (userShop || userProfile?.is_seller) {
       // Le vendeur a déjà une boutique ou est vendeur -> Aller vers Ma Boutique avec édition temps réel
@@ -143,15 +170,18 @@ export default function HomeScreen() {
 
   const fetchCategories = async () => {
     try {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .order('name');
+      const db = getFirestore();
+      const q = query(collection(db, 'categories'), orderBy('name'));
+      const snapshot = await getDocs(q);
 
-      if (error) throw error;
-      setCategories(data || []);
+      const categoriesList = snapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Category[];
+
+      setCategories(categoriesList);
     } catch (error) {
-      console.error('Error fetching categories:', error);
+      console.error('Error fetching categories from Firestore:', error);
     }
   };
 
@@ -171,25 +201,7 @@ export default function HomeScreen() {
     setSelectedCategory(categoryId);
   }, []);
 
-  const navigateToCart = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push('/cart');
-  }, [router]);
 
-  const navigateToNotifications = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push('/notifications');
-  }, [router]);
-
-  const navigateToLives = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push('/(tabs)/lives');
-  }, [router]);
-
-  const handleBuyPress = useCallback(() => {
-    // Scroll vers la section des produits ou explorer
-    router.push('/(tabs)/explore');
-  }, [router]);
 
   const ListHeader = () => (
     <View style={[styles.headerWrapper, { backgroundColor: themeColors.background }]}>
@@ -212,25 +224,24 @@ export default function HomeScreen() {
                 </View>
               </View>
 
-              {/* Icônes Lives, Notifications et Panier */}
+              {/* Icônes de navigation rapide */}
               <View style={styles.headerActions}>
                 <TouchableOpacity
-                  onPress={navigateToLives}
-                  style={[styles.iconButton, { backgroundColor: '#FEF3C7' }]}
+                  onPress={navigateToFavorites}
+                  style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(55, 65, 81, 0.5)' : 'rgba(255, 255, 255, 0.8)' }]}
                   accessibilityRole="button"
-                  accessibilityLabel="Lives Shopping"
+                  accessibilityLabel="Mes Favoris"
                 >
-                  <Video size={20} color="#F59E0B" />
-                  <View style={styles.liveDot} />
+                  <Heart size={20} color={isDark ? '#F59E0B' : '#EF4444'} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={navigateToNotifications}
-                  style={[styles.iconButton, { backgroundColor: '#FEF3C7' }]}
+                  style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(55, 65, 81, 0.5)' : 'rgba(255, 255, 255, 0.8)' }]}
                   accessibilityRole="button"
                   accessibilityLabel={`Notifications - ${notificationCount} non lues`}
                 >
-                  <Bell size={20} color="#F59E0B" />
+                  <Bell size={20} color={isDark ? '#F59E0B' : '#F59E0B'} />
                   {notificationCount > 0 && (
                     <View style={styles.badge}>
                       <Text style={styles.badgeText}>
@@ -242,11 +253,11 @@ export default function HomeScreen() {
 
                 <TouchableOpacity
                   onPress={navigateToCart}
-                  style={[styles.iconButton, { backgroundColor: '#FEF3C7' }]}
+                  style={[styles.iconButton, { backgroundColor: isDark ? 'rgba(55, 65, 81, 0.5)' : 'rgba(255, 255, 255, 0.8)' }]}
                   accessibilityRole="button"
                   accessibilityLabel={`Panier avec ${cartItemCount} articles`}
                 >
-                  <ShoppingCart size={20} color="#F59E0B" />
+                  <ShoppingCart size={20} color={isDark ? '#F59E0B' : '#F59E0B'} />
                   {cartItemCount > 0 && (
                     <View style={styles.badge}>
                       <Text style={styles.badgeText}>{cartItemCount}</Text>
@@ -353,8 +364,8 @@ export default function HomeScreen() {
         </ScrollView>
       </View>
 
-      {/* Active Live Sessions */}
-      <ActiveLiveSessions />
+      {/* Infinite Scroll Video Feed is now managed in the Lives tab */}
+
 
       {/* Flash Deals Section */}
       <FlashDeals />
@@ -438,51 +449,37 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: Spacing.sm,
     alignItems: 'center',
   },
   iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: BorderRadius.xl,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    ...Shadows.small,
   },
   badge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
+    top: -2,
+    right: -2,
     backgroundColor: '#EF4444',
     borderRadius: 10,
-    minWidth: 20,
-    height: 20,
+    minWidth: 18,
+    height: 18,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: '#FFFACD',
+    zIndex: 10,
   },
   badgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  liveDot: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#EF4444',
-    borderWidth: 1.5,
-    borderColor: '#FEE2E2',
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '800',
   },
   heroLogoCompact: {
     width: 64,
@@ -583,22 +580,22 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xl,
     backgroundColor: '#F59E0B',
     alignItems: 'center',
-    ...Shadows.medium,
+    ...Shadows.orange,
   },
   ctaHalfOutline: {
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.xl,
-    borderWidth: 2,
-    borderColor: '#D1D5DB',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     alignItems: 'center',
     ...Shadows.small,
   },
   ctaHalfTextOutline: {
     fontSize: Typography.fontSize.base,
     fontWeight: Typography.fontWeight.bold,
-    color: '#6B7280',
+    color: '#D97706',
     letterSpacing: 0.5,
   },
 

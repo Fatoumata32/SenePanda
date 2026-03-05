@@ -7,6 +7,7 @@ import ShopIcon from '@/components/icons/ShopIcon';
 import HeartIcon from '@/components/icons/HeartIcon';
 import MessageIcon from '@/components/icons/MessageIcon';
 import UserIcon from '@/components/icons/UserIcon';
+import LiveIcon from '@/components/icons/LiveIcon';
 
 export default function TabLayout() {
   const { isAuthenticated, isLoading } = useNavigation();
@@ -41,17 +42,17 @@ export default function TabLayout() {
         tabBarStyle: hideTabBar
           ? { display: 'none' } // Cacher complètement la barre de navigation
           : {
-              backgroundColor: Colors.white,
-              borderTopWidth: 0,
-              paddingBottom: 8,
-              paddingTop: 8,
-              height: 65,
-              elevation: 20,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: -4 },
-              shadowOpacity: 0.1,
-              shadowRadius: 12,
-            },
+            backgroundColor: Colors.white,
+            borderTopWidth: 0,
+            paddingBottom: 8,
+            paddingTop: 8,
+            height: 65,
+            elevation: 20,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: -4 },
+            shadowOpacity: 0.1,
+            shadowRadius: 12,
+          },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
@@ -84,6 +85,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="favorites"
         options={{
+          href: null,
           title: 'Favoris',
           tabBarIcon: ({ color, focused }) => (
             <HeartIcon size={26} color={color} focused={focused} />
@@ -91,6 +93,18 @@ export default function TabLayout() {
         }}
         listeners={{
           tabPress: (e) => handleTabPress(e, 'favorites'),
+        }}
+      />
+      <Tabs.Screen
+        name="lives"
+        options={{
+          title: 'Scroll',
+          tabBarIcon: ({ color, focused }) => (
+            <LiveIcon size={28} color={color} focused={focused} animated={focused} />
+          ),
+        }}
+        listeners={{
+          tabPress: (e) => handleTabPress(e, 'lives'),
         }}
       />
       <Tabs.Screen
@@ -116,18 +130,8 @@ export default function TabLayout() {
       />
 
       {/* Cacher les routes qui ne doivent pas apparaître dans les tabs */}
-      <Tabs.Screen
-        name="lives"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="live-viewer"
-        options={{
-          href: null,
-        }}
-      />
+
+
       <Tabs.Screen
         name="orders"
         options={{

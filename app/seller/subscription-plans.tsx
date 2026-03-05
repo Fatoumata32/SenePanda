@@ -18,7 +18,7 @@ import { supabase } from '@/lib/supabase';
 import { SubscriptionPlan, SubscriptionPlanType, Profile } from '@/types/database';
 import { Ionicons, MaterialIcons, FontAwesome5, Feather } from '@expo/vector-icons';
 import { useProfileSubscriptionSync } from '@/hooks/useProfileSubscriptionSync';
-import WavePaymentSimulator from '@/components/payment/WavePaymentSimulator';
+import PaymentSimulator from '@/components/payment/PaymentSimulator';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -68,6 +68,7 @@ export default function SubscriptionPlansScreen() {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [currentPlan, setCurrentPlan] = useState<SubscriptionPlanType>('free');
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+  const [expiresAt, setExpiresAt] = useState<Date | null>(null);
 
   // Système unique : basé sur profiles.subscription_plan
   const {
@@ -85,8 +86,9 @@ export default function SubscriptionPlansScreen() {
   const [paymentStep, setPaymentStep] = useState<'method' | 'details' | 'confirm' | 'processing' | 'success' | 'error'>('method');
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
 
-  // États pour le simulateur Wave
-  const [showWaveSimulator, setShowWaveSimulator] = useState(false);
+  // États pour le simulateur de paiement
+  const [showPaymentSimulator, setShowPaymentSimulator] = useState(false);
+  const [simulatorMethod, setSimulatorMethod] = useState<'wave' | 'orange_money'>('wave');
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -148,11 +150,12 @@ export default function SubscriptionPlansScreen() {
       setCurrentPlan(profileData.subscription_plan || 'free');
 
       // Calculer les jours restants
-      const expiresAtValue = (profileData as any).subscription_expires_at;
-      if (expiresAtValue) {
-        const expiresAt = new Date(expiresAtValue);
+      const expiresAtValueStr = (profileData as any).subscription_expires_at;
+      if (expiresAtValueStr) {
+        const expiresAtValue = new Date(expiresAtValueStr);
+        setExpiresAt(expiresAtValue);
         const now = new Date();
-        const diffTime = expiresAt.getTime() - now.getTime();
+        const diffTime = expiresAtValue.getTime() - now.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         setDaysRemaining(diffDays > 0 ? diffDays : 0);
       }
@@ -285,10 +288,12 @@ export default function SubscriptionPlansScreen() {
       return;
     }
 
-    // Si Wave est sélectionné, ouvrir le simulateur
-    if (selectedPaymentMethod === 'wave') {
+    // Si Wave ou Orange Money est sélectionné, ouvrir le simulateur
+    if (selectedPaymentMethod === 'wave' || selectedPaymentMethod === 'orange_money') {
+      console.log(`🚀 Ouverture du simulateur pour: ${selectedPaymentMethod}`);
+      setSimulatorMethod(selectedPaymentMethod as 'wave' | 'orange_money');
       setShowPaymentModal(false);
-      setShowWaveSimulator(true);
+      setShowPaymentSimulator(true);
       return;
     }
 
@@ -311,6 +316,9 @@ export default function SubscriptionPlansScreen() {
           subscription_plan: selectedPlan.plan_type,
           subscription_status: 'active',
           subscription_expires_at: expiresAt.toISOString(),
+          is_premium: selectedPlan.plan_type !== 'free',
+          is_seller: true,
+          shop_is_active: true,
           updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
@@ -336,6 +344,7 @@ export default function SubscriptionPlansScreen() {
         });
       }
 
+      setExpiresAt(expiresAt);
       setPaymentStep('success');
 
       // Recharger les données et fermer le modal après 2 secondes
@@ -362,7 +371,8 @@ export default function SubscriptionPlansScreen() {
   };
 
   // Fonction pour gérer le succès du paiement Wave
-  const handleWavePaymentSuccess = async () => {
+  // Fonction pour gérer le succès du paiement simulateur
+  const handlePaymentSimulatorSuccess = async () => {
     if (!selectedPlan || !user) return;
 
     try {
@@ -382,6 +392,9 @@ export default function SubscriptionPlansScreen() {
           subscription_plan: selectedPlan.plan_type,
           subscription_status: 'active',
           subscription_expires_at: expiresAt.toISOString(),
+          is_premium: selectedPlan.plan_type !== 'free',
+          is_seller: true,
+          shop_is_active: true,
           updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
@@ -395,6 +408,7 @@ export default function SubscriptionPlansScreen() {
 
       // Mettre à jour immédiatement les états locaux
       setCurrentPlan(selectedPlan.plan_type);
+      setExpiresAt(expiresAt);
       const diffDays = Math.ceil((expiresAt.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
       setDaysRemaining(diffDays);
 
@@ -408,7 +422,12 @@ export default function SubscriptionPlansScreen() {
       }
 
       // Fermer le simulateur
-      setShowWaveSimulator(false);
+      setShowPaymentSimulator(false);
+      console.log('💳 Paiement simulé réussi');
+      console.log('✅ Abonnement activé via simulateur:', {
+        plan: selectedPlan.plan_type,
+        expires: expiresAt.toISOString()
+      });
 
       // Recharger les données pour synchroniser avec la base
       await loadData();
@@ -417,7 +436,7 @@ export default function SubscriptionPlansScreen() {
       // Afficher un message de succès avec redirection
       Alert.alert(
         '🎉 Abonnement activé !',
-        `Votre abonnement ${selectedPlan.name} est maintenant actif !\n\nValable jusqu'au ${expiresAt.toLocaleDateString('fr-FR')}\n\nVotre boutique est maintenant prête à accueillir vos produits !`,
+        `Premium actif jusqu'au ${expiresAt.toLocaleDateString('fr-FR')}.`,
         [
           {
             text: 'Commencer',
@@ -595,10 +614,10 @@ export default function SubscriptionPlansScreen() {
               plan.support_level === 'concierge'
                 ? 'Concierge 24/7'
                 : plan.support_level === 'vip'
-                ? 'Support VIP'
-                : plan.support_level === 'priority'
-                ? 'Support prioritaire'
-                : 'Support standard',
+                  ? 'Support VIP'
+                  : plan.support_level === 'priority'
+                    ? 'Support prioritaire'
+                    : 'Support standard',
               plan.support_level !== 'standard'
             )}
             {renderFeature(
@@ -636,10 +655,10 @@ export default function SubscriptionPlansScreen() {
                   {isCurrentPlan
                     ? 'Renouveler'
                     : isUpgrade
-                    ? 'Passer au plan supérieur'
-                    : isDowngrade
-                    ? 'Passer au plan inférieur'
-                    : 'Choisir ce plan'}
+                      ? 'Passer au plan supérieur'
+                      : isDowngrade
+                        ? 'Passer au plan inférieur'
+                        : 'Choisir ce plan'}
                 </Text>
                 <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
               </>
@@ -677,352 +696,341 @@ export default function SubscriptionPlansScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled">
             <View style={styles.modalContent}>
-            {/* Header */}
-            <View style={styles.modalHeader}>
-              {paymentStep !== 'success' && paymentStep !== 'processing' && (
-                <TouchableOpacity
-                  style={styles.modalCloseButton}
-                  onPress={closePaymentModal}>
-                  <Ionicons name="close" size={24} color="#6B7280" />
-                </TouchableOpacity>
-              )}
-              <Text style={styles.modalTitle}>
-                {paymentStep === 'method' && 'Choisir le paiement'}
-                {paymentStep === 'details' && 'Détails du paiement'}
-                {paymentStep === 'confirm' && 'Confirmation'}
-                {paymentStep === 'processing' && 'Traitement en cours'}
-                {paymentStep === 'success' && 'Paiement réussi !'}
-                {paymentStep === 'error' && 'Erreur de paiement'}
-              </Text>
-            </View>
-
-            {/* Plan Summary */}
-            {paymentStep !== 'success' && paymentStep !== 'error' && (
-              <View style={styles.planSummary}>
-                <View style={styles.planSummaryRow}>
-                  <Text style={styles.planSummaryLabel}>Plan</Text>
-                  <Text style={styles.planSummaryValue}>{selectedPlan.name}</Text>
-                </View>
-                <View style={styles.planSummaryRow}>
-                  <Text style={styles.planSummaryLabel}>Période</Text>
-                  <View style={styles.billingToggle}>
-                    <TouchableOpacity
-                      style={[
-                        styles.billingOption,
-                        billingPeriod === 'monthly' && styles.billingOptionActive,
-                      ]}
-                      onPress={() => setBillingPeriod('monthly')}>
-                      <Text
-                        style={[
-                          styles.billingOptionText,
-                          billingPeriod === 'monthly' && styles.billingOptionTextActive,
-                        ]}>
-                        Mensuel
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.billingOption,
-                        billingPeriod === 'yearly' && styles.billingOptionActive,
-                      ]}
-                      onPress={() => setBillingPeriod('yearly')}>
-                      <Text
-                        style={[
-                          styles.billingOptionText,
-                          billingPeriod === 'yearly' && styles.billingOptionTextActive,
-                        ]}>
-                        Annuel
-                      </Text>
-                      {selectedPlan.price_yearly && (
-                        <Text style={styles.billingDiscount}>-17%</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                <View style={[styles.planSummaryRow, styles.planSummaryTotal]}>
-                  <Text style={styles.planSummaryTotalLabel}>Total</Text>
-                  <View style={styles.totalContainer}>
-                    <Text style={styles.planSummaryTotalValue}>
-                      {safeToLocaleString(price)} {selectedPlan.currency}
-                    </Text>
-                    {savings > 0 && (
-                      <Text style={styles.savingsSmall}>
-                        -{safeToLocaleString(savings)} {selectedPlan.currency}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-              </View>
-            )}
-
-            {/* Step: Method Selection */}
-            {paymentStep === 'method' && (
-              <View style={styles.paymentMethods}>
-                <Text style={styles.sectionTitle}>Méthode de paiement</Text>
-                {paymentMethods.map((method) => {
-                  return (
-                    <TouchableOpacity
-                      key={method.id}
-                      style={[
-                        styles.paymentMethodItem,
-                        selectedPaymentMethod === method.id && styles.paymentMethodItemActive,
-                      ]}
-                      onPress={() => setSelectedPaymentMethod(method.id)}>
-                      <View style={[styles.paymentMethodIcon, { backgroundColor: method.color + '20' }]}>
-                        <method.iconType name={method.icon as any} size={24} color={method.color} />
-                      </View>
-                      <Text style={styles.paymentMethodName}>{method.name}</Text>
-                      {selectedPaymentMethod === method.id && (
-                        <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-                <TouchableOpacity
-                  style={[
-                    styles.continueButton,
-                    !selectedPaymentMethod && styles.continueButtonDisabled,
-                  ]}
-                  disabled={!selectedPaymentMethod}
-                  onPress={() => {
-                    // Pour les paiements bancaires, passer directement à la confirmation
-                    if (selectedPaymentMethod === 'bank') {
-                      setPaymentStep('confirm');
-                    } else {
-                      setPaymentStep('details');
-                    }
-                  }}>
-                  <Text style={styles.continueButtonText}>Continuer</Text>
-                  <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Step: Payment Details */}
-            {paymentStep === 'details' && (
-              <View style={styles.paymentDetails}>
-                <TouchableOpacity
-                  style={styles.modalBackButton}
-                  onPress={() => setPaymentStep('method')}>
-                  <Ionicons name="arrow-back" size={20} color="#6B7280" />
-                  <Text style={styles.modalBackButtonText}>Retour</Text>
-                </TouchableOpacity>
-
-                {['orange_money', 'wave', 'free_money'].includes(selectedPaymentMethod || '') && (
-                  <View style={styles.inputContainer}>
-                    <Text style={styles.inputLabel}>Numéro de téléphone</Text>
-                    <View style={styles.phoneInputWrapper}>
-                      <Text style={styles.phonePrefix}>+221</Text>
-                      <TextInput
-                        style={styles.phoneInput}
-                        placeholder="77 123 45 67"
-                        keyboardType="phone-pad"
-                        value={phoneNumber}
-                        onChangeText={setPhoneNumber}
-                        maxLength={12}
-                        autoFocus
-                      />
-                    </View>
-                    <Text style={styles.inputHint}>
-                      Vous recevrez une demande de paiement sur ce numéro
-                    </Text>
-                  </View>
-                )}
-
-                {selectedPaymentMethod === 'card' && (
-                  <View style={styles.cardInfo}>
-                    <Text style={styles.inputLabel}>Paiement par carte</Text>
-                    <Text style={styles.inputHint}>
-                      Vous serez redirigé vers une page de paiement sécurisée lors de la confirmation
-                    </Text>
-                  </View>
-                )}
-
-                {selectedPaymentMethod === 'bank' && (
-                  <View style={styles.bankInfo}>
-                    <Text style={styles.inputLabel}>Virement bancaire</Text>
-                    <View style={styles.bankDetails}>
-                      <Text style={styles.bankDetailRow}>
-                        <Text style={styles.bankDetailLabel}>Banque: </Text>
-                        CBAO
-                      </Text>
-                      <Text style={styles.bankDetailRow}>
-                        <Text style={styles.bankDetailLabel}>IBAN: </Text>
-                        SN08 SN12 3456 7890 1234 5678 901
-                      </Text>
-                      <Text style={styles.bankDetailRow}>
-                        <Text style={styles.bankDetailLabel}>Ref: </Text>
-                        {user?.id?.slice(0, 8).toUpperCase()}
-                      </Text>
-                    </View>
-                    <Text style={styles.inputHint}>
-                      Effectuez le virement puis confirmez pour activer votre abonnement
-                    </Text>
-                  </View>
-                )}
-
-                <View style={styles.securityNote}>
-                  <Ionicons name="shield-checkmark" size={16} color="#10B981" />
-                  <Text style={styles.securityNoteText}>
-                    Paiement sécurisé et crypté
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={[
-                    styles.payButton,
-                    (['orange_money', 'wave', 'free_money'].includes(selectedPaymentMethod || '') &&
-                     (!phoneNumber || phoneNumber.length < 9)) && styles.payButtonDisabled
-                  ]}
-                  disabled={
-                    ['orange_money', 'wave', 'free_money'].includes(selectedPaymentMethod || '') &&
-                    (!phoneNumber || phoneNumber.length < 9)
-                  }
-                  onPress={() => {
-                    console.log('✅ Passage à l\'étape de confirmation');
-                    setPaymentStep('confirm');
-                  }}>
-                  <Text style={styles.payButtonText}>
-                    Continuer
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Step: Confirmation */}
-            {paymentStep === 'confirm' && selectedPlan && (
-              <View style={styles.confirmContainer}>
-                <View style={styles.confirmHeader}>
-                  <Ionicons name="checkmark-circle" size={64} color="#F59E0B" />
-                  <Text style={styles.confirmTitle}>Confirmer votre abonnement</Text>
-                  <Text style={styles.confirmSubtitle}>
-                    Votre abonnement sera activé immédiatement après paiement
-                  </Text>
-                </View>
-
-                <View style={styles.confirmDetails}>
-                  <View style={styles.confirmRow}>
-                    <Text style={styles.confirmLabel}>Plan choisi:</Text>
-                    <Text style={styles.confirmValue}>{selectedPlan.name}</Text>
-                  </View>
-                  <View style={styles.confirmRow}>
-                    <Text style={styles.confirmLabel}>Période:</Text>
-                    <Text style={styles.confirmValue}>
-                      {billingPeriod === 'monthly' ? 'Mensuel' : 'Annuel'}
-                    </Text>
-                  </View>
-                  <View style={[styles.confirmRow, styles.confirmRowTotal]}>
-                    <Text style={styles.confirmLabelTotal}>Montant:</Text>
-                    <Text style={styles.confirmValueTotal}>
-                      {safeToLocaleString(billingPeriod === 'monthly' ? selectedPlan.price_monthly : (selectedPlan.price_yearly || selectedPlan.price_monthly * 12))} {selectedPlan.currency}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.infoCard}>
-                  <Ionicons name="information-circle" size={20} color="#10B981" />
-                  <View style={styles.infoContent}>
-                    <Text style={styles.infoTitle}>Activation immédiate</Text>
-                    <Text style={styles.infoText}>
-                      1. Confirmez votre commande{'\n'}
-                      2. Effectuez le paiement via Wave{'\n'}
-                      3. Votre abonnement est activé instantanément{'\n'}
-                      4. Profitez immédiatement de tous les avantages !
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.confirmActions}>
+              {/* Header */}
+              <View style={styles.modalHeader}>
+                {paymentStep !== 'success' && paymentStep !== 'processing' && (
                   <TouchableOpacity
-                    style={styles.confirmButtonPrimary}
-                    onPress={processSubscriptionRequest}>
-                    <Text style={styles.confirmButtonPrimaryText}>
-                      Procéder au paiement
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.confirmButtonSecondary}
-                    onPress={() => closePaymentModal()}>
-                    <Text style={styles.confirmButtonSecondaryText}>
-                      Annuler
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.confirmNote}>
-                  <Ionicons name="shield-checkmark" size={16} color="#6B7280" />
-                  <Text style={styles.confirmNoteText}>
-                    Paiement sécurisé via Wave Mobile Money
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {/* Step: Processing */}
-            {paymentStep === 'processing' && (
-              <View style={styles.processingContainer}>
-                <ActivityIndicator size="large" color="#F59E0B" />
-                <Text style={styles.processingText}>
-                  Envoi de votre demande...
-                </Text>
-                <Text style={styles.processingSubtext}>
-                  Veuillez patienter
-                </Text>
-              </View>
-            )}
-
-            {/* Step: Success */}
-            {paymentStep === 'success' && (
-              <View style={styles.successContainer}>
-                <View style={styles.successIconContainer}>
-                  <Ionicons name="checkmark-circle" size={64} color="#10B981" />
-                </View>
-                <Text style={styles.successTitle}>Abonnement activé !</Text>
-                <Text style={styles.successText}>
-                  Votre abonnement {selectedPlan?.name} est maintenant actif !
-                </Text>
-                <View style={styles.successDetails}>
-                  <Text style={styles.successDetailText}>
-                    ✅ Activation immédiate
-                  </Text>
-                  <Text style={styles.successDetailText}>
-                    🎉 Tous les avantages sont maintenant disponibles
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.successButton}
-                  onPress={closePaymentModal}>
-                  <Text style={styles.successButtonText}>Commencer</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Step: Error */}
-            {paymentStep === 'error' && (
-              <View style={styles.errorContainer}>
-                <View style={styles.errorIconContainer}>
-                  <Ionicons name="alert-circle" size={64} color="#EF4444" />
-                </View>
-                <Text style={styles.errorTitle}>Échec du paiement</Text>
-                <Text style={styles.errorText}>
-                  Une erreur est survenue lors du traitement de votre paiement.
-                  Veuillez réessayer.
-                </Text>
-                <View style={styles.errorActions}>
-                  <TouchableOpacity
-                    style={styles.retryButton}
-                    onPress={() => setPaymentStep('method')}>
-                    <Text style={styles.retryButtonText}>Réessayer</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.cancelButton}
+                    style={styles.modalCloseButton}
                     onPress={closePaymentModal}>
-                    <Text style={styles.cancelButtonText}>Annuler</Text>
+                    <Ionicons name="close" size={24} color="#6B7280" />
+                  </TouchableOpacity>
+                )}
+                <Text style={styles.modalTitle}>
+                  {paymentStep === 'method' && 'Choisir le paiement'}
+                  {paymentStep === 'details' && 'Détails du paiement'}
+                  {paymentStep === 'confirm' && 'Confirmation'}
+                  {paymentStep === 'processing' && 'Traitement en cours'}
+                  {paymentStep === 'success' && 'Paiement réussi !'}
+                  {paymentStep === 'error' && 'Erreur de paiement'}
+                </Text>
+              </View>
+
+              {/* Plan Summary */}
+              {paymentStep !== 'success' && paymentStep !== 'error' && (
+                <View style={styles.planSummary}>
+                  <View style={styles.planSummaryRow}>
+                    <Text style={styles.planSummaryLabel}>Plan</Text>
+                    <Text style={styles.planSummaryValue}>{selectedPlan.name}</Text>
+                  </View>
+                  <View style={styles.planSummaryRow}>
+                    <Text style={styles.planSummaryLabel}>Période</Text>
+                    <View style={styles.billingToggle}>
+                      <TouchableOpacity
+                        style={[
+                          styles.billingOption,
+                          billingPeriod === 'monthly' && styles.billingOptionActive,
+                        ]}
+                        onPress={() => setBillingPeriod('monthly')}>
+                        <Text
+                          style={[
+                            styles.billingOptionText,
+                            billingPeriod === 'monthly' && styles.billingOptionTextActive,
+                          ]}>
+                          Mensuel
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.billingOption,
+                          billingPeriod === 'yearly' && styles.billingOptionActive,
+                        ]}
+                        onPress={() => setBillingPeriod('yearly')}>
+                        <Text
+                          style={[
+                            styles.billingOptionText,
+                            billingPeriod === 'yearly' && styles.billingOptionTextActive,
+                          ]}>
+                          Annuel
+                        </Text>
+                        {selectedPlan.price_yearly && (
+                          <Text style={styles.billingDiscount}>-17%</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View style={[styles.planSummaryRow, styles.planSummaryTotal]}>
+                    <Text style={styles.planSummaryTotalLabel}>Total</Text>
+                    <View style={styles.totalContainer}>
+                      <Text style={styles.planSummaryTotalValue}>
+                        {safeToLocaleString(price)} {selectedPlan.currency}
+                      </Text>
+                      {savings > 0 && (
+                        <Text style={styles.savingsSmall}>
+                          -{safeToLocaleString(savings)} {selectedPlan.currency}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* Step: Method Selection */}
+              {paymentStep === 'method' && (
+                <View style={styles.paymentMethods}>
+                  <Text style={styles.sectionTitle}>Méthode de paiement</Text>
+                  {paymentMethods.map((method) => {
+                    return (
+                      <TouchableOpacity
+                        key={method.id}
+                        style={[
+                          styles.paymentMethodItem,
+                          selectedPaymentMethod === method.id && styles.paymentMethodItemActive,
+                        ]}
+                        onPress={() => setSelectedPaymentMethod(method.id)}>
+                        <View style={[styles.paymentMethodIcon, { backgroundColor: method.color + '20' }]}>
+                          <method.iconType name={method.icon as any} size={24} color={method.color} />
+                        </View>
+                        <Text style={styles.paymentMethodName}>{method.name}</Text>
+                        {selectedPaymentMethod === method.id && (
+                          <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <TouchableOpacity
+                    style={[
+                      styles.continueButton,
+                      !selectedPaymentMethod && styles.continueButtonDisabled,
+                    ]}
+                    disabled={!selectedPaymentMethod}
+                    onPress={() => {
+                      // Pour les paiements bancaires, passer directement à la confirmation
+                      if (selectedPaymentMethod === 'bank') {
+                        setPaymentStep('confirm');
+                      } else {
+                        setPaymentStep('details');
+                      }
+                    }}>
+                    <Text style={styles.continueButtonText}>Continuer</Text>
+                    <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
-              </View>
-            )}
-          </View>
+              )}
+
+              {/* Step: Payment Details */}
+              {paymentStep === 'details' && (
+                <View style={styles.paymentDetails}>
+                  <TouchableOpacity
+                    style={styles.modalBackButton}
+                    onPress={() => setPaymentStep('method')}>
+                    <Ionicons name="arrow-back" size={20} color="#6B7280" />
+                    <Text style={styles.modalBackButtonText}>Retour</Text>
+                  </TouchableOpacity>
+
+                  {['orange_money', 'wave', 'free_money'].includes(selectedPaymentMethod || '') && (
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.inputLabel}>Numéro de téléphone</Text>
+                      <View style={styles.phoneInputWrapper}>
+                        <Text style={styles.phonePrefix}>+221</Text>
+                        <TextInput
+                          style={styles.phoneInput}
+                          placeholder="77 123 45 67"
+                          keyboardType="phone-pad"
+                          value={phoneNumber}
+                          onChangeText={setPhoneNumber}
+                          maxLength={12}
+                          autoFocus
+                        />
+                      </View>
+                      <Text style={styles.inputHint}>
+                        Vous recevrez une demande de paiement sur ce numéro
+                      </Text>
+                    </View>
+                  )}
+
+                  {selectedPaymentMethod === 'card' && (
+                    <View style={styles.cardInfo}>
+                      <Text style={styles.inputLabel}>Paiement par carte</Text>
+                      <Text style={styles.inputHint}>
+                        Vous serez redirigé vers une page de paiement sécurisée lors de la confirmation
+                      </Text>
+                    </View>
+                  )}
+
+                  {selectedPaymentMethod === 'bank' && (
+                    <View style={styles.bankInfo}>
+                      <Text style={styles.inputLabel}>Virement bancaire</Text>
+                      <View style={styles.bankDetails}>
+                        <Text style={styles.bankDetailRow}>
+                          <Text style={styles.bankDetailLabel}>Banque: </Text>
+                          CBAO
+                        </Text>
+                        <Text style={styles.bankDetailRow}>
+                          <Text style={styles.bankDetailLabel}>IBAN: </Text>
+                          SN08 SN12 3456 7890 1234 5678 901
+                        </Text>
+                        <Text style={styles.bankDetailRow}>
+                          <Text style={styles.bankDetailLabel}>Ref: </Text>
+                          {user?.id?.slice(0, 8).toUpperCase()}
+                        </Text>
+                      </View>
+                      <Text style={styles.inputHint}>
+                        Effectuez le virement puis confirmez pour activer votre abonnement
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={styles.securityNote}>
+                    <Ionicons name="shield-checkmark" size={16} color="#10B981" />
+                    <Text style={styles.securityNoteText}>
+                      Paiement sécurisé et crypté
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.payButton,
+                      (['orange_money', 'wave', 'free_money'].includes(selectedPaymentMethod || '') &&
+                        (!phoneNumber || phoneNumber.length < 9)) && styles.payButtonDisabled
+                    ]}
+                    disabled={
+                      ['orange_money', 'wave', 'free_money'].includes(selectedPaymentMethod || '') &&
+                      (!phoneNumber || phoneNumber.length < 9)
+                    }
+                    onPress={() => {
+                      console.log('✅ Passage à l\'étape de confirmation');
+                      setPaymentStep('confirm');
+                    }}>
+                    <Text style={styles.payButtonText}>
+                      Continuer
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Step: Confirmation */}
+              {paymentStep === 'confirm' && selectedPlan && (
+                <View style={styles.confirmContainer}>
+                  <View style={styles.confirmHeader}>
+                    <Ionicons name="checkmark-circle" size={64} color="#F59E0B" />
+                    <Text style={styles.confirmTitle}>Confirmer votre abonnement</Text>
+                    <Text style={styles.confirmSubtitle}>
+                      Paiement = Abonnement actif
+                    </Text>
+                  </View>
+
+                  <View style={styles.confirmDetails}>
+                    <View style={styles.confirmRow}>
+                      <Text style={styles.confirmLabel}>Plan choisi:</Text>
+                      <Text style={styles.confirmValue}>{selectedPlan.name}</Text>
+                    </View>
+                    <View style={styles.confirmRow}>
+                      <Text style={styles.confirmLabel}>Période:</Text>
+                      <Text style={styles.confirmValue}>
+                        {billingPeriod === 'monthly' ? 'Mensuel' : 'Annuel'}
+                      </Text>
+                    </View>
+                    <View style={[styles.confirmRow, styles.confirmRowTotal]}>
+                      <Text style={styles.confirmLabelTotal}>Montant:</Text>
+                      <Text style={styles.confirmValueTotal}>
+                        {safeToLocaleString(billingPeriod === 'monthly' ? selectedPlan.price_monthly : (selectedPlan.price_yearly || selectedPlan.price_monthly * 12))} {selectedPlan.currency}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.infoCard}>
+                    <Ionicons name="information-circle" size={20} color="#10B981" />
+                    <View style={styles.infoContent}>
+                      <Text style={styles.infoTitle}>Activation immédiate</Text>
+                      <Text style={styles.infoText}>
+                        Abonnement activé dès paiement.
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.confirmActions}>
+                    <TouchableOpacity
+                      style={styles.confirmButtonPrimary}
+                      onPress={processSubscriptionRequest}>
+                      <Text style={styles.confirmButtonPrimaryText}>
+                        Procéder au paiement
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.confirmButtonSecondary}
+                      onPress={() => closePaymentModal()}>
+                      <Text style={styles.confirmButtonSecondaryText}>
+                        Annuler
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.confirmNote}>
+                    <Ionicons name="shield-checkmark" size={16} color="#6B7280" />
+                    <Text style={styles.confirmNoteText}>
+                      Paiement sécurisé via Wave Mobile Money
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Step: Processing */}
+              {paymentStep === 'processing' && (
+                <View style={styles.processingContainer}>
+                  <ActivityIndicator size="large" color="#F59E0B" />
+                  <Text style={styles.processingText}>
+                    Envoi de votre demande...
+                  </Text>
+                  <Text style={styles.processingSubtext}>
+                    Veuillez patienter
+                  </Text>
+                </View>
+              )}
+
+              {/* Step: Success */}
+              {paymentStep === 'success' && (
+                <View style={styles.successContainer}>
+                  <View style={styles.successIconContainer}>
+                    <Ionicons name="checkmark-circle" size={64} color="#10B981" />
+                  </View>
+                  <Text style={styles.successTitle}>Abonnement activé !</Text>
+                  <Text style={styles.successText}>
+                    Premium actif jusqu'au {expiresAt?.toLocaleDateString('fr-FR')}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.successButton}
+                    onPress={closePaymentModal}>
+                    <Text style={styles.successButtonText}>Commencer</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Step: Error */}
+              {paymentStep === 'error' && (
+                <View style={styles.errorContainer}>
+                  <View style={styles.errorIconContainer}>
+                    <Ionicons name="alert-circle" size={64} color="#EF4444" />
+                  </View>
+                  <Text style={styles.errorTitle}>Échec du paiement</Text>
+                  <Text style={styles.errorText}>
+                    Une erreur est survenue lors du traitement de votre paiement.
+                    Veuillez réessayer.
+                  </Text>
+                  <View style={styles.errorActions}>
+                    <TouchableOpacity
+                      style={styles.retryButton}
+                      onPress={() => setPaymentStep('method')}>
+                      <Text style={styles.retryButtonText}>Réessayer</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={closePaymentModal}>
+                      <Text style={styles.cancelButtonText}>Annuler</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
           </ScrollView>
         </View>
       </Modal>
@@ -1121,14 +1129,15 @@ export default function SubscriptionPlansScreen() {
       {/* Payment Modal */}
       {renderPaymentModal()}
 
-      {/* Wave Payment Simulator */}
-      <WavePaymentSimulator
-        visible={showWaveSimulator}
+      {/* Payment Simulator */}
+      <PaymentSimulator
+        visible={showPaymentSimulator}
         amount={selectedPlan ? getPrice(selectedPlan) : 0}
         phoneNumber={phoneNumber || '+221 XX XXX XX XX'}
-        onSuccess={handleWavePaymentSuccess}
+        method={simulatorMethod}
+        onSuccess={handlePaymentSimulatorSuccess}
         onCancel={() => {
-          setShowWaveSimulator(false);
+          setShowPaymentSimulator(false);
           setShowPaymentModal(true);
         }}
       />

@@ -17,11 +17,21 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import {
+  getFirestore,
+  collection,
+  query as fire_query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
+  onSnapshot,
+  startAfter
+} from '@react-native-firebase/firestore';
 import { Category, Product } from '@/types/database';
 import { Search, Mic, Star, Video, Eye, Users, Store, X, MapPin } from 'lucide-react-native';
 import { getCategoryIcon, getCategoryColors } from '@/constants/CategoryIcons';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useActiveLiveSessions } from '@/hooks/useLiveShopping';
 import { useDebounce, productsCache } from '@/lib/performance';
 
 const { width } = Dimensions.get('window');
@@ -29,6 +39,7 @@ const { width } = Dimensions.get('window');
 export default function ExploreScreen() {
   const router = useRouter();
   const { isDark } = useTheme();
+  const db = getFirestore();
 
   // Theme colors - Memoized
   const themeColors = useMemo(() => ({
@@ -61,138 +72,111 @@ export default function ExploreScreen() {
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const debouncedShopsSearch = useDebounce(shopsSearchQuery, 300);
 
-  // Hook pour les lives actifs
-  const { sessions: activeLives, isLoading: loadingLives } = useActiveLiveSessions(10);
-
   useEffect(() => {
     loadData();
   }, []);
 
-  // Synchronisation en temps réel des produits
+  // Synchronisation en temps réel des produits avec Firestore (Modular API)
   useEffect(() => {
-    const productsChannel = supabase
-      .channel('all-products-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'products',
-        },
-        (payload) => {
-          console.log('Product changed in explorer:', payload);
+    const q = fire_query(
+      collection(db, 'products'),
+      where('is_active', '==', true),
+      orderBy('created_at', 'desc'),
+      limit(50)
+    );
 
-          if (payload.eventType === 'INSERT' && payload.new) {
-            // Nouveau produit ajouté
-            setAllProducts(prev => [payload.new as Product, ...prev]);
-          } else if (payload.eventType === 'UPDATE' && payload.new) {
-            // Produit mis à jour
-            setAllProducts(prev =>
-              prev.map(p => p.id === payload.new.id ? payload.new as Product : p)
-            );
-          } else if (payload.eventType === 'DELETE' && payload.old) {
-            // Produit supprimé
-            setAllProducts(prev => prev.filter(p => p.id !== payload.old.id));
-          }
-        }
-      )
-      .subscribe();
+    const unsubscribe = onSnapshot(q, snapshot => {
+      if (!snapshot) return;
 
-    return () => {
-      supabase.removeChannel(productsChannel);
-    };
-  }, []);
+      const productsList = snapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Product[];
+
+      setAllProducts(productsList);
+      productsCache.set('all_products', productsList);
+    }, error => {
+      console.error('Erreur snapshot Firestore:', error);
+    });
+
+    return () => unsubscribe();
+  }, [db]);
 
   const loadData = useCallback(async () => {
     try {
       setIsLoadingProducts(true);
 
-      // Vérifier le cache d'abord et afficher immédiatement
-      const cachedProducts = productsCache.get('all_products');
-      if (cachedProducts) {
-        setAllProducts(cachedProducts);
-        setIsLoadingProducts(false);
+      // 1. Charger les catégories depuis Firestore
+      const categoriesSnapshot = await getDocs(
+        fire_query(collection(db, 'categories'), orderBy('name'))
+      );
+
+      const categoriesList = categoriesSnapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Category[];
+      setCategories(categoriesList);
+
+      // 2. Charger les produits depuis Firestore
+      let constraints: any[] = [where('is_active', '==', true)];
+
+      if (selectedCategory) {
+        constraints.push(where('category_id', '==', selectedCategory));
       }
 
-      // Charger catégories ET produits en parallèle
-      const [categoriesResult, productsResult] = await Promise.all([
-        supabase
-          .from('categories')
-          .select('*')
-          .order('name'),
-        supabase
-          .from('products')
-          .select(`
-            id,
-            title,
-            name,
-            description,
-            price,
-            image_url,
-            category_id,
-            seller_id,
-            created_at,
-            updated_at,
-            is_active,
-            views_count,
-            average_rating,
-            discount_percentage,
-            has_discount,
-            original_price,
-            currency,
-            images,
-            stock,
-            condition,
-            seller:profiles!seller_id(
-              id,
-              shop_name
-            )
-          `)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
-          .limit(PRODUCTS_PER_PAGE * 3) // Charger 60 produits initialement
-      ]);
-
-      // Mettre à jour les catégories
-      if (categoriesResult.data) {
-        setCategories(categoriesResult.data);
+      // Tri
+      if (sortBy === 'price-low') {
+        constraints.push(orderBy('price', 'asc'));
+      } else if (sortBy === 'price-high') {
+        constraints.push(orderBy('price', 'desc'));
+      } else {
+        constraints.push(orderBy('created_at', 'desc'));
       }
 
-      // Mettre à jour les produits
-      if (productsResult.error) {
-        console.error('Error loading products:', productsResult.error);
-      } else if (productsResult.data) {
-        productsCache.set('all_products', productsResult.data);
-        setAllProducts(productsResult.data);
-        setHasMore(productsResult.data.length >= PRODUCTS_PER_PAGE * 3);
-      }
+      const productsSnapshot = await getDocs(
+        fire_query(collection(db, 'products'), ...constraints, limit(PRODUCTS_PER_PAGE) as any)
+      );
+
+      const productsList = productsSnapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Product[];
+
+      setAllProducts(productsList);
+      productsCache.set('all_products', productsList);
+      setHasMore(productsList.length >= PRODUCTS_PER_PAGE);
+      setIsLoadingProducts(false);
     } catch (error) {
-      console.error('Error loading data:', error);
-    } finally {
+      console.error('Erreur chargement Firestore:', error);
       setIsLoadingProducts(false);
     }
-  }, []);
+  }, [db, selectedCategory, sortBy]);
 
-  // Fonction pour charger les boutiques
+  // Fonction pour charger les boutiques depuis Firestore (Modular API)
   const loadShops = useCallback(async () => {
     setLoadingShops(true);
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, shop_name, shop_description, shop_logo_url, city, is_seller, average_rating, total_reviews')
-        .eq('is_seller', true)
-        .not('shop_name', 'is', null)
-        .order('average_rating', { ascending: false })
-        .limit(50);
+      const q = fire_query(
+        collection(db, 'profiles'),
+        where('is_seller', '==', true),
+        orderBy('average_rating', 'desc'),
+        limit(50)
+      );
 
-      if (error) throw error;
-      setShops(data || []);
+      const snapshot = await getDocs(q);
+
+      const shopList = snapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      setShops(shopList);
     } catch (error) {
       console.error('Error loading shops:', error);
     } finally {
       setLoadingShops(false);
     }
-  }, []);
+  }, [db]);
 
   // Charger les boutiques quand le modal s'ouvre
   useEffect(() => {
@@ -201,62 +185,57 @@ export default function ExploreScreen() {
     }
   }, [shopsModalVisible, loadShops]);
 
-  // Fonction pour charger plus de produits
+  // Fonction pour charger plus de produits depuis Firestore (Modular API)
   const loadMoreProducts = useCallback(async () => {
-    if (!hasMore || isLoadingProducts) return;
+    if (!hasMore || isLoadingProducts || !allProducts.length) return;
 
     try {
       setIsLoadingProducts(true);
-      const nextPage = page + 1;
-      const offset = page * PRODUCTS_PER_PAGE * 3;
+      const lastProduct = allProducts[allProducts.length - 1];
 
-      const { data, error } = await supabase
-        .from('products')
-        .select(`
-          id,
-          title,
-          name,
-          description,
-          price,
-          image_url,
-          category_id,
-          seller_id,
-          created_at,
-          updated_at,
-          is_active,
-          views_count,
-          average_rating,
-          discount_percentage,
-          has_discount,
-          original_price,
-          currency,
-          images,
-          stock,
-          condition,
-          seller:profiles!seller_id(
-            id,
-            shop_name
-          )
-        `)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + PRODUCTS_PER_PAGE * 3 - 1);
+      let constraints: any[] = [where('is_active', '==', true)];
 
-      if (error) {
-        console.error('Error loading more products:', error);
-      } else if (data) {
-        const updatedProducts = [...allProducts, ...data];
-        setAllProducts(updatedProducts);
-        productsCache.set('all_products', updatedProducts);
-        setPage(nextPage);
-        setHasMore(data.length >= PRODUCTS_PER_PAGE * 3);
+      if (selectedCategory) {
+        constraints.push(where('category_id', '==', selectedCategory));
       }
+
+      // Tri (identique à loadData)
+      let sortField = 'created_at';
+      if (sortBy === 'price-low') {
+        sortField = 'price';
+        constraints.push(orderBy('price', 'asc'));
+      } else if (sortBy === 'price-high') {
+        sortField = 'price';
+        constraints.push(orderBy('price', 'desc'));
+      } else {
+        constraints.push(orderBy('created_at', 'desc'));
+      }
+
+      // Utiliser la valeur de tri pour startAfter
+      const startValue = lastProduct[sortField as keyof Product] || (sortField === 'created_at' ? new Date().toISOString() : 0);
+      constraints.push(startAfter(startValue));
+      constraints.push(limit(PRODUCTS_PER_PAGE) as any);
+
+      const q = fire_query(collection(db, 'products'), ...constraints as any);
+      const snapshot = await getDocs(q);
+
+      const newProducts = snapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Product[];
+
+      if (newProducts.length > 0) {
+        setAllProducts(prev => [...prev, ...newProducts]);
+        setPage(prev => prev + 1);
+      }
+
+      setHasMore(newProducts.length >= PRODUCTS_PER_PAGE);
     } catch (error) {
       console.error('Error loading more products:', error);
     } finally {
       setIsLoadingProducts(false);
     }
-  }, [hasMore, isLoadingProducts, page, allProducts]);
+  }, [db, hasMore, isLoadingProducts, allProducts, selectedCategory, sortBy]);
 
   // Filtrer les boutiques par recherche
   const filteredShops = useMemo(() => {
@@ -365,96 +344,6 @@ export default function ExploreScreen() {
             </LinearGradient>
           </TouchableOpacity>
         </View>
-
-        {/* Lives en cours */}
-        {!loadingLives && activeLives.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.livesHeader}>
-              <View style={styles.livesTitleContainer}>
-                <View style={styles.liveIndicator} />
-                <View>
-                  <Text style={[styles.sectionTitle, { color: themeColors.text }]}>Lives en cours</Text>
-                  <Text style={[styles.sectionSubtitle, { color: themeColors.textSecondary }]}>
-                    Rejoignez les vendeurs en direct
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/lives' as any)} style={styles.seeAllButton}>
-                <Text style={styles.seeAllText}>Tout voir</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.livesScroll}
-            >
-              {activeLives.map((live) => (
-                <TouchableOpacity
-                  key={live.id}
-                  style={styles.liveCard}
-                  onPress={() => router.push({ pathname: '/(tabs)/live-viewer/[id]', params: { id: live.id } } as any)}
-                  activeOpacity={0.9}
-                >
-                  <LinearGradient
-                    colors={['#FF6B6B', '#FF8C42']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.liveCardGradient}
-                  >
-                    <View style={styles.liveBadge}>
-                      <View style={styles.liveBadgePulse} />
-                      <Text style={styles.liveBadgeText}>LIVE</Text>
-                    </View>
-
-                    {live.thumbnail_url ? (
-                      <Image
-                        source={{ uri: live.thumbnail_url }}
-                        style={styles.liveThumbnail}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View style={styles.liveThumbnailPlaceholder}>
-                        <Video size={48} color="rgba(255, 255, 255, 0.9)" strokeWidth={2} />
-                      </View>
-                    )}
-
-                    <LinearGradient
-                      colors={['transparent', 'rgba(0, 0, 0, 0.7)']}
-                      style={styles.liveOverlay}
-                    >
-                      <View style={styles.liveSellerInfo}>
-                        {live.seller_avatar ? (
-                          <Image source={{ uri: live.seller_avatar }} style={styles.liveSellerAvatar} />
-                        ) : (
-                          <View style={styles.liveSellerAvatarPlaceholder}>
-                            <Text style={styles.liveSellerAvatarText}>
-                              {live.seller_name?.[0]?.toUpperCase() || '?'}
-                            </Text>
-                          </View>
-                        )}
-                        <View style={styles.liveSellerTextContainer}>
-                          <Text style={styles.liveSellerName} numberOfLines={1}>
-                            {live.seller_name || 'Vendeur'}
-                          </Text>
-                          <Text style={styles.liveTitle} numberOfLines={1}>
-                            {live.title}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.liveViewerCount}>
-                        <Users size={14} color="#FFFFFF" />
-                        <Text style={styles.liveViewerText}>
-                          {live.viewer_count || 0}
-                        </Text>
-                      </View>
-                    </LinearGradient>
-                  </LinearGradient>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
 
         {/* Filtres par catégorie */}
         <View style={styles.section}>
@@ -654,7 +543,7 @@ export default function ExploreScreen() {
                 const discount = product.discount_percentage || 0;
                 const hasDiscount = discount > 0;
                 const discountedPrice = hasDiscount ? calculateDiscountedPrice(price, discount) : price;
-                
+
                 return (
                   <TouchableOpacity
                     key={product.id}
@@ -675,10 +564,10 @@ export default function ExploreScreen() {
 
                     <View style={styles.productInfo}>
                       {/* Nom de la boutique */}
-                      {product.seller?.shop_name ? (
+                      {(product as any).seller?.shop_name ? (
                         <View style={styles.shopBadge}>
                           <Text style={[styles.shopName, { color: themeColors.textSecondary }]} numberOfLines={1}>
-                            {product.seller.shop_name}
+                            {(product as any).seller.shop_name}
                           </Text>
                         </View>
                       ) : null}
@@ -1054,6 +943,7 @@ const styles = StyleSheet.create({
   categoryNameActive: {
     color: '#FFFFFF',
     fontWeight: '800',
+    letterSpacing: 0.5,
   },
   filtersSection: {
     marginBottom: 16,
@@ -1254,170 +1144,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  // Lives Section
-  livesHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-    paddingHorizontal: 16,
-  },
-  livesTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    flex: 1,
-  },
-  liveIndicator: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#EF4444',
-    marginTop: 4,
-    shadowColor: '#EF4444',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  seeAllButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#FEF3C7',
-  },
-  seeAllText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#D97706',
-  },
-  livesScroll: {
-    paddingRight: 16,
-  },
-  liveCard: {
-    width: 300,
-    height: 200,
-    marginRight: 16,
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#EF4444',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  liveCardGradient: {
-    flex: 1,
-    position: 'relative',
-  },
-  liveBadge: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FF6B6B',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-    zIndex: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  liveBadgePulse: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
-    opacity: 0.9,
-  },
-  liveBadgeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-  },
-  liveThumbnail: {
-    width: '100%',
-    height: '100%',
-    position: 'absolute',
-  },
-  liveThumbnailPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'absolute',
-  },
-  liveOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-  },
-  liveSellerInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  liveSellerAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  liveSellerAvatarPlaceholder: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  liveSellerAvatarText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  liveSellerTextContainer: {
-    flex: 1,
-  },
-  liveSellerName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  liveTitle: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.9)',
-  },
-  liveViewerCount: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  liveViewerText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
+
   // Bouton Boutiques compact (à côté de la recherche)
   shopsButtonCompact: {
     width: 56,

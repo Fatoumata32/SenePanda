@@ -310,23 +310,23 @@ export default function FavoritesScreen() {
         <Text style={styles.headerTitle}>MES FAVORIS</Text>
         <TouchableOpacity style={styles.heartButton}>
           <Heart size={24} color={themeColors.text} fill={themeColors.card} strokeWidth={2} />
-          {favorites.length > 0 && (
+          {favorites.length > 0 ? (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{favorites.length}</Text>
             </View>
-          )}
+          ) : null}
         </TouchableOpacity>
       </View>
 
       <FlatList
         data={favorites}
         renderItem={({ item, index }) => {
-          const isNew = item.created_at && new Date(item.created_at).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000;
+          // Suppression du badge NEW
           const discountPercentage = (item as any).discount_percentage;
           const hasDiscount = discountPercentage && discountPercentage > 0;
 
           return (
-            <View style={[styles.productCard, { backgroundColor: themeColors.card }, index === 1 && styles.productCardSelected]}>
+            <View style={[styles.productCard, { backgroundColor: themeColors.card }, index === 1 ? styles.productCardSelected : null]}>
               {/* Product Image */}
               <View style={styles.imageContainer}>
                 <Image
@@ -334,16 +334,12 @@ export default function FavoritesScreen() {
                   style={styles.productImage}
                   resizeMode="cover"
                 />
-                {isNew && (
-                  <View style={styles.newBadge}>
-                    <Text style={styles.newBadgeText}>NEW</Text>
-                  </View>
-                )}
-                {hasDiscount && (
+                {/* Badge NEW supprimé */}
+                {hasDiscount ? (
                   <View style={styles.discountBadge}>
                     <Text style={styles.discountBadgeText}>-{discountPercentage}%</Text>
                   </View>
-                )}
+                ) : null}
               </View>
 
               {/* Product Info */}
@@ -352,14 +348,16 @@ export default function FavoritesScreen() {
                   {item.title}
                 </Text>
                 <Text style={styles.productPrice}>
-                  {item.price.toLocaleString('fr-FR')} <Text style={styles.currency}>F CFA</Text>
+                  <Text>{item.price.toLocaleString('fr-FR')}</Text>
+                  <Text style={styles.currency}> F CFA</Text>
                 </Text>
 
                 {/* Rating */}
                 <View style={styles.ratingContainer}>
                   <Star size={14} color="#FFA500" fill="#FFA500" />
                   <Text style={[styles.ratingText, { color: themeColors.textSecondary }]}>
-                    {item.average_rating?.toFixed(1) || '0.0'} ({item.total_reviews || 0} avis)
+                    <Text>{item.average_rating?.toFixed(1) || '0.0'}</Text>
+                    <Text> ({item.total_reviews || 0} avis)</Text>
                   </Text>
                 </View>
 

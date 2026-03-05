@@ -33,7 +33,6 @@ import {
   Palette,
   RotateCw,
   Shuffle,
-  Video,
   ChevronRight,
   Zap,
 } from 'lucide-react-native';
@@ -634,24 +633,8 @@ export default function MyShopScreen() {
           </Text>
 
           <View style={styles.headerActions}>
-            {/* Bouton Live - visible en mode normal */}
-            {!editMode && (
-              <TouchableOpacity
-                style={styles.liveButton}
-                onPress={() => router.push('/seller/start-live' as any)}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={['#EF4444', '#DC2626']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.liveButtonGradient}
-                >
-                  <Video size={18} color={Colors.white} />
-                  <Text style={styles.liveButtonText}>LIVE</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
+            {/* Bouton Live - Supprimé au profit du Flux Vidéo */}
+
 
             {editMode && (
               <TouchableOpacity
@@ -1005,87 +988,10 @@ export default function MyShopScreen() {
             </View>
           </View>
 
-          {/* Live Shopping - Premium Only */}
-          {profileSubscription?.subscription_plan === 'premium' && (
-            <TouchableOpacity
-              style={styles.liveShoppingBanner}
-              onPress={() => router.push('/seller/start-live')}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={['#FF6B6B', '#FF8C42', '#FFD93D']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.liveShoppingGradient}
-              >
-                <View style={styles.liveNewBadge}>
-                  <Zap size={12} color="#FFD93D" fill="#FFD93D" />
-                  <Text style={styles.liveNewText}>NOUVEAU</Text>
-                </View>
+          {/* Infinite Scroll / Reels Section could be added here in the future */}
 
-                <View style={styles.liveShoppingContent}>
-                  <View style={styles.liveShoppingLeft}>
-                    <View style={styles.liveShoppingIcon}>
-                      <Video size={28} color={Colors.white} strokeWidth={2.5} />
-                      <View style={styles.livePulse} />
-                    </View>
-                    <View style={styles.liveShoppingText}>
-                      <Text style={styles.liveShoppingTitle}>Live Shopping</Text>
-                      <Text style={styles.liveShoppingSubtitle}>
-                        Vendez en direct et boostez vos ventes ! 🔥
-                      </Text>
-                      <View style={styles.liveShoppingStats}>
-                        <View style={styles.liveStatItem}>
-                          <Text style={styles.liveStatValue}>+300%</Text>
-                          <Text style={styles.liveStatLabel}>Ventes</Text>
-                        </View>
-                        <View style={styles.liveStatDivider} />
-                        <View style={styles.liveStatItem}>
-                          <Text style={styles.liveStatValue}>HD</Text>
-                          <Text style={styles.liveStatLabel}>Qualité</Text>
-                        </View>
-                        <View style={styles.liveStatDivider} />
-                        <View style={styles.liveStatItem}>
-                          <Text style={styles.liveStatValue}>Gratuit</Text>
-                          <Text style={styles.liveStatLabel}>166h/mois</Text>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                  <View style={styles.liveShoppingArrow}>
-                    <ChevronRight size={24} color={Colors.white} strokeWidth={3} />
-                  </View>
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
 
-          {/* Section Lives */}
-          <View style={styles.viewProductsSection}>
-            <TouchableOpacity
-              style={styles.livesManagementCard}
-              onPress={() => router.push('/seller/my-lives' as any)}
-              activeOpacity={0.7}
-            >
-              <LinearGradient
-                colors={['#FF6B6B', '#FF8C42']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.livesCardGradient}
-              >
-                <View style={styles.livesCardContent}>
-                  <View style={styles.livesCardIcon}>
-                    <Video size={24} color={Colors.white} />
-                  </View>
-                  <View style={styles.livesCardText}>
-                    <Text style={styles.livesCardTitle}>Gérer mes Lives</Text>
-                    <Text style={styles.livesCardSubtitle}>Sessions en direct et programmées</Text>
-                  </View>
-                  <ArrowRight size={20} color={Colors.white} style={styles.livesCardArrow} />
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
+
 
           {/* Section Produits */}
           <View style={styles.viewProductsSection}>

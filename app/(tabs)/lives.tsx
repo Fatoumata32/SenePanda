@@ -1,76 +1,127 @@
-import React, { useEffect, useState } from 'react';
-// Fixed: removed Spacing and Typography imports to avoid cache issues
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ActivityIndicator,
   FlatList,
   TouchableOpacity,
-  Image,
-  RefreshControl,
+  Text,
   Dimensions,
+  StatusBar,
 } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import {
-  ArrowLeft,
-  Radio,
-  Users,
-  Eye,
-  Video,
-  Sparkles,
-} from 'lucide-react-native';
+import { ArrowLeft, Play } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
-import { useAuth } from '@/providers/AuthProvider';
-import { supabase } from '@/lib/supabase';
-import { useActiveLiveSessions } from '@/hooks/useLiveShopping';
+import {
+  getFirestore,
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  startAfter,
+  getDocs
+} from '@react-native-firebase/firestore';
+import { Product } from '@/types/database';
+import { VerticalVideoItem } from '@/components/VerticalVideoItem';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 /**
- * Page des Lives:
- * - Vendeurs: redirigés vers /seller/my-lives
- * - Acheteurs: voient la liste des lives actifs
+ * Flux Vidéo (Anciennement Lives):
+ * - Affiche un flux vertical de vidéos produits (Style TikTok)
  */
 export default function LivesScreen() {
   const router = useRouter();
-  const { user } = useAuth();
-  const [isSeller, setIsSeller] = useState<boolean | null>(null);
+  const db = getFirestore();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [lastDoc, setLastDoc] = useState<any>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const isFocused = useIsFocused();
 
-  // Hook pour les lives actifs
-  const { sessions: activeLives, isLoading, refetch } = useActiveLiveSessions(50);
+  const PAGE_SIZE = 5;
 
   useEffect(() => {
-    checkUserRole();
-  }, [user]);
+    fetchVideoProducts(true);
+  }, []);
 
-  const checkUserRole = async () => {
-    if (!user) {
-      setIsSeller(false);
-      return;
-    }
-
+  const fetchVideoProducts = async (reset = false) => {
     try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('is_seller, subscription_plan')
-        .eq('id', user.id)
-        .single();
-
-      if (profile?.is_seller || profile?.subscription_plan) {
-        // Rediriger les vendeurs vers leur gestion de lives
-        router.replace('/seller/my-lives' as any);
+      if (reset) {
+        setIsLoading(true);
+        setLastDoc(null);
+        setHasMore(true);
       } else {
-        setIsSeller(false);
+        setIsLoadingMore(true);
       }
-    } catch (error) {
-      console.error('Error checking user role:', error);
-      setIsSeller(false);
+
+      let q = query(
+        collection(db, 'products'),
+        where('is_active', '==', true),
+        where('video_url', '!=', null),
+        orderBy('video_url'), // Requis pour le filtre != null
+        orderBy('created_at', 'desc'),
+        limit(PAGE_SIZE)
+      );
+
+      if (!reset && lastDoc) {
+        q = query(q, startAfter(lastDoc));
+      }
+
+      const snapshot = await getDocs(q);
+
+      const newProducts = snapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Product[];
+
+      if (reset) {
+        setProducts(newProducts);
+      } else {
+        setProducts(prev => [...prev, ...newProducts]);
+      }
+
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
+      setHasMore(newProducts.length === PAGE_SIZE);
+    } catch (error: any) {
+      console.error('Error fetching video products from Firestore:', error);
+      if (error?.code === 'firestore/failed-precondition') {
+        const link = "https://console.firebase.google.com/v1/r/project/senepanda-6f7c5/firestore/indexes?create_composite=ClBwcm9qZWN0cy9zZW5lcGFuZGEtNmY3YzUvZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL3Byb2R1Y3RzL2luZGV4ZXMvXxABGg0KCWlzX2FjdGl2ZRABGg4KCnZpZGVvX3VybBABGg4KCmNyZWF0ZWRfYXQQAhoMCghfX25hbWVfXxAC";
+        console.warn('⚠️ Index Firestore manquant pour les vidéos. Créez-le ici:', link);
+      }
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
     }
   };
+
+  const handleLoadMore = () => {
+    if (!isLoadingMore && hasMore && !isLoading) {
+      fetchVideoProducts(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchVideoProducts(true);
+    setRefreshing(false);
+  };
+
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      setActiveIndex(viewableItems[0].index);
+    }
+  }).current;
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50,
+  }).current;
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -80,364 +131,139 @@ export default function LivesScreen() {
     }
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  };
-
-  const renderLiveCard = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      style={styles.liveCard}
-      onPress={() => router.push({ pathname: '/(tabs)/live-viewer/[id]', params: { id: item.id } } as any)}
-      activeOpacity={0.9}
-    >
-      <Image
-        source={{
-          uri: item.thumbnail_url ||
-            item.seller?.avatar_url ||
-            'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=400',
-        }}
-        style={styles.liveThumbnail}
-      />
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.8)']}
-        style={styles.liveGradient}
-      />
-      
-      {/* Badge LIVE */}
-      <View style={styles.liveBadge}>
-        <View style={styles.liveDot} />
-        <Text style={styles.liveBadgeText}>LIVE</Text>
-      </View>
-
-      {/* Viewers */}
-      <View style={styles.viewersContainer}>
-        <Eye size={14} color="#fff" />
-        <Text style={styles.viewersText}>{item.viewer_count || 0}</Text>
-      </View>
-
-      {/* Info */}
-      <View style={styles.liveInfo}>
-        <Text style={styles.liveTitle} numberOfLines={2}>
-          {item.title || 'Live Shopping'}
-        </Text>
-        <View style={styles.sellerRow}>
-          <Image
-            source={{
-              uri: item.seller?.avatar_url ||
-                'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100',
-            }}
-            style={styles.sellerAvatar}
-          />
-          <Text style={styles.sellerName} numberOfLines={1}>
-            {item.seller?.shop_name || item.seller?.full_name || 'Vendeur'}
-          </Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+  const renderItem = useCallback(({ item, index }: { item: Product; index: number }) => (
+    <VerticalVideoItem
+      product={item}
+      isActive={index === activeIndex}
+      isFocused={isFocused}
+    />
+  ), [activeIndex, isFocused]);
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
-      <LinearGradient
-        colors={['#FF6B6B20', '#FF8E5320']}
-        style={styles.emptyIconBg}
-      >
-        <Video size={64} color={Colors.primaryOrange} />
-      </LinearGradient>
-      <Text style={styles.emptyTitle}>Aucun live en cours</Text>
+      <Play size={64} color={Colors.primaryOrange} />
+      <Text style={styles.emptyTitle}>Bientôt disponible</Text>
       <Text style={styles.emptySubtitle}>
-        Revenez plus tard pour découvrir les lives{'\n'}de vos vendeurs préférés !
+        Aucune vidéo n'est encore disponible. Revenez bientôt pour découvrir nos produits en action !
       </Text>
       <TouchableOpacity
         style={styles.exploreButton}
-        onPress={() => router.push('/(tabs)/explore' as any)}
+        onPress={() => router.replace('/(tabs)/home' as any)}
       >
-        <Sparkles size={20} color="#fff" />
-        <Text style={styles.exploreButtonText}>Explorer les boutiques</Text>
+        <Text style={styles.exploreButtonText}>Retour à l'accueil</Text>
       </TouchableOpacity>
     </View>
   );
 
-  // Afficher le loader pendant la vérification du rôle
-  if (isSeller === null) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primaryOrange} />
-      </SafeAreaView>
-    );
-  }
-
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+
+      {/* Header (Floating) */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <ArrowLeft size={24} color={Colors.textPrimary} />
+          <ArrowLeft size={24} color="#fff" />
         </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Radio size={20} color={Colors.error} />
-          <Text style={styles.headerTitle}>Lives en cours</Text>
-        </View>
+        <Text style={styles.headerTitle}>Vidéos</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Stats */}
-      {activeLives.length > 0 && (
-        <View style={styles.statsBar}>
-          <View style={styles.statItem}>
-            <View style={styles.liveDotSmall} />
-            <Text style={styles.statText}>
-              {activeLives.length} live{activeLives.length > 1 ? 's' : ''} actif{activeLives.length > 1 ? 's' : ''}
-            </Text>
-          </View>
-          <View style={styles.statItem}>
-            <Users size={14} color={Colors.textSecondary} />
-            <Text style={styles.statText}>
-              {activeLives.reduce((sum, live) => sum + (live.viewer_count || 0), 0)} spectateurs
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Liste des lives */}
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primaryOrange} />
         </View>
       ) : (
         <FlatList
-          data={activeLives}
-          renderItem={renderLiveCard}
+          data={products}
+          renderItem={renderItem}
           keyExtractor={(item) => item.id}
-          numColumns={2}
-          contentContainerStyle={styles.listContent}
-          columnWrapperStyle={styles.columnWrapper}
-          ListEmptyComponent={renderEmptyState}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={[Colors.primaryOrange]}
-              tintColor={Colors.primaryOrange}
-            />
-          }
+          pagingEnabled
           showsVerticalScrollIndicator={false}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+          snapToInterval={SCREEN_HEIGHT - 60}
+          snapToAlignment="start"
+          decelerationRate="fast"
+          ListEmptyComponent={renderEmptyState}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={isLoadingMore ? (
+            <View style={{ paddingVertical: 20 }}>
+              <ActivityIndicator color={Colors.primaryOrange} />
+            </View>
+          ) : null}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.backgroundLight,
+    backgroundColor: '#000',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.backgroundLight,
+    backgroundColor: '#000',
   },
   header: {
+    position: 'absolute',
+    top: 40,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    backgroundColor: Colors.white,
+    paddingHorizontal: 16,
+    zIndex: 10,
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: Colors.backgroundLight,
+    backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  headerTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-  statsBar: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 24,
-    paddingVertical: 8,
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  liveDotSmall: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.error,
-  },
-  statText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  listContent: {
-    padding: 12,
-    paddingBottom: 100,
-  },
-  columnWrapper: {
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  liveCard: {
-    width: (SCREEN_WIDTH - 36) / 2,
-    height: 220,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: Colors.cardBackground,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-  },
-  liveThumbnail: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  liveGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  liveBadge: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.error,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    gap: 4,
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#fff',
-  },
-  liveBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
     color: '#fff',
-    letterSpacing: 0.5,
-  },
-  viewersContainer: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  viewersText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  liveInfo: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 12,
-  },
-  liveTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 8,
     textShadowColor: 'rgba(0,0,0,0.5)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  sellerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  sellerAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#fff',
-  },
-  sellerName: {
-    flex: 1,
-    fontSize: 12,
-    color: '#fff',
-    fontWeight: '500',
+    textShadowRadius: 3,
   },
   emptyContainer: {
     flex: 1,
+    height: SCREEN_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-  },
-  emptyIconBg: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
+    paddingHorizontal: 40,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 8,
-    textAlign: 'center',
+    color: '#fff',
+    marginTop: 20,
+    marginBottom: 10,
   },
   emptySubtitle: {
     fontSize: 16,
-    color: Colors.textSecondary,
+    color: '#ccc',
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 20,
+    lineHeight: 24,
+    marginBottom: 30,
   },
   exploreButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: Colors.primaryOrange,
     paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 9999,
-    gap: 8,
-    elevation: 3,
-    shadowColor: Colors.primaryOrange,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    paddingVertical: 12,
+    borderRadius: 25,
   },
   exploreButtonText: {
     fontSize: 16,
@@ -445,3 +271,4 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 });
+

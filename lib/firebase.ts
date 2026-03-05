@@ -8,11 +8,11 @@ import analytics from '@react-native-firebase/analytics';
 
 // Configuration Firebase (déjà dans google-services.json pour Android)
 const firebaseConfig = {
-  apiKey: "AIzaSyCabVD_zdKtJXP1mCECDbHc8iJ5LGFN_mk",
-  projectId: "educ-app-ea92d",
-  storageBucket: "educ-app-ea92d.firebasestorage.app",
-  messagingSenderId: "683631459302",
-  appId: "1:683631459302:android:3a3ea067cfa14c3058b427",
+  apiKey: "AIzaSyA2xLNyY_3A1yvdv9810G_hj6dRkeeQ4ts",
+  projectId: "senepanda-6f7c5",
+  storageBucket: "senepanda-6f7c5.firebasestorage.app",
+  messagingSenderId: "887438718563",
+  appId: "1:887438718563:android:cd59a83312bae11c5faa56",
 };
 
 // Initialiser Firebase (si pas déjà fait)

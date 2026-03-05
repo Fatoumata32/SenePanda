@@ -13,18 +13,18 @@ module.exports = {
     slug: "senepanda",
     version: "1.0.0",
     orientation: "portrait",
-    icon: "./assets/images/icon.png",
+    icon: "./assets/images/logo-senepanda-final.jpg",
     scheme: "myapp",
     userInterfaceStyle: "automatic",
     splash: {
-      image: "./assets/images/splash-icon.png",
+      image: "./assets/images/logo-senepanda-final.jpg",
       resizeMode: "contain",
-      backgroundColor: "#FDB913"
+      backgroundColor: "#FFF8F0"
     },
     newArchEnabled: false,
     ios: {
       supportsTablet: true,
-      icon: "./assets/images/icon.png",
+      icon: "./assets/images/logo-senepanda-final.jpg",
       bundleIdentifier: "com.senepanda.app",
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
@@ -39,8 +39,8 @@ module.exports = {
     android: {
       package: "com.senepanda.app",
       adaptiveIcon: {
-        foregroundImage: "./assets/images/adaptive-icon.png",
-        backgroundColor: "#FDB913"
+        foregroundImage: "./assets/images/logo-senepanda-final.jpg",
+        backgroundColor: "#FFF8F0"
       },
       permissions: [
         "ACCESS_COARSE_LOCATION",
@@ -94,7 +94,7 @@ module.exports = {
       EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
       eas: {
-        projectId: "efb67d51-196a-420e-9f69-b9500e680ebc"
+        projectId: "c56ff055-c5a7-48c1-9205-6469949f3863"
       }
     }
   }

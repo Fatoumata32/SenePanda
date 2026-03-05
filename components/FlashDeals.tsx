@@ -2,6 +2,13 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndi
 import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import {
+  getFirestore,
+  collection,
+  query as fire_query,
+  where,
+  onSnapshot
+} from '@react-native-firebase/firestore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Shadows, Typography, Spacing, BorderRadius } from '@/constants/Colors';
 
@@ -27,52 +34,47 @@ export default function FlashDeals() {
   const [deals, setDeals] = useState<FlashDeal[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const db = getFirestore();
 
   useEffect(() => {
-    loadDeals();
-
     // Mettre à jour le compte à rebours toutes les secondes
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
 
-    // Subscribe aux changements
-    const channel = supabase
-      .channel('flash-deals-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'flash_deals',
-        },
-        () => loadDeals()
-      )
-      .subscribe();
+    // Subscribe aux changements Firestore en temps réel (Modular API)
+    const q = fire_query(
+      collection(db, 'flash_deals'),
+      where('ends_at', '>', new Date().toISOString())
+    );
+
+    const unsubscribe = onSnapshot(q, snapshot => {
+      if (!snapshot) return;
+
+      const dealsList = snapshot.docs
+        .map((doc: any) => ({
+          deal_id: doc.id,
+          ...doc.data()
+        })) as any[];
+
+      // Filtrer localement pour le stock si nécessaire, 
+      // ou faire confiance à la synchro
+      setDeals(dealsList.filter(d => d.remaining_stock > 0));
+      setLoading(false);
+    }, error => {
+      console.error('Erreur snapshot Flash Deals:', error);
+      setLoading(false);
+    });
 
     return () => {
       clearInterval(timer);
-      channel.unsubscribe();
+      unsubscribe();
     };
-  }, []);
+  }, [db]);
 
   const loadDeals = async () => {
-    try {
-      const { data, error } = await supabase.rpc('get_active_deals');
-
-      if (error) {
-        // Si la fonction n'existe pas encore, ignorer silencieusement
-        console.warn('Flash deals function not available yet:', error);
-        setDeals([]);
-        return;
-      }
-      setDeals(data || []);
-    } catch (error) {
-      console.error('Error loading flash deals:', error);
-      setDeals([]);
-    } finally {
-      setLoading(false);
-    }
+    // Note: onSnapshot s'en occupe maintenant, 
+    // mais on laisse la fonction vide pour la compatibilité si appelée ailleurs
   };
 
   const getTimeRemaining = (endsAt: string) => {
