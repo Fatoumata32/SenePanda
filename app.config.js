@@ -84,6 +84,19 @@ module.exports = {
         {
           microphonePermission: "SenePanda a besoin d'accéder à votre microphone pour le Live Shopping."
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "buildToolsVersion": "34.0.0",
+            "extraMavenRepos": [
+              "https://maven.google.com/"
+            ]
+          }
+        }
       ]
     ],
     experiments: {
